@@ -5,6 +5,8 @@ import {
   inviteCodeMatches,
   isLive,
   isUuid,
+  rankTrending,
+  trendingScore,
   parseCategory,
   requestOrigin,
   toPublicHuddle,
@@ -208,5 +210,55 @@ describe("huddle lifecycle", () => {
   test("toPublicHuddle exposes ends_at as ISO, or null", () => {
     expect(toPublicHuddle(startedAt(), STRANGER, 0).ends_at).toBe("2026-11-01T12:30:00.000Z");
     expect(toPublicHuddle(huddle(), STRANGER, 0).ends_at).toBeNull();
+  });
+});
+
+describe("trending", () => {
+  const NOW = Date.parse("2026-11-01T12:00:00.000Z");
+  const hour = 60 * 60 * 1000;
+  const base = { visits: 0, seatJoins: 0, lastActivityMs: NOW - 5 * hour, createdMs: NOW - 2 * hour };
+
+  test("a busier huddle ranks above a quiet one", () => {
+    const activity = new Map([
+      ["busy", { ...base, visits: 10, seatJoins: 4, lastActivityMs: NOW - 60_000 }],
+      ["quiet", { ...base, visits: 1, seatJoins: 0 }],
+    ]);
+    const ranked = rankTrending(
+      [
+        { id: "quiet", createdMs: NOW - 2 * hour },
+        { id: "busy", createdMs: NOW - 2 * hour },
+      ],
+      activity,
+      NOW
+    );
+    expect(ranked.map((r) => r.id)).toEqual(["busy", "quiet"]);
+  });
+
+  test("a recently active huddle outranks an idle one with the same velocity", () => {
+    const activity = new Map([
+      ["fresh", { ...base, visits: 3, seatJoins: 1, lastActivityMs: NOW - 60_000 }],
+      ["stale", { ...base, visits: 3, seatJoins: 1, lastActivityMs: NOW - 10 * hour }],
+    ]);
+    const ranked = rankTrending(
+      [
+        { id: "stale", createdMs: NOW - 2 * hour },
+        { id: "fresh", createdMs: NOW - 2 * hour },
+      ],
+      activity,
+      NOW
+    );
+    expect(ranked[0].id).toBe("fresh");
+  });
+
+  test("velocities are normalised so the score stays between 0 and 1", () => {
+    const activity = new Map([["only", { ...base, visits: 50, seatJoins: 20, lastActivityMs: NOW }]]);
+    const [top] = rankTrending([{ id: "only", createdMs: NOW - hour }], activity, NOW);
+    expect(top.score).toBeGreaterThan(0);
+    expect(top.score).toBeLessThanOrEqual(1);
+  });
+
+  test("an old huddle with no recent activity scores near zero", () => {
+    const old = { visits: 0, seatJoins: 0, lastActivityMs: NOW - 100 * hour, createdMs: NOW - 100 * hour };
+    expect(trendingScore(old, { maxVisits: 0, maxSeatJoins: 0 }, NOW)).toBeLessThan(0.01);
   });
 });

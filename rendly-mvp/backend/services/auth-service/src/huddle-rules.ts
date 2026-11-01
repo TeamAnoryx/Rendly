@@ -240,3 +240,66 @@ export function requestOrigin(originHeader: string | undefined, refererHeader: s
   }
   return "";
 }
+
+/**
+ * Trending score, from RENDLY_MULTI_AGENT_AI_BACKEND_ARCHITECTURE.md section 5:
+ *   trending(h) = alpha * visits(h) + beta * seatJoins(h) + gamma * decay(h) + delta * recency(h)
+ * Visits and seat joins are counted over the last hour and normalised by the largest value in the
+ * cohort. decay(h) = exp(-mu * hours since last activity). recency(h) falls linearly from 1 to 0
+ * over the first 24 hours after creation. Weights and mu are tunable; the values here are a starting point.
+ */
+export const TRENDING_WEIGHTS = { visits: 0.4, seatJoins: 0.4, decay: 0.1, recency: 0.1 } as const;
+export const TRENDING_DECAY_PER_HOUR = 0.5;
+export const TRENDING_VELOCITY_WINDOW_MS = 60 * 60 * 1000;
+export const TRENDING_RECENCY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export type HuddleActivity = {
+  /** Visit events in the last hour. */
+  visits: number;
+  /** Join events in the last hour. */
+  seatJoins: number;
+  /** Most recent visit, join or leave (epoch ms), or the creation time when there is none. */
+  lastActivityMs: number;
+  createdMs: number;
+};
+
+export function trendingScore(
+  activity: HuddleActivity,
+  cohort: { maxVisits: number; maxSeatJoins: number },
+  nowMs: number
+): number {
+  const visits = cohort.maxVisits > 0 ? activity.visits / cohort.maxVisits : 0;
+  const seats = cohort.maxSeatJoins > 0 ? activity.seatJoins / cohort.maxSeatJoins : 0;
+  const hoursIdle = Math.max(0, (nowMs - activity.lastActivityMs) / (60 * 60 * 1000));
+  const decay = Math.exp(-TRENDING_DECAY_PER_HOUR * hoursIdle);
+  const ageMs = Math.max(0, nowMs - activity.createdMs);
+  const recency = ageMs < TRENDING_RECENCY_WINDOW_MS ? 1 - ageMs / TRENDING_RECENCY_WINDOW_MS : 0;
+  return (
+    TRENDING_WEIGHTS.visits * visits +
+    TRENDING_WEIGHTS.seatJoins * seats +
+    TRENDING_WEIGHTS.decay * decay +
+    TRENDING_WEIGHTS.recency * recency
+  );
+}
+
+/** Rank huddle ids by trending score, highest first. Ties keep the input order. */
+export function rankTrending(
+  candidates: { id: string; createdMs: number }[],
+  activity: Map<string, HuddleActivity>,
+  nowMs: number
+): { id: string; score: number }[] {
+  let maxVisits = 0;
+  let maxSeatJoins = 0;
+  for (const a of activity.values()) {
+    maxVisits = Math.max(maxVisits, a.visits);
+    maxSeatJoins = Math.max(maxSeatJoins, a.seatJoins);
+  }
+  const cohort = { maxVisits, maxSeatJoins };
+  return candidates
+    .map((c, index) => {
+      const a = activity.get(c.id) ?? { visits: 0, seatJoins: 0, lastActivityMs: c.createdMs, createdMs: c.createdMs };
+      return { id: c.id, score: trendingScore(a, cohort, nowMs), index };
+    })
+    .sort((x, y) => y.score - x.score || x.index - y.index)
+    .map(({ id, score }) => ({ id, score }));
+}

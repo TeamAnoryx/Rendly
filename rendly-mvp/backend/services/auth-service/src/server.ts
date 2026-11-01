@@ -37,8 +37,18 @@ import {
   isActiveParticipant,
   joinHuddle,
   leaveHuddle,
+  recordHuddleEvent,
   type HuddleRow,
 } from "./huddles";
+import {
+  cancelWaitingEntries,
+  enqueueForMatch,
+  getDashboardStats,
+  getMatchStatus,
+  ONLINE_WINDOW_SECONDS,
+  recordHeartbeat,
+} from "./spark";
+import { validateMatchRequest } from "./spark-rules";
 import {
   buildInviteUrl,
   canAccessHuddle,
@@ -1408,6 +1418,8 @@ app.get("/api/huddles/:id", async (req, res) => {
       res.status(404).json({ message: "Huddle not found" });
       return;
     }
+    // Visits feed the trending list. Not awaited: a failed write must not slow or fail the page.
+    void recordHuddleEvent(id, current.userId, "visit");
     const huddle = toPublicHuddle(row, current.userId, await getHuddleParticipantCount(id));
     const canShareInvite = row.type !== "private" || huddle.is_owner;
     res.json({
@@ -1474,6 +1486,85 @@ app.post("/api/huddles/:id/leave", async (req, res) => {
   } catch (err) {
     console.error("POST /api/huddles/:id/leave error:", err);
     res.status(500).json({ message: "Failed to leave huddle" });
+  }
+});
+
+/** POST /api/presence/heartbeat – mark the caller online. Clients call this about every 30 seconds. */
+app.post("/api/presence/heartbeat", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    await recordHeartbeat(current.userId);
+    res.json({ ok: true, online_window_seconds: ONLINE_WINDOW_SECONDS });
+  } catch (err) {
+    console.error("POST /api/presence/heartbeat error:", err);
+    res.status(500).json({ message: "Failed to record presence" });
+  }
+});
+
+/** GET /api/dashboard/stats – live aggregate counts for the dashboard. Public; no user data. */
+app.get("/api/dashboard/stats", async (_req, res) => {
+  try {
+    const stats = await getDashboardStats();
+    res.json(stats);
+  } catch (err) {
+    console.error("GET /api/dashboard/stats error:", err);
+    res.status(500).json({ message: "Failed to load dashboard stats" });
+  }
+});
+
+/** POST /api/match/queue – join the Spark queue for a mode and intent. Body: { mode, intent }. */
+app.post("/api/match/queue", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const validation = validateMatchRequest(req.body);
+    if (!validation.ok) {
+      res.status(400).json({ message: validation.message });
+      return;
+    }
+    const view = await enqueueForMatch(current.userId, validation.value.mode, validation.value.intent);
+    res.json(view);
+  } catch (err) {
+    console.error("POST /api/match/queue error:", err);
+    res.status(500).json({ message: "Failed to join the match queue" });
+  }
+});
+
+/** GET /api/match/status – the caller's current match state. Poll this while waiting. */
+app.get("/api/match/status", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    res.json(await getMatchStatus(current.userId));
+  } catch (err) {
+    console.error("GET /api/match/status error:", err);
+    res.status(500).json({ message: "Failed to read match status" });
+  }
+});
+
+/** DELETE /api/match/queue – leave the queue. */
+app.delete("/api/match/queue", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const cancelled = await cancelWaitingEntries(current.userId);
+    res.json({ cancelled });
+  } catch (err) {
+    console.error("DELETE /api/match/queue error:", err);
+    res.status(500).json({ message: "Failed to leave the match queue" });
   }
 });
 

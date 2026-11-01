@@ -8535,3 +8535,20 @@
   color: #475569;
   margin: 0 0 1rem 0;
 }
+/* Spark modal */
+.spark-modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.spark-modal { background: var(--background, #fff); color: inherit; border-radius: 14px; padding: 24px; width: min(480px, 100%); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25); }
+.spark-modal-title { font-size: 1.25rem; font-weight: 700; margin-bottom: 12px; }
+.spark-modal-label { font-size: 0.85rem; opacity: 0.7; margin: 14px 0 6px; }
+.spark-modal-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.spark-modal-option { border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 999px; padding: 6px 14px; background: transparent; cursor: pointer; }
+.spark-modal-option--on { background: #3d348b; color: #fff; border-color: #3d348b; }
+.spark-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.spark-modal-btn { border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 10px; padding: 8px 16px; background: transparent; cursor: pointer; }
+.spark-modal-btn--primary { background: #3d348b; color: #fff; border-color: #3d348b; }
+.spark-modal-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.spark-modal-waiting { text-align: center; padding: 12px 0; }
+.spark-modal-spinner { width: 36px; height: 36px; margin: 0 auto 12px; border-radius: 50%; border: 3px solid rgba(61, 52, 139, 0.2); border-top-color: #3d348b; animation: spark-spin 0.9s linear infinite; }
+.spark-modal-elapsed { font-size: 0.85rem; opacity: 0.7; }
+.spark-modal-error { color: #b42318; margin-top: 8px; }
+@keyframes spark-spin { to { transform: rotate(360deg); } }

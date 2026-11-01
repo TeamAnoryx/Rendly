@@ -9,6 +9,8 @@ import {
   type Huddle,
 } from '@/hooks/useDashboard';
 import { formatTimeLeft } from '@/lib/huddleActive';
+import SparkModal from '@/components/spark/SparkModal';
+import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -22,26 +24,11 @@ export default function DashboardPage() {
     joinHuddle,
   } = useDashboard();
 
-  const [isFindingMatch, setIsFindingMatch] = useState(false);
-  const [matchResult, setMatchResult] = useState<'found' | 'none' | null>(null);
+  const [sparkOpen, setSparkOpen] = useState(false);
   const [joiningHuddleId, setJoiningHuddleId] = useState<string | null>(null);
-  const findMatchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleFindMatch = useCallback(() => {
-    if (findMatchTimeoutRef.current) clearTimeout(findMatchTimeoutRef.current);
-    setIsFindingMatch(true);
-    setMatchResult(null);
-    findMatchTimeoutRef.current = setTimeout(() => {
-      findMatchTimeoutRef.current = null;
-      setIsFindingMatch(false);
-      setMatchResult('found');
-      router.push('/dashboard/chat');
-    }, 1500);
-  }, [router]);
-
-  useEffect(() => () => {
-    if (findMatchTimeoutRef.current) clearTimeout(findMatchTimeoutRef.current);
-  }, []);
+  // Keeps this user counted as online while the dashboard is open.
+  usePresenceHeartbeat(Boolean(user));
 
   const handleJoinHuddle = useCallback(
     async (huddle: Huddle) => {
@@ -66,13 +53,13 @@ export default function DashboardPage() {
         </h1>
         <div className="dash-home-stats">
           <span className="dash-home-stat">
-            <strong>{stats.onlineUsers}</strong> online now
+            <strong>{stats ? stats.onlineUsers : '—'}</strong> online now
           </span>
           <span className="dash-home-stat">
-            <strong>{stats.lookingForMatch}</strong> looking for a match
+            <strong>{stats ? stats.lookingForMatch : '—'}</strong> looking for a match
           </span>
           <span className="dash-home-stat">
-            ~<strong>{stats.avgMatchTimeMinutes}</strong> min avg match time
+            ~<strong>{stats ? stats.avgMatchTimeMinutes : '—'}</strong> min avg match time
           </span>
         </div>
       </section>
@@ -92,7 +79,7 @@ export default function DashboardPage() {
             </button>
           ))}
         </div>
-        {stats.lookingForMatch > 0 && (
+        {stats && stats.lookingForMatch > 0 && (
           <p className="dash-home-looking-now">
             {stats.lookingForMatch} people looking now
           </p>
@@ -101,17 +88,14 @@ export default function DashboardPage() {
           <button
             type="button"
             className="dash-home-cta"
-            onClick={handleFindMatch}
-            disabled={isFindingMatch}
+            onClick={() => setSparkOpen(true)}
           >
-            {isFindingMatch ? 'Finding…' : 'Find match'}
+            Spark a match
           </button>
-          {matchResult === 'none' && (
-            <p className="dash-home-match-msg" role="status">
-              No match right now. Try again in a moment.
-            </p>
-          )}
         </div>
+        {sparkOpen && (
+          <SparkModal initialIntent={selectedIntent} onClose={() => setSparkOpen(false)} />
+        )}
       </section>
 
       {/* Live huddles */}
