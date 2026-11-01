@@ -7,17 +7,20 @@
     "shared"
   ],
   "scripts": {
-    "dev": "lerna run dev --parallel",
-    "dev:auth": "npm run dev --workspace=auth-service",
+    "dev": "bash scripts/run-services.sh start",
+    "dev:auth": "npm --prefix services/auth-service run dev",
     "free-port:auth": "powershell -Command \"Get-NetTCPConnection -LocalPort 4001 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }\"",
     "free-ports": "powershell -Command \"@(4001) | ForEach-Object { Get-NetTCPConnection -LocalPort $_ -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue } }\"",
-    "build": "lerna run build",
-    "start": "lerna run start --parallel",
-    "test": "lerna run test",
-    "lint": "lerna run lint",
+    "build": "npm --prefix services/auth-service run build",
+    "start": "bash scripts/run-services.sh start",
+    "test": "npm --prefix services/auth-service test",
+    "lint": "npm --prefix services/auth-service run lint",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
-    "db:migrate": "npm run migrate --workspace=user-service"
+    "db:migrate": "npm --prefix services/user-service run migrate",
+    "install:services": "bash scripts/run-services.sh install",
+    "stop": "bash scripts/run-services.sh stop",
+    "status": "bash scripts/run-services.sh status"
   },
   "devDependencies": {
     "lerna": "^7.4.0",

@@ -26,3 +26,6 @@ Thumbs.db
 
 # Local agent tooling logs
 .cto-toolkit/
+
+# Local service runner state and logs
+rendly-mvp/backend/.run/

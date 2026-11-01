@@ -37,7 +37,7 @@ cd frontend; npm run dev  # Terminal 3
 
 ```bash
 # Backend
-cd backend && npm install && npx lerna bootstrap
+cd backend && npm run install:services
 
 # Frontend
 cd frontend && npm install
@@ -53,7 +53,7 @@ docker-compose -f backend/docker-compose.yml up -d
 
 ```bash
 # Terminal 1: Backend
-cd backend && npm run dev
+cd backend && npm run dev   # starts all services; check with: npm run status
 
 # Terminal 2: Frontend
 cd frontend && npm run dev
@@ -63,9 +63,9 @@ cd frontend && npm run dev
 
 | Service            | URL                  |
 |--------------------|----------------------|
-| Frontend           | http://localhost:3000 |
+| Frontend           | http://localhost:3001 |
 | API Gateway        | http://localhost:80   |
-| Auth Service       | http://localhost:3001 |
+| Auth Service       | http://localhost:4001 |
 | User Service       | http://localhost:3002 |
 | Matching Service   | http://localhost:3003 |
 | Chat Service (REST + Socket.IO) | http://localhost:4002 |
@@ -133,4 +133,4 @@ npm install
 
 - Check logs: `docker-compose -f backend/docker-compose.yml logs -f [service]`
 - Review documentation in repo root
-- Debug frontend: http://localhost:3000 (DevTools)
+- Debug frontend: http://localhost:3001 (DevTools)
