@@ -16,15 +16,15 @@ export function usePresenceHeartbeat(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
-    const beat = () => {
+    const sendHeartbeat = () => {
       if (!getStoredAuthToken()) return;
       authFetch('/api/presence/heartbeat', { method: 'POST' }).catch(() => {
         // Retried on the next tick.
       });
     };
-    beat();
+    sendHeartbeat();
     const timer = setInterval(() => {
-      if (!cancelled) beat();
+      if (!cancelled) sendHeartbeat();
     }, HEARTBEAT_INTERVAL_MS);
     return () => {
       cancelled = true;
