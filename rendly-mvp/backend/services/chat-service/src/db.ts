@@ -565,6 +565,8 @@ export function parseConversationId(conversationId: string, currentUserId: strin
   if (conversationId.startsWith("whisper_")) {
     const parts = conversationId.split("_");
     if (parts.length !== 3) return null;
+    // A whisper id names its two parties; anyone else gets null.
+    if (parts[1] !== currentUserId && parts[2] !== currentUserId) return null;
     const other = parts[1] === currentUserId ? parts[2] : parts[1];
     return { type: "whisper", otherUserId: other };
   }
