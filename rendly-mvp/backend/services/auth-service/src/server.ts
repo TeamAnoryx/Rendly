@@ -46,9 +46,14 @@ import {
   listHuddles,
   listMembers,
   recordHuddleEvent,
+  cancelHuddle,
+  deleteHuddle,
+  listHuddleAudience,
   removeMember,
+  setDisplayName,
   setHuddleMedia,
-  setWaitingRoom,
+  setHuddleSettings,
+  setHuddleThumbnail,
   updateMember,
   uploadHuddleMedia,
   type HuddleRow,
@@ -72,8 +77,18 @@ import {
   requestOrigin,
   toPublicHuddle,
   validateCreateHuddleInput,
+  validateDisplayName,
   validateInviteeIds,
 } from "./huddle-rules";
+import {
+  clearNotifications,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  notifyUser,
+  notifyUsers,
+} from "./notifications";
+import { awardHuddlePoints, getLeaderboard, getPointsSummary } from "./points";
 
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config();
@@ -767,6 +782,11 @@ app.patch("/api/users/me", async (req, res) => {
     if (!updated) {
       return res.status(500).json({ message: "Failed to update profile" });
     }
+    await notifyUser(current.userId, {
+      type: "profile_updated",
+      title: "Profile updated",
+      body: "Your changes are saved and visible to your connections.",
+    });
     const user = await getUserById(current.userId);
     if (!user) {
       return res.status(500).json({ message: "Profile updated but could not load user" });
@@ -963,6 +983,12 @@ app.post("/api/users/me/connection-invites", async (req, res) => {
     }
     const created = await createInvite(current.userId, target.id);
     if (!created) return res.status(500).json({ message: "Failed to send invite" });
+    await notifyUser(target.id, {
+      type: "connection_request",
+      title: `${current.user.username ? `@${current.user.username}` : "Someone"} wants to connect`,
+      body: "Open your profile to accept or decline.",
+      payload: { invite_id: created.id, from_user_id: current.userId },
+    });
     res.status(201).json({ id: created.id, to_user_id: target.id, username: target.username ?? null });
   } catch (err) {
     console.error("POST /api/users/me/connection-invites error:", err);
@@ -1023,6 +1049,12 @@ app.post("/api/users/me/connection-invites/:id/accept", async (req, res) => {
     const ok = await updateInviteStatus(inviteId, "accepted");
     if (!ok) return res.status(500).json({ message: "Failed to accept" });
     await createConnection(inv.from_user_id, inv.to_user_id);
+    await notifyUser(inv.from_user_id, {
+      type: "connection_accepted",
+      title: `${current.user.username ? `@${current.user.username}` : "Someone"} accepted your connection request`,
+      body: "You can now message, call and invite each other.",
+      payload: { user_id: current.userId },
+    });
     res.json({ message: "Accepted" });
   } catch (err) {
     console.error("POST /api/users/me/connection-invites/:id/accept error:", err);
@@ -1349,6 +1381,7 @@ async function toPublicHuddles(rows: HuddleRow[], viewerId: string) {
     ...toPublicHuddle(h, viewerId, counts.get(h.id) ?? 0),
     intents: tags.get(h.id) ?? [],
     media_url: h.media_path ? huddleMediaUrl(h.media_path) : null,
+    thumbnail_url: h.thumbnail_path ? huddleMediaUrl(h.thumbnail_path) : null,
   }));
 }
 
@@ -1447,6 +1480,22 @@ app.post("/api/huddles", async (req, res) => {
       return;
     }
     const row = await createHuddle(current.userId, { ...validation.value, invitee_ids: invitees });
+    const hostName = current.user.username ? `@${current.user.username}` : "A connection";
+    if (invitees.length > 0) {
+      await notifyUsers(invitees, {
+        type: "huddle_invite",
+        title: `${hostName} invited you to a huddle`,
+        body: row.title,
+        payload: { huddle_id: row.id },
+      });
+    }
+    if (row.type !== "private") {
+      const connections = await listConnectionsForUser(current.userId);
+      await notifyUsers(
+        connections.map((c) => c.connected_user_id).filter((id) => !invitees.includes(id)),
+        { type: "huddle_created", title: `${hostName} created a huddle`, body: row.title, payload: { huddle_id: row.id } }
+      );
+    }
     res.status(201).json({
       ...toPublicHuddle(row, current.userId, 0),
       intents: validation.value.intents,
@@ -1490,6 +1539,7 @@ app.get("/api/huddles/:id", async (req, res) => {
       ...huddle,
       intents: tags,
       media_url: row.media_path ? huddleMediaUrl(row.media_path) : null,
+      thumbnail_url: row.thumbnail_path ? huddleMediaUrl(row.thumbnail_path) : null,
       is_participant: membership?.admitted === true,
       is_waiting: membership != null && !membership.admitted,
       your_role: membership?.role ?? null,
@@ -1532,6 +1582,8 @@ app.post("/api/huddles/:id/join", async (req, res) => {
       res.status(result.reason === "not_found" ? 404 : 409).json({ message: result.message });
       return;
     }
+    const displayName = validateDisplayName((req.body as { display_name?: unknown } | undefined)?.display_name);
+    if (displayName.ok && displayName.value) await setDisplayName(id, current.userId, displayName.value);
     if (result.waiting) {
       res.status(202).json({ status: "waiting", huddle_id: id, message: "Waiting for the host to let you in" });
       return;
@@ -1558,6 +1610,10 @@ app.post("/api/huddles/:id/leave", async (req, res) => {
     const id = req.params.id;
     const result = await leaveHuddle(id, current.userId);
     if (!result.ok) {
+      if (result.reason === "locked") {
+        res.status(409).json({ message: result.message });
+        return;
+      }
       res.status(404).json({ message: "Huddle not found or you are not in it" });
       return;
     }
@@ -1755,13 +1811,22 @@ app.patch("/api/huddles/:id/settings", async (req, res) => {
       res.status(403).json({ message: "Only the host can change these settings" });
       return;
     }
-    const waitingRoom = (req.body as { waiting_room?: unknown })?.waiting_room;
-    if (typeof waitingRoom !== "boolean") {
-      res.status(400).json({ message: "waiting_room must be true or false" });
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const patch: Partial<{ waiting_room: boolean; allow_self_exit: boolean; rewards_enabled: boolean }> = {};
+    for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled"] as const) {
+      if (body[key] === undefined) continue;
+      if (typeof body[key] !== "boolean") {
+        res.status(400).json({ message: `${key} must be true or false` });
+        return;
+      }
+      patch[key] = body[key] as boolean;
+    }
+    if (Object.keys(patch).length === 0) {
+      res.status(400).json({ message: "Nothing to change" });
       return;
     }
-    await setWaitingRoom(row.id, waitingRoom);
-    res.json({ waiting_room: waitingRoom });
+    await setHuddleSettings(row.id, patch);
+    res.json(patch);
   } catch (err) {
     console.error("PATCH /api/huddles/:id/settings error:", err);
     res.status(500).json({ message: "Failed to update settings" });
@@ -1798,6 +1863,12 @@ app.post("/api/huddles/:id/invites", async (req, res) => {
       return;
     }
     await addInvites(row.id, current.userId, invitees);
+    await notifyUsers(invitees, {
+      type: "huddle_invite",
+      title: `${current.user.username ? `@${current.user.username}` : "Someone"} invited you to a huddle`,
+      body: row.title,
+      payload: { huddle_id: row.id },
+    });
     res.json({ invited: invitees.length });
   } catch (err) {
     console.error("POST /api/huddles/:id/invites error:", err);
@@ -1866,6 +1937,276 @@ app.post("/api/huddles/:id/media", (req, res) => {
       res.status(500).json({ message: "Failed to upload promotion media" });
     }
   });
+});
+
+/** Require the signed-in user to be this huddle's host. Sends the error response and returns null otherwise. */
+async function requireHuddleHost(req: express.Request, res: express.Response) {
+  const current = await getCurrentUserFromRequest(req);
+  if (!current) {
+    res.status(401).json({ message: "Missing or invalid authorization" });
+    return null;
+  }
+  const row = await getHuddleById(req.params.id);
+  if (!row) {
+    res.status(404).json({ message: "Huddle not found" });
+    return null;
+  }
+  if (row.created_by !== current.userId) {
+    res.status(403).json({ message: "Only the host can do this" });
+    return null;
+  }
+  return { current, row };
+}
+
+/** POST /api/huddles/:id/cancel – host cancels: it ends now and everyone in it is told. */
+app.post("/api/huddles/:id/cancel", async (req, res) => {
+  try {
+    const ctx = await requireHuddleHost(req, res);
+    if (!ctx) return;
+    const audience = await listHuddleAudience(ctx.row.id, ctx.current.userId);
+    await cancelHuddle(ctx.row.id);
+    await notifyUsers(audience, {
+      type: "huddle_cancelled",
+      title: "A huddle was cancelled",
+      body: ctx.row.title,
+      payload: { huddle_id: ctx.row.id },
+    });
+    res.json({ cancelled: true });
+  } catch (err) {
+    console.error("POST /api/huddles/:id/cancel error:", err);
+    res.status(500).json({ message: "Failed to cancel the huddle" });
+  }
+});
+
+/** DELETE /api/huddles/:id – host deletes the huddle and everything attached to it. */
+app.delete("/api/huddles/:id", async (req, res) => {
+  try {
+    const ctx = await requireHuddleHost(req, res);
+    if (!ctx) return;
+    const audience = await listHuddleAudience(ctx.row.id, ctx.current.userId);
+    await deleteHuddle(ctx.row.id);
+    await notifyUsers(audience, {
+      type: "huddle_cancelled",
+      title: "A huddle was removed by its host",
+      body: ctx.row.title,
+      payload: {},
+    });
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error("DELETE /api/huddles/:id error:", err);
+    res.status(500).json({ message: "Failed to delete the huddle" });
+  }
+});
+
+/** PATCH /api/huddles/:id/me – set the name you show in this huddle. Body: { display_name }. */
+app.patch("/api/huddles/:id/me", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const name = validateDisplayName((req.body as { display_name?: unknown } | undefined)?.display_name);
+    if (!name.ok) {
+      res.status(400).json({ message: name.message });
+      return;
+    }
+    const updated = await setDisplayName(req.params.id, current.userId, name.value);
+    if (!updated) {
+      res.status(404).json({ message: "Join the huddle first" });
+      return;
+    }
+    res.json({ display_name: name.value });
+  } catch (err) {
+    console.error("PATCH /api/huddles/:id/me error:", err);
+    res.status(500).json({ message: "Failed to update your name" });
+  }
+});
+
+const THUMBNAIL_MAX_BYTES = 30 * 1024 * 1024;
+const THUMBNAIL_TYPES: Record<string, { kind: "image" | "video"; extension: string }> = {
+  "image/jpeg": { kind: "image", extension: "jpg" },
+  "image/png": { kind: "image", extension: "png" },
+  "image/webp": { kind: "image", extension: "webp" },
+  "video/mp4": { kind: "video", extension: "mp4" },
+  "video/webm": { kind: "video", extension: "webm" },
+};
+const thumbnailUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: THUMBNAIL_MAX_BYTES },
+  fileFilter: (_req: express.Request, file: { mimetype?: string }, cb: (err: Error | null, accept?: boolean) => void) => {
+    if (file.mimetype && THUMBNAIL_TYPES[file.mimetype]) cb(null, true);
+    else cb(new Error("The thumbnail must be a JPEG, PNG or WebP poster, or an MP4 or WebM video"));
+  },
+}).single("file");
+
+/**
+ * POST /api/huddles/:id/thumbnail – host uploads a poster image or a short promo video
+ * (multipart field "file"). The 15-second limit for video is checked in the browser before upload.
+ */
+app.post("/api/huddles/:id/thumbnail", (req, res) => {
+  thumbnailUpload(req, res, async (uploadErr?: unknown) => {
+    try {
+      if (uploadErr) {
+        res.status(400).json({ message: uploadErr instanceof Error ? uploadErr.message : "Upload failed" });
+        return;
+      }
+      const ctx = await requireHuddleHost(req, res);
+      if (!ctx) return;
+      const file = (req as express.Request & { file?: { buffer: Buffer; mimetype: string } }).file;
+      if (!file) {
+        res.status(400).json({ message: "Attach a file in the 'file' field" });
+        return;
+      }
+      const spec = THUMBNAIL_TYPES[file.mimetype];
+      const path = await uploadHuddleMedia(ctx.row.id, file.buffer, file.mimetype, spec.extension);
+      await setHuddleThumbnail(ctx.row.id, path, spec.kind);
+      res.status(201).json({ thumbnail_type: spec.kind, thumbnail_url: huddleMediaUrl(path) });
+    } catch (err) {
+      console.error("POST /api/huddles/:id/thumbnail error:", err);
+      res.status(500).json({ message: "Failed to upload the thumbnail" });
+    }
+  });
+});
+
+/** POST /api/huddles/:id/award – host gives points to someone in the room. Body: { user_id, amount, note? }. */
+app.post("/api/huddles/:id/award", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const body = (req.body ?? {}) as { user_id?: unknown; amount?: unknown; note?: unknown };
+    if (!isUuid(body.user_id)) {
+      res.status(400).json({ message: "user_id must be a user id" });
+      return;
+    }
+    const amount = Number(body.amount);
+    if (!Number.isInteger(amount)) {
+      res.status(400).json({ message: "amount must be a whole number" });
+      return;
+    }
+    const note = typeof body.note === "string" ? body.note.trim().slice(0, 140) : null;
+    const outcome = await awardHuddlePoints(req.params.id, current.userId, body.user_id, amount, note);
+    const messages: Record<string, [number, string]> = {
+      not_found: [404, "Huddle not found"],
+      not_host: [403, "Only the host can give points"],
+      rewards_off: [409, "Rewards are turned off for this huddle"],
+      not_in_room: [409, "That person is not in the room"],
+      bad_amount: [400, "Give between 1 and 1000 points"],
+    };
+    if (outcome !== "ok") {
+      const [status, message] = messages[outcome];
+      res.status(status).json({ message });
+      return;
+    }
+    await notifyUser(body.user_id, {
+      type: "points_awarded",
+      title: `You earned ${amount} points`,
+      body: note || "Awarded by the host of a huddle",
+      payload: { huddle_id: req.params.id, amount },
+    });
+    res.json({ awarded: amount });
+  } catch (err) {
+    console.error("POST /api/huddles/:id/award error:", err);
+    res.status(500).json({ message: "Failed to give points" });
+  }
+});
+
+/** GET /api/points/me – your balance, rank and recent history. */
+app.get("/api/points/me", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    res.json(await getPointsSummary(current.userId));
+  } catch (err) {
+    console.error("GET /api/points/me error:", err);
+    res.status(500).json({ message: "Failed to load points" });
+  }
+});
+
+/** GET /api/points/leaderboard – the top 20 by points. */
+app.get("/api/points/leaderboard", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    res.json(await getLeaderboard());
+  } catch (err) {
+    console.error("GET /api/points/leaderboard error:", err);
+    res.status(500).json({ message: "Failed to load the leaderboard" });
+  }
+});
+
+/** GET /api/notifications – your latest notifications, newest first. */
+app.get("/api/notifications", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    res.json(await listNotifications(current.userId));
+  } catch (err) {
+    console.error("GET /api/notifications error:", err);
+    res.status(500).json({ message: "Failed to load notifications" });
+  }
+});
+
+/** PATCH /api/notifications/read-all – mark everything read. */
+app.patch("/api/notifications/read-all", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    res.json({ updated: await markAllNotificationsRead(current.userId) });
+  } catch (err) {
+    console.error("PATCH /api/notifications/read-all error:", err);
+    res.status(500).json({ message: "Failed to update notifications" });
+  }
+});
+
+/** PATCH /api/notifications/:id/read – mark one read. */
+app.patch("/api/notifications/:id/read", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    if (!isUuid(req.params.id)) {
+      res.status(400).json({ message: "Invalid notification id" });
+      return;
+    }
+    const updated = await markNotificationRead(current.userId, req.params.id);
+    res.json({ updated });
+  } catch (err) {
+    console.error("PATCH /api/notifications/:id/read error:", err);
+    res.status(500).json({ message: "Failed to update the notification" });
+  }
+});
+
+/** DELETE /api/notifications – empty your notifications. */
+app.delete("/api/notifications", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    res.json({ cleared: await clearNotifications(current.userId) });
+  } catch (err) {
+    console.error("DELETE /api/notifications error:", err);
+    res.status(500).json({ message: "Failed to clear notifications" });
+  }
 });
 
 /** POST /api/presence/heartbeat – mark the caller online. Clients call this about every 30 seconds. */

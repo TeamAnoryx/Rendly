@@ -3,6 +3,7 @@ import {
   canAccessHuddle,
   validateIntents,
   validateInviteeIds,
+  validateDisplayName,
   huddleEndsAt,
   isLive,
   isUuid,
@@ -96,6 +97,8 @@ describe("validateCreateHuddleInput", () => {
         waiting_room: false,
         intents: [],
         invitee_ids: [],
+        allow_self_exit: true,
+        rewards_enabled: false,
       },
     });
   });
@@ -349,5 +352,35 @@ describe("trending by intent tag", () => {
 
   test("the trending list shows five huddles", () => {
     expect(TRENDING_LIST_SIZE).toBe(5);
+  });
+});
+
+describe("huddle settings and display names", () => {
+  const base = { title: "Quiz night", max_participants: 10 };
+
+  test("self-exit defaults on and rewards default off", () => {
+    const r = validateCreateHuddleInput(base, NOW);
+    expect(r.ok && r.value).toMatchObject({ allow_self_exit: true, rewards_enabled: false });
+  });
+
+  test("the host can lock exits and turn rewards on", () => {
+    const r = validateCreateHuddleInput({ ...base, allow_self_exit: false, rewards_enabled: true }, NOW);
+    expect(r.ok && r.value).toMatchObject({ allow_self_exit: false, rewards_enabled: true });
+  });
+
+  test("non-boolean settings are rejected", () => {
+    expect(validateCreateHuddleInput({ ...base, rewards_enabled: "yes" }, NOW).ok).toBe(false);
+    expect(validateCreateHuddleInput({ ...base, allow_self_exit: 1 }, NOW).ok).toBe(false);
+  });
+
+  test("display names are trimmed, spaces collapsed, and empty means the username", () => {
+    expect(validateDisplayName("  Dr.   Afnan  ")).toEqual({ ok: true, value: "Dr. Afnan" });
+    expect(validateDisplayName("")).toEqual({ ok: true, value: null });
+    expect(validateDisplayName(undefined)).toEqual({ ok: true, value: null });
+  });
+
+  test("display names over 40 characters or not text are rejected", () => {
+    expect(validateDisplayName("x".repeat(41)).ok).toBe(false);
+    expect(validateDisplayName(42).ok).toBe(false);
   });
 });

@@ -48,6 +48,12 @@ export type HuddleRow = {
   waiting_room: boolean;
   media_path: string | null;
   media_type: "image" | "video" | "audio" | null;
+  thumbnail_path?: string | null;
+  thumbnail_type?: "image" | "video" | null;
+  /** false: the host controls exits too, so participants cannot leave on their own. */
+  allow_self_exit?: boolean;
+  rewards_enabled?: boolean;
+  cancelled_at?: string | null;
 };
 
 export type CreateHuddleInput = {
@@ -62,6 +68,8 @@ export type CreateHuddleInput = {
   waiting_room: boolean;
   intents: string[];
   invitee_ids: string[];
+  allow_self_exit: boolean;
+  rewards_enabled: boolean;
 };
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; message: string };
@@ -208,8 +216,10 @@ export function validateCreateHuddleInput(body: unknown, now: number = Date.now(
     }
     mode = input.mode as HuddleMode;
   }
-  if (input.waiting_room != null && typeof input.waiting_room !== "boolean") {
-    return { ok: false, message: "waiting_room must be true or false" };
+  for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled"] as const) {
+    if (input[key] != null && typeof input[key] !== "boolean") {
+      return { ok: false, message: `${key} must be true or false` };
+    }
   }
   const intents = validateIntents(input.intents);
   if (!intents.ok) return intents;
@@ -230,6 +240,8 @@ export function validateCreateHuddleInput(body: unknown, now: number = Date.now(
       waiting_room: input.waiting_room === true,
       intents: intents.value,
       invitee_ids: invitees.value,
+      allow_self_exit: input.allow_self_exit !== false,
+      rewards_enabled: input.rewards_enabled === true,
     },
   };
 }
@@ -373,4 +385,17 @@ export function rankTrending(
     })
     .sort((x, y) => y.score - x.score || x.index - y.index)
     .map(({ id, score }) => ({ id, score }));
+}
+
+/** The name someone uses inside a huddle: 1-40 characters, no control characters. */
+export const DISPLAY_NAME_MAX = 40;
+export function validateDisplayName(raw: unknown): ValidationResult<string | null> {
+  if (raw == null || raw === "") return { ok: true, value: null };
+  if (typeof raw !== "string") return { ok: false, message: "display_name must be text" };
+  const name = raw.replace(/\s+/g, " ").trim();
+  if (!name) return { ok: true, value: null };
+  if (name.length > DISPLAY_NAME_MAX) return { ok: false, message: `display_name must be at most ${DISPLAY_NAME_MAX} characters` };
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(name)) return { ok: false, message: "display_name has invalid characters" };
+  return { ok: true, value: name };
 }

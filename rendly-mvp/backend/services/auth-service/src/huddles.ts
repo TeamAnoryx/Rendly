@@ -242,6 +242,8 @@ export async function createHuddle(createdBy: string, input: CreateHuddleInput):
     settings: input.settings,
     mode: input.mode,
     waiting_room: input.waiting_room,
+    allow_self_exit: input.allow_self_exit,
+    rewards_enabled: input.rewards_enabled,
   };
   const { data, error } = await client.from("huddles").insert(row).select("*").single();
   if (error || !data) throw new HuddleStoreError("create", error ?? "no row returned");
@@ -333,12 +335,13 @@ export async function listMembers(huddleId: string): Promise<
     can_share_screen: boolean;
     is_muted: boolean;
     joined_at: string;
+    display_name: string | null;
   }[]
 > {
   const client = requireClient();
   const { data, error } = await client
     .from("huddle_participants")
-    .select("user_id, role, admitted, can_speak, can_share_screen, is_muted, joined_at")
+    .select("user_id, role, admitted, can_speak, can_share_screen, is_muted, joined_at, display_name")
     .eq("huddle_id", huddleId)
     .is("left_at", null)
     .order("joined_at", { ascending: true });
@@ -351,6 +354,7 @@ export async function listMembers(huddleId: string): Promise<
     can_share_screen: boolean;
     is_muted: boolean;
     joined_at: string;
+    display_name: string | null;
   }[];
   if (rows.length === 0) return [];
   const { data: users, error: userError } = await client
@@ -562,11 +566,12 @@ export async function joinHuddle(huddleId: string, userId: string): Promise<Join
 
 export type LeaveResult =
   | { ok: true }
-  | { ok: false; reason: "not_found" | "not_participant"; message: string };
+  | { ok: false; reason: "not_found" | "not_participant" | "locked"; message: string };
 
-const LEAVE_FAILURE_MESSAGES: Record<"not_found" | "not_participant", string> = {
+const LEAVE_FAILURE_MESSAGES: Record<"not_found" | "not_participant" | "locked", string> = {
   not_found: "Huddle not found",
   not_participant: "You are not in this huddle",
+  locked: "The host controls who leaves this huddle. Ask the host to let you out.",
 };
 
 /** Leave a huddle, freeing the seat (sets left_at). Runs the leave_huddle SQL function. */
@@ -582,8 +587,79 @@ export async function leaveHuddle(huddleId: string, userId: string): Promise<Lea
     await recordHuddleEvent(huddleId, userId, "leave");
     return { ok: true };
   }
-  if (status === "not_found" || status === "not_participant") {
+  if (status === "not_found" || status === "not_participant" || status === "locked") {
     return { ok: false, reason: status, message: LEAVE_FAILURE_MESSAGES[status] };
   }
   throw new HuddleStoreError("leave", `unexpected leave_huddle result: ${String(status)}`);
+}
+
+/** Host settings that can change after creation. Only the fields given are changed. */
+export async function setHuddleSettings(
+  huddleId: string,
+  patch: Partial<{ waiting_room: boolean; allow_self_exit: boolean; rewards_enabled: boolean }>
+): Promise<void> {
+  const client = requireClient();
+  const { error } = await client.from("huddles").update(patch).eq("id", huddleId);
+  if (error) throw new HuddleStoreError("settings", error);
+}
+
+/** Everyone who should hear about a huddle change: people in it and invitees, minus the host. */
+export async function listHuddleAudience(huddleId: string, hostId: string): Promise<string[]> {
+  const client = requireClient();
+  const [{ data: seats, error: seatError }, { data: invites, error: inviteError }] = await Promise.all([
+    client.from("huddle_participants").select("user_id").eq("huddle_id", huddleId).is("left_at", null),
+    client.from("huddle_invites").select("invitee_id").eq("huddle_id", huddleId),
+  ]);
+  if (seatError) throw new HuddleStoreError("audience seats", seatError);
+  if (inviteError) throw new HuddleStoreError("audience invites", inviteError);
+  const ids = new Set<string>();
+  for (const r of (seats ?? []) as { user_id: string }[]) ids.add(r.user_id);
+  for (const r of (invites ?? []) as { invitee_id: string }[]) ids.add(r.invitee_id);
+  ids.delete(hostId);
+  return Array.from(ids);
+}
+
+/** Cancel a huddle: it ends now, nobody can join, and everyone in it is let out. */
+export async function cancelHuddle(huddleId: string): Promise<void> {
+  const client = requireClient();
+  const now = new Date().toISOString();
+  const { error } = await client
+    .from("huddles")
+    .update({ is_active: false, cancelled_at: now, ended_at: now })
+    .eq("id", huddleId);
+  if (error) throw new HuddleStoreError("cancel", error);
+  const { error: seatError } = await client
+    .from("huddle_participants")
+    .update({ left_at: now })
+    .eq("huddle_id", huddleId)
+    .is("left_at", null);
+  if (seatError) throw new HuddleStoreError("cancel seats", seatError);
+}
+
+/** Delete a huddle and everything attached to it (seats, invites, tags, events cascade). */
+export async function deleteHuddle(huddleId: string): Promise<void> {
+  const client = requireClient();
+  const { error } = await client.from("huddles").delete().eq("id", huddleId);
+  if (error) throw new HuddleStoreError("delete", error);
+}
+
+/** Record the huddle thumbnail: a poster image or a short promo video. */
+export async function setHuddleThumbnail(huddleId: string, path: string, type: "image" | "video"): Promise<void> {
+  const client = requireClient();
+  const { error } = await client.from("huddles").update({ thumbnail_path: path, thumbnail_type: type }).eq("id", huddleId);
+  if (error) throw new HuddleStoreError("thumbnail", error);
+}
+
+/** The name the user shows inside this huddle. Null resets to their username. */
+export async function setDisplayName(huddleId: string, userId: string, name: string | null): Promise<boolean> {
+  const client = requireClient();
+  const { data, error } = await client
+    .from("huddle_participants")
+    .update({ display_name: name })
+    .eq("huddle_id", huddleId)
+    .eq("user_id", userId)
+    .is("left_at", null)
+    .select("id");
+  if (error) throw new HuddleStoreError("display name", error);
+  return (data ?? []).length > 0;
 }
