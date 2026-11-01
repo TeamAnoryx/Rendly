@@ -9,8 +9,17 @@ export function getUserCard(id: string): Promise<UserCard | null> {
   const hit = cache.get(id);
   if (hit) return hit;
   const p = authFetch(`/api/users/${encodeURIComponent(id)}/card`)
-    .then(async (res) => (res.ok ? ((await res.json()) as UserCard) : null))
-    .catch(() => null);
+    .then(async (res) => {
+      if (!res.ok) {
+        console.warn(`[users] card ${id} unavailable (${res.status})`);
+        return null;
+      }
+      return (await res.json()) as UserCard;
+    })
+    .catch((err) => {
+      console.warn('[users] card lookup failed', err);
+      return null;
+    });
   cache.set(id, p);
   p.then((v) => {
     if (!v) cache.delete(id); // retry later on failure

@@ -414,6 +414,8 @@ export default function HuddleRoom({
       if (me && !isManager) {
         setCanShare(me.can_share_screen);
         setCanSpeak(me.can_speak);
+        // The saved mute state is the source of truth; the socket event only makes it instant.
+        setMutedByHost(me.is_muted);
       }
     } catch (err) {
       console.warn('[huddle] members unavailable', err);
@@ -465,6 +467,10 @@ export default function HuddleRoom({
   const sendChat = () => {
     const text = draft.trim();
     if (!text) return;
+    if (!websocket.isConnected()) {
+      setNotice('Not connected — your message was not sent. It will stay in the box until you reconnect.');
+      return;
+    }
     websocket.emit('huddle:chat', { huddle_id: huddleId, room: roomRef.current, text });
     setDraft('');
   };
@@ -779,6 +785,11 @@ function RoomsPanel({
 
   const apply = (assignments: Record<string, string>) => {
     const clean = Object.fromEntries(Object.entries(assignments).filter(([, r]) => r === MAIN_ROOM || ROOM_NAME.test(r)));
+    if (!websocket.isConnected()) {
+      setErr('Not connected — nobody was moved. Try again once you are back online.');
+      return;
+    }
+    setErr(null);
     websocket.emit('huddle:breakout', { huddle_id: huddleId, assignments: clean });
     setSent(Object.keys(clean).length ? 'People are being moved.' : null);
     setTimeout(() => void refresh(), 800);
