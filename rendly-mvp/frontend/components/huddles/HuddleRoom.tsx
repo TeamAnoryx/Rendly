@@ -785,6 +785,11 @@ function RoomsPanel({
 
   const apply = (assignments: Record<string, string>) => {
     const clean = Object.fromEntries(Object.entries(assignments).filter(([, r]) => r === MAIN_ROOM || ROOM_NAME.test(r)));
+    if (!websocket.isConnected()) {
+      setErr('Not connected — nobody was moved. Try again once you are back online.');
+      return;
+    }
+    setErr(null);
     websocket.emit('huddle:breakout', { huddle_id: huddleId, assignments: clean });
     setSent(Object.keys(clean).length ? 'People are being moved.' : null);
     setTimeout(() => void refresh(), 800);
