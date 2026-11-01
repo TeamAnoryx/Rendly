@@ -258,7 +258,9 @@ export async function createHuddle(createdBy: string, input: CreateHuddleInput):
       await addInvites(huddle.id, createdBy, input.invitee_ids);
     }
   } catch (err) {
-    await client.from("huddles").delete().eq("id", huddle.id);
+    // Roll back the huddle row. If the rollback itself fails, log it: the original error is what the caller sees.
+    const { error: rollbackError } = await client.from("huddles").delete().eq("id", huddle.id);
+    if (rollbackError) console.error("[huddles] could not roll back huddle", huddle.id, rollbackError);
     throw err;
   }
   return huddle;
