@@ -9,6 +9,7 @@
 
 import type { Server, Socket } from "socket.io";
 import { supabase } from "./supabase-users";
+import { notifyUsers } from "./notify";
 
 export const MAIN_ROOM = "main";
 const ROOM_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,19}$/;
@@ -167,12 +168,26 @@ export function attachHuddleRoom(io: Server, socket: Socket, userId: string): vo
       const actor = await seatFor(data.huddle_id, userId);
       if (!actor || (actor.role !== "host" && actor.role !== "co_host")) return;
       const entries = Object.entries(data.assignments as Record<string, unknown>).slice(0, 200);
+      const movedToBreakout: string[] = [];
       for (const [targetId, room] of entries) {
         if (!isUuidLike(targetId) || !validRoom(room)) continue;
         for (const sid of socketsByUser(io, targetId)) {
           io.to(sid).emit("huddle:assigned", { huddle_id: data.huddle_id, room });
         }
+        if (room !== MAIN_ROOM) movedToBreakout.push(targetId);
       }
+      // Also leave a notification, so someone who looks away sees where they were sent.
+      await Promise.all(
+        movedToBreakout.map((targetId) => {
+          const room = (data.assignments as Record<string, string>)[targetId];
+          return notifyUsers([targetId], {
+            type: "breakout",
+            title: `You were moved to breakout room "${room}"`,
+            body: "The host split the huddle into rooms.",
+            payload: { huddle_id: data.huddle_id, room },
+          });
+        })
+      );
     }
   );
 

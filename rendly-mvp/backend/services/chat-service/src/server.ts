@@ -8,6 +8,7 @@ import multer from "multer";
 import { requireAuth, type CurrentUser } from "./auth";
 import { attachSocketIo, broadcastMessageReceived, broadcastMessageDeleted, emitToUser, getOnlineUserIds } from "./ws";
 import { getUserById, getUsersByIds, supabase } from "./supabase-users";
+import { notifyMessage, notifyUsers } from "./notify";
 import {
   whisperConversationId,
   parseConversationId,
@@ -314,6 +315,12 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req: express.Req
     }
     emitToUser(parsed.otherUserId, "message:received", whisperPayload);
     broadcastMessageReceived(convId, whisperPayload);
+    void notifyMessage([parsed.otherUserId], {
+      conversationId: convId,
+      senderId: user.userId,
+      title: `${user.username ? `@${user.username}` : "New message"} sent you a message`,
+      text: String(content),
+    });
     try {
       await appendWhisperMessage(user.userId, msg);
       chatLog("Whispers", "Message stored successfully", `id=${id} from=${user.userId} to=${parsed.otherUserId}`);
@@ -367,6 +374,20 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req: express.Req
       payload.reply_to_sender_username = front.reply_to_sender_username;
     }
     broadcastMessageReceived(convId, payload);
+    void getGroupMembersWithUsers(parsed.groupId)
+      .then(async (members) => {
+        const group = await getGroupById(parsed.groupId);
+        await notifyMessage(
+          members.map((m) => m.user_id),
+          {
+            conversationId: convId,
+            senderId: user.userId,
+            title: `${user.username ? `@${user.username}` : "Someone"} in ${(group as { name?: string } | null)?.name ?? "a group"}`,
+            text: String(content),
+          }
+        );
+      })
+      .catch((err) => console.error("[notify] group message failed:", err));
     try {
       await appendGroupMessage(parsed.groupId, msg);
       chatLog("Group", "Message stored successfully", `id=${id} group=${parsed.groupId} from=${user.userId}`);
@@ -741,6 +762,14 @@ app.post("/api/groups/:id/invites", requireAuth, async (req: express.Request & {
     return;
   }
   chatLog("Group", "Invite sent", `group=${groupId} to=${invitedUserId} by=${user.userId}`);
+  const group = await getGroupById(groupId);
+  const groupName = (group as { name?: string } | null)?.name ?? "a group";
+  await notifyUsers([invitedUserId], {
+    type: "group_invite",
+    title: `${user.username ? `@${user.username}` : "Someone"} invited you to ${groupName}`,
+    body: "Accept to join the group chat.",
+    payload: { invite_id: result.invite_id, group_id: groupId, group_name: groupName, inviter_username: user.username },
+  });
   res.status(201).json({ invite_id: result.invite_id });
 });
 
@@ -759,6 +788,11 @@ app.post("/api/calls/start", requireAuth, async (req: express.Request & { curren
     return;
   }
   const otherUser = await getUserById(parsed.otherUserId);
+  if (!getOnlineUserIds().includes(parsed.otherUserId)) {
+    const name = (otherUser?.username as string) ? `@${otherUser?.username as string}` : "This person";
+    res.status(409).json({ message: `${name} is offline right now, so the call can't be placed.`, reason: "callee_offline" });
+    return;
+  }
   const id = crypto.randomUUID();
   const now = new Date();
   const date = now.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -777,6 +811,12 @@ app.post("/api/calls/start", requireAuth, async (req: express.Request & { curren
   };
   await appendCallLog(user.userId, log);
   chatLog("Archive", "Call log created", `id=${id} type=${callType} conv=${conversationId}`);
+  await notifyUsers([parsed.otherUserId], {
+    type: "call",
+    title: `${user.username ? `@${user.username}` : "Someone"} is calling you`,
+    body: callType === "video" ? "Video call" : "Audio call",
+    payload: { conversation_id: conversationId, call_type: callType, call_log_id: id, from_user_id: user.userId },
+  });
   res.status(201).json({ call_log_id: id });
 });
 
