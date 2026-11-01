@@ -208,19 +208,38 @@ app.set("trust proxy", 1);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
+const tooMany = (_req: express.Request, res: express.Response) => {
+  // JSON body so the frontend can show "too many requests" instead of "invalid credentials".
+  res.status(429).json({ message: "Too many requests. Please wait a few minutes and try again." });
+};
+
+/**
+ * General API budget per IP. The app polls (notifications, stats, live huddles, presence),
+ * so this must comfortably cover one active session: ~100 requests a minute.
+ */
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: Number(process.env.RATE_LIMIT_MAX) || 100,
-  // Health checks are polled by the frontend and must not consume the login budget.
+  max: Number(process.env.RATE_LIMIT_MAX) || 1500,
+  // Health checks are polled by the frontend and must not consume the budget.
   skip: (req) => req.path === "/health",
   standardHeaders: true,
   legacyHeaders: false,
-  // JSON body so the frontend can show "too many requests" instead of "invalid credentials".
-  handler: (_req, res) => {
-    res.status(429).json({ message: "Too many requests. Please wait a few minutes and try again." });
-  },
+  handler: tooMany,
 });
 app.use(limiter);
+
+/** Credential endpoints get a much smaller budget to slow password guessing. */
+const credentialLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX) || 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: tooMany,
+});
+app.use(
+  ["/api/auth/login", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/github/callback", "/api/auth/linkedin/callback"],
+  credentialLimiter
+);
 
 const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_AVATAR_MIMES = ["image/jpeg", "image/png", "image/webp"];

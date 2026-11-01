@@ -21,6 +21,12 @@ export type HuddleListItem = {
   intents?: string[];
   media_url?: string | null;
   media_type?: 'image' | 'video' | 'audio' | null;
+  thumbnail_url?: string | null;
+  thumbnail_type?: 'image' | 'video' | null;
+  allow_self_exit?: boolean;
+  rewards_enabled?: boolean;
+  cancelled_at?: string | null;
+  ends_at?: string | null;
 };
 
 export type HuddleMode = 'open' | 'seminar' | 'hackathon' | 'launch';
@@ -57,6 +63,7 @@ export type HuddleMember = {
   can_share_screen: boolean;
   is_muted: boolean;
   joined_at: string;
+  display_name?: string | null;
 };
 
 export type CreateHuddlePayload = {
@@ -71,6 +78,8 @@ export type CreateHuddlePayload = {
   waiting_room?: boolean;
   intents?: string[];
   invitee_ids?: string[];
+  allow_self_exit?: boolean;
+  rewards_enabled?: boolean;
 };
 
 export type CreateHuddleResponse = HuddleListItem & {
@@ -154,11 +163,11 @@ export async function getHuddle(id: string, inviteCode?: string | null): Promise
   return parseOrThrow<HuddleDetail>(res, 'Failed to get huddle');
 }
 
-export async function joinHuddle(id: string, inviteCode?: string | null): Promise<JoinHuddleResponse> {
+export async function joinHuddle(id: string, inviteCode?: string | null, displayName?: string | null): Promise<JoinHuddleResponse> {
   const res = await authFetch(`/api/huddles/${encodeURIComponent(id)}/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(inviteCode ? { code: inviteCode } : {}),
+    body: JSON.stringify({ ...(inviteCode ? { code: inviteCode } : {}), ...(displayName ? { display_name: displayName } : {}) }),
   });
   return parseOrThrow<JoinHuddleResponse>(res, 'Failed to join huddle');
 }
@@ -236,4 +245,63 @@ export async function uploadHuddleMedia(id: string, file: File): Promise<{ media
   form.append('file', file);
   const res = await authFetch(`/api/huddles/${encodeURIComponent(id)}/media`, { method: 'POST', body: form });
   return parseOrThrow<{ media_type: string; media_url: string }>(res, 'Failed to upload media');
+}
+
+export type HuddleSettingsPatch = Partial<{ waiting_room: boolean; allow_self_exit: boolean; rewards_enabled: boolean }>;
+
+export async function updateHuddleSettings(id: string, patch: HuddleSettingsPatch): Promise<HuddleSettingsPatch> {
+  const res = await authFetch(`/api/huddles/${encodeURIComponent(id)}/settings`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  return parseOrThrow<HuddleSettingsPatch>(res, 'Failed to update settings');
+}
+
+/** Host: cancel a huddle (it stays visible as cancelled to people who had it). */
+export async function cancelHuddle(id: string): Promise<void> {
+  const res = await authFetch(`/api/huddles/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
+  await parseOrThrow<unknown>(res, 'Failed to cancel the huddle');
+}
+
+/** Host: delete a huddle permanently. */
+export async function deleteHuddle(id: string): Promise<void> {
+  const res = await authFetch(`/api/huddles/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await parseOrThrow<unknown>(res, 'Failed to delete the huddle');
+}
+
+/** Host: upload a poster image or a short (<=15 s) promo video as the card thumbnail. */
+export async function uploadHuddleThumbnail(id: string, file: File): Promise<{ thumbnail_type: string; thumbnail_url: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await authFetch(`/api/huddles/${encodeURIComponent(id)}/thumbnail`, { method: 'POST', body: form });
+  return parseOrThrow<{ thumbnail_type: string; thumbnail_url: string }>(res, 'Failed to upload the thumbnail');
+}
+
+/** Set the name others see for you in this huddle. */
+export async function setHuddleDisplayName(id: string, displayName: string): Promise<void> {
+  const res = await authFetch(`/api/huddles/${encodeURIComponent(id)}/me`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ display_name: displayName }),
+  });
+  await parseOrThrow<unknown>(res, 'Failed to set your display name');
+}
+
+/** Read a video file's duration in seconds (browser only). */
+export function videoDurationSeconds(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.onloadedmetadata = () => {
+      URL.revokeObjectURL(url);
+      resolve(v.duration);
+    };
+    v.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read the video'));
+    };
+    v.src = url;
+  });
 }

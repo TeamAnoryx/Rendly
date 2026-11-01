@@ -1,0 +1,329 @@
+/* Dashboard home. Fits the viewport: the hero takes its natural height, the grid fills the rest,
+ * and only the inner lists scroll. */
+
+.home {
+  gap: 16px;
+}
+
+.home-hero {
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 24px;
+  padding: clamp(18px, 3vh, 32px) clamp(18px, 3vw, 36px);
+  overflow: hidden;
+  background:
+    radial-gradient(60% 120% at 100% 0%, rgba(139, 108, 255, 0.28), transparent 60%),
+    radial-gradient(50% 100% at 0% 100%, rgba(34, 211, 238, 0.12), transparent 60%),
+    var(--rd-surface);
+}
+
+.home-eyebrow {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 6px;
+}
+
+.home-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: clamp(12px, 2vh, 20px) 0;
+}
+
+.home-stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--rd-border);
+}
+
+.home-stat--accent {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.home-stat-value {
+  font-family: var(--font-chillax, var(--font-sans));
+  font-size: 1.45rem;
+  font-weight: 700;
+}
+
+.home-stat-label {
+  font-size: 0.78rem;
+  color: var(--rd-muted);
+}
+
+.home-hero-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.home-hero-art {
+  position: relative;
+  width: clamp(140px, 18vw, 230px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+}
+
+.home-orb {
+  width: 70%;
+  height: 70%;
+}
+
+.home-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(139, 108, 255, 0.35);
+  transform: rotateX(70deg);
+  animation: home-spin 14s linear infinite;
+}
+
+.home-ring--2 {
+  inset: 8%;
+  border-color: rgba(34, 211, 238, 0.35);
+  animation-duration: 9s;
+  animation-direction: reverse;
+}
+
+@keyframes home-spin {
+  from { transform: rotateX(70deg) rotateZ(0deg); }
+  to { transform: rotateX(70deg) rotateZ(360deg); }
+}
+
+.home-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  grid-template-rows: 1fr auto;
+  grid-template-areas:
+    'huddles points'
+    'quick quick';
+  gap: 16px;
+}
+
+.home-huddles,
+.home-points {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 18px;
+  gap: 12px;
+}
+
+.home-huddles {
+  grid-area: huddles;
+}
+
+.home-points {
+  grid-area: points;
+}
+
+.home-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.home-section-head .rd-h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-huddle-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 2px;
+}
+
+.home-huddle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--rd-border);
+}
+
+.home-huddle h3 {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.home-huddle-main {
+  min-width: 0;
+}
+
+.home-huddle-main h3 {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-huddle-skel {
+  height: 64px;
+}
+
+.home-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--rd-muted);
+  text-align: center;
+  padding: 16px;
+}
+
+.home-error {
+  color: var(--rd-danger);
+}
+
+.home-points-me {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.14), rgba(139, 108, 255, 0.12));
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.home-points-total {
+  font-family: var(--font-chillax, var(--font-sans));
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #fde68a;
+}
+
+.home-leaders {
+  list-style: none;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.home-leaders li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 12px;
+}
+
+.home-leader--me {
+  background: rgba(139, 108, 255, 0.14);
+}
+
+.home-leader-rank {
+  width: 22px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--rd-muted);
+}
+
+.home-leader-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-quick {
+  grid-area: quick;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.home-quick-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.home-quick-card > svg {
+  flex: none;
+  color: var(--rd-primary);
+}
+
+/* Tablet: the hero art shrinks away, the grid stacks points beside huddles still. */
+@media (max-width: 1024px) {
+  .home-hero {
+    grid-template-columns: 1fr;
+  }
+  .home-hero-art {
+    display: none;
+  }
+  .home-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Phone: one column; the page itself scrolls inside the main area, cards keep their own lists short. */
+@media (max-width: 767px) {
+  .home {
+    overflow-y: auto;
+  }
+  .home-hero .rd-h1 {
+    font-size: 1.35rem;
+  }
+  .home-stat {
+    min-width: 0;
+    flex: 1;
+    padding: 8px 10px;
+  }
+  .home-stat-value {
+    font-size: 1.15rem;
+  }
+  .home-hero-actions .rd-btn {
+    flex: 1;
+  }
+  .home-grid {
+    flex: none;
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-template-areas:
+      'huddles'
+      'points'
+      'quick';
+  }
+  .home-huddles,
+  .home-points {
+    max-height: 340px;
+  }
+  .home-quick {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-height: 760px) and (min-width: 768px) {
+  .home-quick {
+    display: none;
+  }
+  .home-grid {
+    grid-template-rows: 1fr;
+    grid-template-areas: 'huddles points';
+  }
+}

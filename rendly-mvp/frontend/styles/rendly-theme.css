@@ -46,6 +46,11 @@
   color-scheme: dark;
 }
 
+html body {
+  background: var(--rd-bg);
+  color: var(--rd-text);
+}
+
 html,
 body {
   background: var(--rd-bg);

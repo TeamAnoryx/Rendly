@@ -132,20 +132,20 @@ const config: Config = {
         900: '#f8fafa',
       },
 
-      // === SEMANTIC COLORS (Light Theme) ===
-      background: '#fefcfd',      // white_1
-      foreground: '#04080f',      // ink_black
-      primary: '#3b3355',         // space_indigo
-      secondary: '#507dbc',       // glaucous
-      accent: '#35ffff',          // black.800 (cyan)
-      muted: '#bfcde0',           // pale_sky_1
-      'muted-foreground': '#5d5d81', // dusty_grape
-      border: '#dae3e5',          // alabaster_grey
-      'input-bg': '#f2f5f9',      // pale_sky_1.900
-      'card-bg': '#fefcfd',       // white_1
-      error: '#cb6497',           // white_1.300 (pinkish)
-      success: '#00cfcf',         // black.700 (cyan)
-      warning: '#e4afca',         // white_1.400
+      // === SEMANTIC COLORS (Dark premium theme; mirrors styles/rendly-theme.css) ===
+      background: '#07070d',
+      foreground: '#eeeaff',
+      primary: '#8b6cff',
+      secondary: '#22d3ee',
+      accent: '#22d3ee',
+      muted: '#2a2840',
+      'muted-foreground': '#8a85ab',
+      border: '#24223a',
+      'input-bg': '#151426',
+      'card-bg': '#12111f',
+      error: '#fb7185',
+      success: '#34d399',
+      warning: '#fbbf24',
 
       // === UTILITY COLORS ===
       transparent: 'transparent',
@@ -159,23 +159,23 @@ const config: Config = {
         chillax: ['Chillax', 'system-ui', 'sans-serif'],
       },
       backgroundColor: {
-        primary: '#fefcfd',         // Light background
-        secondary: '#f2f5f9',       // Light gray background
-        tertiary: '#e5eaf2',        // Lighter gray background
-        accent: '#35ffff',          // Cyan accent
-        dark: '#04080f',            // Dark text background
+        primary: '#12111f',
+        secondary: '#181730',
+        tertiary: '#1f1d38',
+        accent: '#22d3ee',
+        dark: '#07070d',
       },
       textColor: {
-        primary: '#04080f',         // Main text (ink_black)
-        secondary: '#3b3355',       // Secondary text (space_indigo)
-        tertiary: '#5d5d81',        // Tertiary text (dusty_grape)
-        muted: '#bfcde0',           // Muted text (pale_sky_1)
-        accent: '#35ffff',          // Accent text (cyan)
+        primary: '#eeeaff',
+        secondary: '#b7b2d6',
+        tertiary: '#8a85ab',
+        muted: '#6f6a90',
+        accent: '#22d3ee',
       },
       borderColor: {
-        primary: '#dae3e5',         // Main border (alabaster_grey)
-        secondary: '#cbd6e6',       // Secondary border (pale_sky_1.600)
-        accent: '#35ffff',          // Accent border (cyan)
+        primary: '#24223a',
+        secondary: '#302d4d',
+        accent: '#22d3ee',
       },
       boxShadow: {
         'sm-light': '0 1px 2px rgba(4, 8, 15, 0.05)',

@@ -79,6 +79,42 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [loadPoints]);
 
+  // 3D tilt for .rd-tilt cards: one delegated listener, rAF-throttled, fine pointers only,
+  // and off when the user prefers reduced motion.
+  useEffect(() => {
+    if (!window.matchMedia('(pointer: fine)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let frame = 0;
+    let active: HTMLElement | null = null;
+    const reset = (el: HTMLElement | null) => {
+      if (!el) return;
+      el.style.setProperty('--rx', '0deg');
+      el.style.setProperty('--ry', '0deg');
+    };
+    const onMove = (e: PointerEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest?.('.rd-tilt') as HTMLElement | null;
+      if (el !== active) {
+        reset(active);
+        active = el;
+      }
+      if (!el || frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const r = el.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width - 0.5;
+        const y = (e.clientY - r.top) / r.height - 0.5;
+        el.style.setProperty('--rx', `${(-y * 6).toFixed(2)}deg`);
+        el.style.setProperty('--ry', `${(x * 8).toFixed(2)}deg`);
+      });
+    };
+    document.addEventListener('pointermove', onMove, { passive: true });
+    return () => {
+      document.removeEventListener('pointermove', onMove);
+      if (frame) cancelAnimationFrame(frame);
+      reset(active);
+    };
+  }, []);
+
   const logout = async () => {
     if (loggingOut) return;
     setLoggingOut(true);

@@ -15,8 +15,8 @@
 /* Root styles - Light theme */
 :root {
   /* === Color Variables === */
-  --background: #fefcfd;
-  --foreground: #04080f;
+  --background: #07070d;
+  --foreground: #eeeaff;
   --primary: #3b3355;
   --secondary: #507dbc;
   --accent: #35ffff;

@@ -5,6 +5,7 @@ import { DashboardSidebarProvider } from './DashboardSidebarContext';
 import { CurrentUserProvider } from '@/context/CurrentUserContext';
 import { CallProvider } from '@/context/CallContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
+import { SocketProvider } from '@/context/SocketContext';
 import { AppShell } from '@/components/shell/AppShell';
 import { IncomingCallOverlay } from './chat/IncomingCallOverlay';
 import './dashboard.css';
@@ -30,12 +31,14 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <CurrentUserProvider>
-      <NotificationsProvider>
-        <CallProvider>
-          <DashboardLayoutInner>{children}</DashboardLayoutInner>
-          <IncomingCallOverlay />
-        </CallProvider>
-      </NotificationsProvider>
+      <SocketProvider>
+        <NotificationsProvider>
+          <CallProvider>
+            <DashboardLayoutInner>{children}</DashboardLayoutInner>
+            <IncomingCallOverlay />
+          </CallProvider>
+        </NotificationsProvider>
+      </SocketProvider>
     </CurrentUserProvider>
   );
 }

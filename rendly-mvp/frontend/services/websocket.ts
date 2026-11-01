@@ -1,46 +1,179 @@
 import io, { Socket } from "socket.io-client";
 import { getCcsWsUrl } from "@/lib/resolvedApiUrl";
 
-function getWsUrl(): Promise<string> {
-  return getCcsWsUrl();
-}
+type Handler = (payload: any) => void; // eslint-disable-line @typescript-eslint/no-explicit-any
 
+/**
+ * One app-wide Socket.IO connection to the chat server.
+ *
+ * Listeners live in a registry rather than on the socket object, so a listener added before
+ * the socket connects (or across a reconnect) still fires. Two kinds of listener:
+ *  - on(event, cb) adds a listener and returns an unsubscribe function (many per event);
+ *  - the legacy onX(cb) methods keep one "slot" per event and replace it (old behaviour,
+ *    used by call signalling and the chat page).
+ * Conversation rooms joined are re-joined after a reconnect.
+ */
 class WebSocketService {
   private socket: Socket | null = null;
+  private token: string | null = null;
+  private connecting: Promise<void> | null = null;
+  private listeners = new Map<string, Set<Handler>>();
+  private slots = new Map<string, Handler>();
+  private bound = new Set<string>();
+  private joined = new Set<string>();
+  private statusListeners = new Set<(connected: boolean) => void>();
 
   connect(token: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      getWsUrl().then((WS_URL) => {
-        this.socket = io(WS_URL, {
-          auth: { token },
-          path: "/socket.io",
-          reconnection: true,
-          reconnectionDelay: 1000,
-          reconnectionDelayMax: 5000,
-        });
-        this.socket.on("connect", () => {
-          console.log("✅ Connected to Central Chat Server");
-          resolve();
-        });
-        this.socket.on("connect_error", reject);
-      })
-        .catch(reject);
+    if (this.socket && this.token === token) {
+      return this.socket.connected ? Promise.resolve() : this.connecting ?? Promise.resolve();
+    }
+    if (this.socket) this.disconnect();
+    this.token = token;
+    this.connecting = getCcsWsUrl().then(
+      (url) =>
+        new Promise<void>((resolve, reject) => {
+          if (this.token !== token) {
+            resolve();
+            return;
+          }
+          const socket = io(url, {
+            auth: { token },
+            path: "/socket.io",
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+          });
+          this.socket = socket;
+          this.bound.clear();
+          this.bindAll();
+          let settled = false;
+          socket.on("connect", () => {
+            this.joined.forEach((id) => socket.emit("join:conversation", { conversation_id: id }));
+            this.emitStatus(true);
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          });
+          socket.on("disconnect", () => this.emitStatus(false));
+          socket.on("connect_error", (err) => {
+            if (!settled) {
+              settled = true;
+              reject(err);
+            }
+          });
+        })
+    );
+    const p = this.connecting;
+    p.finally(() => {
+      if (this.connecting === p) this.connecting = null;
+    }).catch(() => undefined);
+    return p;
+  }
+
+  disconnect(): void {
+    this.socket?.removeAllListeners();
+    this.socket?.disconnect();
+    this.socket = null;
+    this.token = null;
+    this.bound.clear();
+    this.joined.clear();
+    this.emitStatus(false);
+  }
+
+  isConnected(): boolean {
+    return this.socket?.connected ?? false;
+  }
+
+  onStatus(cb: (connected: boolean) => void): () => void {
+    this.statusListeners.add(cb);
+    return () => this.statusListeners.delete(cb);
+  }
+
+  private emitStatus(connected: boolean) {
+    this.statusListeners.forEach((cb) => {
+      try {
+        cb(connected);
+      } catch (err) {
+        console.error("[ws] status listener failed", err);
+      }
     });
   }
 
-  joinConversation(conversationId: string, userId: string): void {
-    this.socket?.emit("join:conversation", {
-      conversation_id: conversationId,
-      user_id: userId,
+  private dispatch(event: string, payload: unknown) {
+    const slot = this.slots.get(event);
+    if (slot) {
+      try {
+        slot(payload);
+      } catch (err) {
+        console.error(`[ws] ${event} handler failed`, err);
+      }
+    }
+    this.listeners.get(event)?.forEach((cb) => {
+      try {
+        cb(payload);
+      } catch (err) {
+        console.error(`[ws] ${event} listener failed`, err);
+      }
     });
   }
 
-  sendMessage(
-    conversationId: string,
-    senderId: string,
-    content: string,
-    contentType: string = "text"
-  ): void {
+  private bind(event: string) {
+    if (!this.socket || this.bound.has(event)) return;
+    this.bound.add(event);
+    this.socket.on(event, (payload: unknown) => this.dispatch(event, payload));
+  }
+
+  private bindAll() {
+    new Set([...this.listeners.keys(), ...this.slots.keys()]).forEach((e) => this.bind(e));
+  }
+
+  /** Add a listener; returns a function that removes it. */
+  on<T = unknown>(event: string, cb: (payload: T) => void): () => void {
+    let set = this.listeners.get(event);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(event, set);
+    }
+    set.add(cb as Handler);
+    this.bind(event);
+    return () => {
+      this.listeners.get(event)?.delete(cb as Handler);
+    };
+  }
+
+  private setSlot(event: string, cb: Handler) {
+    this.slots.set(event, cb);
+    this.bind(event);
+  }
+
+  emit(event: string, data?: unknown): void {
+    this.socket?.emit(event, data);
+  }
+
+  /** Emit and wait for the server's acknowledgement. Rejects when offline or on timeout. */
+  emitWithAck<T = unknown>(event: string, data: unknown, timeoutMs = 8000): Promise<T> {
+    const socket = this.socket;
+    if (!socket || !socket.connected) return Promise.reject(new Error("Not connected to the chat server"));
+    return new Promise<T>((resolve, reject) => {
+      socket.timeout(timeoutMs).emit(event, data, (err: Error | null, res: T) => {
+        if (err) reject(new Error("The chat server did not answer"));
+        else resolve(res);
+      });
+    });
+  }
+
+  joinConversation(conversationId: string, _userId?: string): void {
+    this.joined.add(conversationId);
+    this.socket?.emit("join:conversation", { conversation_id: conversationId });
+  }
+
+  leaveConversation(conversationId: string, _userId?: string): void {
+    this.joined.delete(conversationId);
+    this.socket?.emit("leave:conversation", { conversation_id: conversationId });
+  }
+
+  sendMessage(conversationId: string, senderId: string, content: string, contentType: string = "text"): void {
     this.socket?.emit("message:send", {
       conversation_id: conversationId,
       sender_id: senderId,
@@ -57,10 +190,9 @@ class WebSocketService {
     content_type: string;
     created_at: string;
   }) => void): void {
-    this.socket?.on("message:received", callback);
+    this.on("message:received", callback);
   }
 
-  /** Remove a previously registered message:received listener (for effect cleanup). */
   offMessageReceived(callback: (message: {
     id: string;
     conversation_id: string;
@@ -69,93 +201,64 @@ class WebSocketService {
     content_type: string;
     created_at: string;
   }) => void): void {
-    this.socket?.off("message:received", callback);
+    this.listeners.get("message:received")?.delete(callback as Handler);
   }
 
-  startTyping(conversationId: string, userId: string): void {
-    this.socket?.emit("typing:start", {
-      conversation_id: conversationId,
-      user_id: userId,
-    });
+  startTyping(conversationId: string, _userId?: string): void {
+    this.socket?.emit("typing:start", { conversation_id: conversationId });
   }
 
-  stopTyping(conversationId: string, userId: string): void {
-    this.socket?.emit("typing:stop", {
-      conversation_id: conversationId,
-      user_id: userId,
-    });
+  stopTyping(conversationId: string, _userId?: string): void {
+    this.socket?.emit("typing:stop", { conversation_id: conversationId });
   }
 
-  leaveConversation(conversationId: string, userId: string): void {
-    this.socket?.emit("leave:conversation", {
-      conversation_id: conversationId,
-      user_id: userId,
-    });
-  }
-
-  emitConversationRead(conversationId: string, userId: string): void {
-    this.socket?.emit("conversation:read", {
-      conversation_id: conversationId,
-      user_id: userId,
-    });
+  emitConversationRead(conversationId: string, _userId?: string): void {
+    this.socket?.emit("conversation:read", { conversation_id: conversationId });
   }
 
   onConversationRead(callback: (payload: { conversation_id: string; user_id: string }) => void): void {
-    this.socket?.on("conversation:read", callback);
+    this.setSlot("conversation:read", callback);
   }
 
   onTypingIndicator(callback: (payload: { conversation_id?: string; user_id: string; typing: boolean }) => void): void {
-    this.socket?.off("typing:indicator");
-    this.socket?.on("typing:indicator", callback);
+    this.setSlot("typing:indicator", callback);
   }
 
   onMessageDeleted(callback: (payload: { conversation_id: string; message_ids: string[] }) => void): void {
-    this.socket?.on("message:deleted", callback);
+    this.setSlot("message:deleted", callback);
   }
 
-  onUserOnline(callback: (payload: { user_id: string }) => void): void {
-    this.socket?.off("user:online");
-    this.socket?.on("user:online", callback);
+  /** Presence: these add listeners (many components watch presence at once). */
+  onUserOnline(callback: (payload: { user_id: string }) => void): () => void {
+    return this.on("user:online", callback);
   }
 
-  onUserOffline(callback: (payload: { user_id: string }) => void): void {
-    this.socket?.off("user:offline");
-    this.socket?.on("user:offline", callback);
+  onUserOffline(callback: (payload: { user_id: string }) => void): () => void {
+    return this.on("user:offline", callback);
   }
 
-  // Call signaling (1:1 audio/video)
-  emitCallStart(conversationId: string, callType: string, initiatorId: string, callLogId?: string): void {
-    this.socket?.emit("call:start", {
-      conversation_id: conversationId,
-      call_type: callType,
-      initiator_id: initiatorId,
-      call_log_id: callLogId ?? undefined,
-    });
+  /** Which of these users are online right now. */
+  async queryPresence(userIds: string[]): Promise<string[]> {
+    if (userIds.length === 0) return [];
+    const res = await this.emitWithAck<{ online?: unknown }>("presence:query", { user_ids: userIds.slice(0, 500) });
+    return Array.isArray(res?.online) ? (res.online as unknown[]).filter((x): x is string => typeof x === "string") : [];
   }
 
-  emitCallAccept(conversationId: string, userId: string, callLogId?: string): void {
-    this.socket?.emit("call:accept", {
-      conversation_id: conversationId,
-      user_id: userId,
-      call_log_id: callLogId ?? undefined,
-    });
+  // ----- Call signalling (1:1 audio/video). The server uses the authenticated user id. -----
+  emitCallStart(conversationId: string, callType: string, _initiatorId?: string, callLogId?: string): void {
+    this.socket?.emit("call:start", { conversation_id: conversationId, call_type: callType, call_log_id: callLogId });
   }
 
-  emitCallReject(conversationId: string, callLogId?: string, userId?: string): void {
-    this.socket?.emit("call:reject", {
-      conversation_id: conversationId,
-      call_log_id: callLogId ?? undefined,
-      user_id: userId ?? undefined,
-    });
+  emitCallAccept(conversationId: string, _userId?: string, callLogId?: string): void {
+    this.socket?.emit("call:accept", { conversation_id: conversationId, call_log_id: callLogId });
   }
 
-  emitCallEnd(conversationId: string, callLogId?: string, status?: string, userId?: string): void {
-    this.socket?.emit("call:end", {
-      conversation_id: conversationId,
-      call_log_id: callLogId ?? undefined,
-      status: status ?? "completed",
-      user_id: userId ?? undefined,
-    });
+  emitCallReject(conversationId: string, callLogId?: string, _userId?: string): void {
+    this.socket?.emit("call:reject", { conversation_id: conversationId, call_log_id: callLogId });
+  }
+
+  emitCallEnd(conversationId: string, callLogId?: string, status?: string, _userId?: string): void {
+    this.socket?.emit("call:end", { conversation_id: conversationId, call_log_id: callLogId, status: status ?? "completed" });
   }
 
   emitWebrtcOffer(conversationId: string, userId: string, sdp: RTCSessionDescriptionInit): void {
@@ -167,11 +270,12 @@ class WebSocketService {
   }
 
   emitWebrtcIceCandidate(conversationId: string, userId: string, candidate: RTCIceCandidateInit): void {
-    this.socket?.emit("webrtc:ice-candidate", {
-      conversation_id: conversationId,
-      user_id: userId,
-      candidate,
-    });
+    this.socket?.emit("webrtc:ice-candidate", { conversation_id: conversationId, user_id: userId, candidate });
+  }
+
+  /** Tell the peer which incoming stream is a screen share (true) or that sharing stopped (false). */
+  emitScreenShare(conversationId: string, streamId: string | null): void {
+    this.socket?.emit("call:screen", { conversation_id: conversationId, stream_id: streamId });
   }
 
   onCallIncoming(callback: (payload: {
@@ -180,59 +284,31 @@ class WebSocketService {
     initiator_id: string;
     call_log_id: string | null;
   }) => void): void {
-    this.socket?.off("call:incoming");
-    this.socket?.on("call:incoming", callback);
+    this.setSlot("call:incoming", callback);
   }
 
-  onCallAccepted(callback: (payload: {
-    conversation_id: string;
-    call_log_id: string | null;
-    callee_id: string;
-  }) => void): void {
-    this.socket?.off("call:accepted");
-    this.socket?.on("call:accepted", callback);
+  onCallAccepted(callback: (payload: { conversation_id: string; call_log_id: string | null; callee_id: string }) => void): void {
+    this.setSlot("call:accepted", callback);
   }
 
   onCallRejected(callback: (payload: { conversation_id: string; call_log_id: string | null }) => void): void {
-    this.socket?.off("call:rejected");
-    this.socket?.on("call:rejected", callback);
+    this.setSlot("call:rejected", callback);
   }
 
-  onCallEnded(callback: (payload: {
-    conversation_id: string;
-    call_log_id: string | null;
-    status: string;
-  }) => void): void {
-    this.socket?.off("call:ended");
-    this.socket?.on("call:ended", callback);
+  onCallEnded(callback: (payload: { conversation_id: string; call_log_id: string | null; status: string }) => void): void {
+    this.setSlot("call:ended", callback);
   }
 
   onWebrtcOffer(callback: (payload: { conversation_id: string; user_id: string; sdp: RTCSessionDescriptionInit }) => void): void {
-    this.socket?.off("webrtc:offer");
-    this.socket?.on("webrtc:offer", callback);
+    this.setSlot("webrtc:offer", callback);
   }
 
   onWebrtcAnswer(callback: (payload: { conversation_id: string; user_id: string; sdp: RTCSessionDescriptionInit }) => void): void {
-    this.socket?.off("webrtc:answer");
-    this.socket?.on("webrtc:answer", callback);
+    this.setSlot("webrtc:answer", callback);
   }
 
-  onWebrtcIceCandidate(callback: (payload: {
-    conversation_id: string;
-    user_id: string;
-    candidate: RTCIceCandidateInit;
-  }) => void): void {
-    this.socket?.off("webrtc:ice-candidate");
-    this.socket?.on("webrtc:ice-candidate", callback);
-  }
-
-  disconnect(): void {
-    this.socket?.disconnect();
-    this.socket = null;
-  }
-
-  isConnected(): boolean {
-    return this.socket?.connected ?? false;
+  onWebrtcIceCandidate(callback: (payload: { conversation_id: string; user_id: string; candidate: RTCIceCandidateInit }) => void): void {
+    this.setSlot("webrtc:ice-candidate", callback);
   }
 }
 

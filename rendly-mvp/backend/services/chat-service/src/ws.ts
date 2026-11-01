@@ -205,6 +205,23 @@ export function attachSocketIo(httpServer: HttpServer): Server {
       });
     });
 
+    // Presence snapshot for a list of users (the client's conversation list). Bounded.
+    socket.on("presence:query", (data: { user_ids?: unknown }, ack?: (res: { online: string[] }) => void) => {
+      if (typeof ack !== "function") return;
+      const ids = Array.isArray(data?.user_ids) ? data.user_ids.filter((x): x is string => typeof x === "string").slice(0, 500) : [];
+      ack({ online: ids.filter((id) => presenceByUser.has(id)) });
+    });
+
+    // Screen share marker: tells the peer which incoming stream is the shared screen (null = stopped).
+    socket.on("call:screen", (data: { conversation_id?: string; stream_id?: unknown }) => {
+      const convId = data?.conversation_id;
+      if (!convId) return;
+      const parsed = parseConversationId(convId, userId);
+      if (!parsed || parsed.type !== "whisper") return;
+      const streamId = typeof data?.stream_id === "string" ? data.stream_id.slice(0, 128) : null;
+      socket.to(parsed.otherUserId).emit("call:screen", { conversation_id: convId, stream_id: streamId });
+    });
+
     socket.on("disconnect", () => {
       const wentOffline = removePresence(userId, socket.id);
       if (wentOffline && io) io.emit("user:offline", { user_id: userId });
