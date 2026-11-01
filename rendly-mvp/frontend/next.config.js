@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Each dev server needs its own build folder when several run from this project.
+  // Set NEXT_DIST_DIR (e.g. .next-3011) per server; defaults to .next.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
   swcMinify: true,
   experimental: {

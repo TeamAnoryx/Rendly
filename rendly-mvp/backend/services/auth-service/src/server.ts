@@ -195,7 +195,15 @@ app.use(express.json());
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: Number(process.env.RATE_LIMIT_MAX) || 100,
+  // Health checks are polled by the frontend and must not consume the login budget.
+  skip: (req) => req.path === "/health",
+  standardHeaders: true,
+  legacyHeaders: false,
+  // JSON body so the frontend can show "too many requests" instead of "invalid credentials".
+  handler: (_req, res) => {
+    res.status(429).json({ message: "Too many requests. Please wait a few minutes and try again." });
+  },
 });
 app.use(limiter);
 

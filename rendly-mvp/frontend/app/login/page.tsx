@@ -105,8 +105,12 @@ export default function LoginPage() {
         if (!res.ok) {
           if (typeof navigator !== 'undefined' && !navigator.onLine) {
             setError(NETWORK_ERROR_MESSAGE);
-          } else {
+          } else if (res.status === 429) {
+            setError(data?.message || 'Too many login attempts. Please wait a few minutes and try again.');
+          } else if (res.status === 401 || res.status === 400) {
             setError(data?.message || 'Invalid email/username or password.');
+          } else {
+            setError(data?.message || `Login failed (server error ${res.status}). Please try again.`);
           }
           return;
         }
