@@ -9,12 +9,18 @@ import {
 } from '@/lib/pkce';
 import { GITHUB_STORAGE_KEY, LINK_TO_GITHUB_ID_KEY, getStoredAuthToken } from '@/lib/auth-storage';
 
+function normalizeRedirectUri(value: string): string {
+  if (!value) return value;
+  return value.trim().replace(/\/+$/, '');
+}
+
 function getRedirectUri() {
   if (typeof window === 'undefined') return '';
-  // Override for provider dashboards: set NEXT_PUBLIC_OAUTH_REDIRECT_URI to match exactly what you registered
+  // Override for provider dashboards: set NEXT_PUBLIC_OAUTH_REDIRECT_URI to match exactly what you registered.
+  // We normalize it to avoid mismatches from trailing slash variants.
   const envUri = process.env.NEXT_PUBLIC_OAUTH_REDIRECT_URI;
-  if (envUri) return envUri;
-  return `${window.location.origin}/auth/callback`;
+  if (envUri) return normalizeRedirectUri(envUri);
+  return normalizeRedirectUri(`${window.location.origin}/auth/callback`);
 }
 
 export type OAuthFlow = 'login' | 'signup';
@@ -26,10 +32,10 @@ export function useOAuth() {
       console.error('NEXT_PUBLIC_GITHUB_CLIENT_ID is not set');
       return;
     }
-    const redirectUri = encodeURIComponent(getRedirectUri());
+    const redirectUri = getRedirectUri();
     const scope = encodeURIComponent('read:user user:email');
     const state = flow === 'login' ? 'github_login' : 'github';
-    const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}`;
+    const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${state}`;
     window.location.href = url;
   }, []);
 

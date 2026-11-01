@@ -27,6 +27,15 @@ import {
   listBlockedIds,
   isBlocked,
 } from "./connections";
+import {
+  listHuddles,
+  listActiveHuddles,
+  createHuddle,
+  getHuddleById,
+  getHuddleParticipantCount,
+  joinHuddle,
+  type HuddleType,
+} from "./huddles";
 
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config();
@@ -42,7 +51,11 @@ process.on("uncaughtException", (err: Error) => {
 const app = express();
 const PORT = Number(process.env.AUTH_SERVICE_PORT || process.env.PORT || 4001);
 
-const REDIRECT_URI = process.env.OAUTH_REDIRECT_URI || "http://localhost:3001/auth/callback";
+function normalizeRedirectUri(value: string): string {
+  return value.trim().replace(/\/+$/, "");
+}
+
+const REDIRECT_URI = normalizeRedirectUri(process.env.OAUTH_REDIRECT_URI || "http://localhost:3001/auth/callback");
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
 /** Idempotency: avoid exchanging the same GitHub code twice (e.g. double useEffect in dev). */
@@ -1274,6 +1287,188 @@ app.post("/api/contact", async (req, res) => {
   } catch (err) {
     console.error("POST /api/contact error:", err);
     res.status(500).json({ message: "Failed to send message" });
+  }
+});
+
+/** GET /api/huddles/active – list active (live) huddles for dashboard. */
+app.get("/api/huddles/active", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const rows = await listActiveHuddles();
+    const withCount = await Promise.all(
+      rows.map(async (h) => ({
+        id: h.id,
+        topic: h.title,
+        title: h.title,
+        description: h.description,
+        max_participants: h.max_participants,
+        type: h.type,
+        is_active: h.is_active,
+        participants_count: await getHuddleParticipantCount(h.id),
+        created_at: h.created_at,
+        canJoin: true,
+      }))
+    );
+    res.json(withCount);
+  } catch (err) {
+    console.error("GET /api/huddles/active error:", err);
+    res.status(500).json({ message: "Failed to list huddles" });
+  }
+});
+
+/** GET /api/huddles?category=trendy|live|all – list trendy and live huddles. */
+app.get("/api/huddles", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const category = (req.query.category as string) || "all";
+    const valid = ["trendy", "live", "all"].includes(category) ? (category as "trendy" | "live" | "all") : "all";
+    const { trendy, live } = await listHuddles(valid);
+    const enrich = async (rows: Awaited<ReturnType<typeof listHuddles>>["trendy"]) => {
+      return Promise.all(
+        rows.map(async (h) => ({
+          id: h.id,
+          title: h.title,
+          description: h.description,
+          max_participants: h.max_participants,
+          type: h.type,
+          is_active: h.is_active,
+          scheduled_at: h.scheduled_at,
+          duration_minutes: h.duration_minutes,
+          invite_code: h.invite_code,
+          created_at: h.created_at,
+          participants_count: await getHuddleParticipantCount(h.id),
+        }))
+      );
+    };
+    res.json({ trendy: await enrich(trendy), live: await enrich(live) });
+  } catch (err) {
+    console.error("GET /api/huddles error:", err);
+    res.status(500).json({ message: "Failed to list huddles" });
+  }
+});
+
+/** POST /api/huddles – create a huddle. */
+app.post("/api/huddles", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const body = req.body || {};
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    if (!title) {
+      res.status(400).json({ message: "Title is required" });
+      return;
+    }
+    const maxParticipants = Number(body.max_participants);
+    if (![10, 15, 20, 50].includes(maxParticipants)) {
+      res.status(400).json({ message: "max_participants must be 10, 15, 20, or 50" });
+      return;
+    }
+    const type = ["public", "private", "instant"].includes(body.type) ? (body.type as HuddleType) : "public";
+    const durationMinutes = body.duration_minutes != null ? Number(body.duration_minutes) : null;
+    if (durationMinutes != null && (durationMinutes < 1 || durationMinutes > 30)) {
+      res.status(400).json({ message: "duration_minutes must be between 1 and 30" });
+      return;
+    }
+    const row = await createHuddle(current.userId, {
+      title,
+      description: body.description ?? null,
+      max_participants: maxParticipants,
+      type,
+      scheduled_at: body.scheduled_at ?? null,
+      duration_minutes: durationMinutes,
+      settings: body.settings ?? undefined,
+    });
+    if (!row) {
+      res.status(500).json({ message: "Failed to create huddle" });
+      return;
+    }
+    const origin = req.get("origin") || req.get("referer")?.replace(/\/$/, "").replace(/#.*$/, "") || "";
+    const inviteUrl = origin ? `${origin}/dashboard/huddles/${row.id}` : "";
+    res.status(201).json({
+      id: row.id,
+      created_by: row.created_by,
+      title: row.title,
+      description: row.description,
+      max_participants: row.max_participants,
+      type: row.type,
+      is_active: row.is_active,
+      scheduled_at: row.scheduled_at,
+      duration_minutes: row.duration_minutes,
+      invite_code: row.invite_code,
+      created_at: row.created_at,
+      invite_url: inviteUrl,
+    });
+  } catch (err) {
+    console.error("POST /api/huddles error:", err);
+    res.status(500).json({ message: "Failed to create huddle" });
+  }
+});
+
+/** GET /api/huddles/:id – get one huddle. */
+app.get("/api/huddles/:id", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ message: "Huddle id required" });
+      return;
+    }
+    const row = await getHuddleById(id);
+    if (!row) {
+      res.status(404).json({ message: "Huddle not found" });
+      return;
+    }
+    const participants_count = await getHuddleParticipantCount(id);
+    const origin = req.get("origin") || req.get("referer")?.replace(/\/$/, "").replace(/#.*$/, "") || "";
+    const inviteUrl = origin ? `${origin}/dashboard/huddles/${row.id}` : "";
+    res.json({
+      ...row,
+      participants_count,
+      invite_url: inviteUrl,
+    });
+  } catch (err) {
+    console.error("GET /api/huddles/:id error:", err);
+    res.status(500).json({ message: "Failed to get huddle" });
+  }
+});
+
+/** POST /api/huddles/:id/join – join a huddle. */
+app.post("/api/huddles/:id/join", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ message: "Huddle id required" });
+      return;
+    }
+    const result = await joinHuddle(id, current.userId);
+    if (!result.ok) {
+      res.status(400).json({ message: result.message || "Cannot join" });
+      return;
+    }
+    res.json({ huddle_id: id, user_id: current.userId, joined_at: new Date().toISOString() });
+  } catch (err) {
+    console.error("POST /api/huddles/:id/join error:", err);
+    res.status(500).json({ message: "Failed to join huddle" });
   }
 });
 
