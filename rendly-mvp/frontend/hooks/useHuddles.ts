@@ -34,6 +34,11 @@ export function useHuddles() {
 
   useEffect(() => {
     fetchHuddles();
+    // Keep the lists live without a manual refresh.
+    const timer = setInterval(() => {
+      fetchHuddles();
+    }, 15_000);
+    return () => clearInterval(timer);
   }, [fetchHuddles]);
 
   const create = useCallback(

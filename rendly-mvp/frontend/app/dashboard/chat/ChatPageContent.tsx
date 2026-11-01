@@ -1281,16 +1281,34 @@ function ChatPageContent() {
     }
   }, [searchParams]);
 
+  // A Spark video match opens its conversation with ?call=video&initiator=1|0. Only the
+  // initiator starts the call; the other side gets the normal incoming-call prompt.
+  const pendingMatchCallRef = useRef<{ conv: string; initiator: boolean } | null>(null);
+
   useEffect(() => {
     const conv = searchParams.get('conv');
     if (!conv) return;
     setActiveTab('Whispers');
     setSelectedId(conv);
     setSelectedGroupId(null);
+    if (searchParams.get('call') === 'video') {
+      pendingMatchCallRef.current = { conv, initiator: searchParams.get('initiator') === '1' };
+    }
     const url = new URL(window.location.href);
     url.searchParams.delete('conv');
+    url.searchParams.delete('call');
+    url.searchParams.delete('initiator');
     window.history.replaceState(null, '', url.pathname + url.search + url.hash);
   }, [searchParams]);
+
+  useEffect(() => {
+    const pending = pendingMatchCallRef.current;
+    if (!pending || selectedId !== pending.conv) return;
+    pendingMatchCallRef.current = null;
+    if (pending.initiator && callState === 'idle') {
+      startCall(pending.conv, 'video');
+    }
+  }, [selectedId, callState, startCall]);
 
   useEffect(() => {
     onUserOnline((payload) => {
