@@ -150,8 +150,22 @@ export default function LoginPage() {
   React.useEffect(() => () => clearLoaderTimer(), [clearLoaderTimer]);
 
   return (
-    <div className="login-page">
+    <div className="login-page login-page--split">
       <div className="login-page__overlay" aria-hidden />
+      <section className="login-page__hero" aria-hidden>
+        <div className="rd-orb login-page__orb" />
+        <h2 className="login-page__hero-title">
+          Know your why.
+          <br />
+          <span className="rd-gradient-text">Find your who.</span>
+        </h2>
+        <p className="login-page__hero-sub">Spark one-to-one matches, whisper with connections and host huddles that feel alive.</p>
+        <div className="login-page__hero-chips">
+          <span className="rd-chip">Spark</span>
+          <span className="rd-chip">Whispers</span>
+          <span className="rd-chip">Huddles</span>
+        </div>
+      </section>
       <div className="login-page__inner login-page__inner--enter">
         <h1 className="login-page__title">Log in to Rendly</h1>
         <p className="login-page__subtitle">Sign in with your account or use a provider below</p>
