@@ -13,7 +13,7 @@ import {
 
 export type { HuddleListItem, CreateHuddlePayload, CreateHuddleResponse };
 
-export function useHuddles() {
+export function useHuddles(intent: string | null = null) {
   const [data, setData] = useState<HuddlesListResponse>({ trendy: [], live: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +22,7 @@ export function useHuddles() {
     setLoading(true);
     setError(null);
     try {
-      const result = await listHuddles('all');
+      const result = await listHuddles('all', intent);
       setData(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load huddles');
@@ -30,7 +30,7 @@ export function useHuddles() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [intent]);
 
   useEffect(() => {
     fetchHuddles();

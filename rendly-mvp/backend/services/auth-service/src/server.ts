@@ -28,17 +28,31 @@ import {
   isBlocked,
 } from "./connections";
 import {
-  listHuddles,
-  listActiveHuddles,
+  addInvites,
+  admitMember,
+  isConnectedTo,
   createHuddle,
+  fetchIntentTags,
   getHuddleById,
   getHuddleParticipantCount,
+  getIntentTags,
+  getMembership,
   getParticipantCounts,
-  isActiveParticipant,
+  huddleMediaUrl,
+  isInvitedTo,
   joinHuddle,
   leaveHuddle,
+  listActiveHuddles,
+  listHuddles,
+  listMembers,
   recordHuddleEvent,
+  removeMember,
+  setHuddleMedia,
+  setWaitingRoom,
+  updateMember,
+  uploadHuddleMedia,
   type HuddleRow,
+  type Membership,
 } from "./huddles";
 import {
   cancelWaitingEntries,
@@ -52,10 +66,13 @@ import { validateMatchRequest } from "./spark-rules";
 import {
   buildInviteUrl,
   canAccessHuddle,
+  INTENT_TAG_PATTERN,
+  isUuid,
   parseCategory,
   requestOrigin,
   toPublicHuddle,
   validateCreateHuddleInput,
+  validateInviteeIds,
 } from "./huddle-rules";
 
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
@@ -1316,16 +1333,33 @@ function inviteOrigin(req: express.Request): string {
   return requestOrigin(req.get("origin"), req.get("referer"));
 }
 
-/** Shape huddles for output with participant counts from a single query. */
+/** Shape huddles for output: participant counts, intent tags and a public media URL, from one query each. */
 async function toPublicHuddles(rows: HuddleRow[], viewerId: string) {
   const counts = await getParticipantCounts(rows.map((h) => h.id));
-  return rows.map((h) => toPublicHuddle(h, viewerId, counts.get(h.id) ?? 0));
+  const tags = await fetchIntentTags(rows.map((h) => h.id));
+  return rows.map((h) => ({
+    ...toPublicHuddle(h, viewerId, counts.get(h.id) ?? 0),
+    intents: tags.get(h.id) ?? [],
+    media_url: h.media_path ? huddleMediaUrl(h.media_path) : null,
+  }));
 }
 
-/** Invite code sent by the client, from the JSON body or the ?code= query. */
-function providedInviteCode(req: express.Request): unknown {
-  const fromBody = (req.body as { code?: unknown } | undefined)?.code;
-  return fromBody ?? req.query.code;
+/** Whether the viewer may open a huddle: public, theirs, a seat in it, or an invite. */
+async function viewerCanAccess(row: HuddleRow, viewerId: string): Promise<{ allowed: boolean; membership: Membership | null }> {
+  const membership = await getMembership(row.id, viewerId);
+  if (row.type !== "private") return { allowed: true, membership };
+  const isInvited = await isInvitedTo(row.id, viewerId);
+  const allowed = canAccessHuddle(row, {
+    viewerId,
+    isParticipant: membership != null,
+    isInvited,
+  });
+  return { allowed, membership };
+}
+
+/** A host or co-host with an admitted seat. Hosts are the only people who can change roles or the waiting room. */
+function canManageHuddle(membership: Membership | null): boolean {
+  return membership != null && membership.admitted && (membership.role === "host" || membership.role === "co_host");
 }
 
 /** GET /api/huddles/active – list active (live) huddles for dashboard. */
@@ -1351,7 +1385,10 @@ app.get("/api/huddles/active", async (req, res) => {
   }
 });
 
-/** GET /api/huddles?category=trendy|live|all – list trendy and live huddles. */
+/**
+ * GET /api/huddles?category=trendy|live|all&intent=tag – list trendy and live huddles.
+ * intent keeps only huddles carrying that tag.
+ */
 app.get("/api/huddles", async (req, res) => {
   try {
     const current = await getCurrentUserFromRequest(req);
@@ -1360,10 +1397,18 @@ app.get("/api/huddles", async (req, res) => {
       return;
     }
     const category = parseCategory(req.query.category);
+    const intentParam = typeof req.query.intent === "string" ? req.query.intent.trim().toLowerCase().replace(/^#/, "") : "";
+    const intent = intentParam && INTENT_TAG_PATTERN.test(intentParam) ? intentParam : null;
+
     const { trendy, live } = await listHuddles(category, current.userId);
+    const keep = async (rows: HuddleRow[]) => {
+      if (!intent) return rows;
+      const tags = await fetchIntentTags(rows.map((h) => h.id));
+      return rows.filter((h) => (tags.get(h.id) ?? []).includes(intent));
+    };
     res.json({
-      trendy: await toPublicHuddles(trendy, current.userId),
-      live: await toPublicHuddles(live, current.userId),
+      trendy: await toPublicHuddles(await keep(trendy), current.userId),
+      live: await toPublicHuddles(await keep(live), current.userId),
     });
   } catch (err) {
     console.error("GET /api/huddles error:", err);
@@ -1371,7 +1416,10 @@ app.get("/api/huddles", async (req, res) => {
   }
 });
 
-/** POST /api/huddles – create a huddle. */
+/**
+ * POST /api/huddles – create a huddle. Invitees must be the creator's connections.
+ * Body also takes mode, waiting_room, intents (up to 5 tags) and invitee_ids.
+ */
 app.post("/api/huddles", async (req, res) => {
   try {
     const current = await getCurrentUserFromRequest(req);
@@ -1384,9 +1432,16 @@ app.post("/api/huddles", async (req, res) => {
       res.status(400).json({ message: validation.message });
       return;
     }
-    const row = await createHuddle(current.userId, validation.value);
+    const invitees = validation.value.invitee_ids.filter((id) => id !== current.userId);
+    const connected = await Promise.all(invitees.map((id) => isConnectedTo(current.userId, id)));
+    if (connected.some((ok) => !ok)) {
+      res.status(400).json({ message: "You can only invite people you are connected with" });
+      return;
+    }
+    const row = await createHuddle(current.userId, { ...validation.value, invitee_ids: invitees });
     res.status(201).json({
       ...toPublicHuddle(row, current.userId, 0),
+      intents: validation.value.intents,
       invite_url: buildInviteUrl(inviteOrigin(req), row),
     });
   } catch (err) {
@@ -1396,9 +1451,9 @@ app.post("/api/huddles", async (req, res) => {
 });
 
 /**
- * GET /api/huddles/:id[?code=] – get one huddle.
- * Private huddles are only visible to the creator, current participants, or holders of
- * the invite code. Everyone else gets 404 so private huddle ids cannot be probed.
+ * GET /api/huddles/:id – one huddle, with the viewer's role and whether they are waiting.
+ * Private huddles are visible only to the creator, people in the room, and invitees; everyone
+ * else gets 404 so private huddle ids cannot be probed.
  */
 app.get("/api/huddles/:id", async (req, res) => {
   try {
@@ -1413,18 +1468,30 @@ app.get("/api/huddles/:id", async (req, res) => {
       res.status(404).json({ message: "Huddle not found" });
       return;
     }
-    const isParticipant = await isActiveParticipant(id, current.userId);
-    if (!canAccessHuddle(row, { viewerId: current.userId, isParticipant, inviteCode: providedInviteCode(req) })) {
+    const { allowed, membership } = await viewerCanAccess(row, current.userId);
+    if (!allowed) {
       res.status(404).json({ message: "Huddle not found" });
       return;
     }
     // Visits feed the trending list. Not awaited: a failed write must not slow or fail the page.
     void recordHuddleEvent(id, current.userId, "visit");
-    const huddle = toPublicHuddle(row, current.userId, await getHuddleParticipantCount(id));
-    const canShareInvite = row.type !== "private" || huddle.is_owner;
+    const [count, tags] = await Promise.all([getHuddleParticipantCount(id), getIntentTags(id)]);
+    const huddle = toPublicHuddle(row, current.userId, count);
+    const canShareInvite = row.type !== "private" || huddle.is_owner || canManageHuddle(membership);
     res.json({
       ...huddle,
-      is_participant: isParticipant,
+      intents: tags,
+      media_url: row.media_path ? huddleMediaUrl(row.media_path) : null,
+      is_participant: membership?.admitted === true,
+      is_waiting: membership != null && !membership.admitted,
+      your_role: membership?.role ?? null,
+      your_permissions: membership
+        ? {
+            can_speak: membership.can_speak,
+            can_share_screen: membership.can_share_screen,
+            is_muted: membership.is_muted,
+          }
+        : null,
       invite_url: canShareInvite ? buildInviteUrl(inviteOrigin(req), row) : "",
     });
   } catch (err) {
@@ -1433,7 +1500,7 @@ app.get("/api/huddles/:id", async (req, res) => {
   }
 });
 
-/** POST /api/huddles/:id/join – join a huddle. Body or query may carry { code } for private huddles. */
+/** POST /api/huddles/:id/join – join a huddle. 202 when the host has the waiting room on. */
 app.post("/api/huddles/:id/join", async (req, res) => {
   try {
     const current = await getCurrentUserFromRequest(req);
@@ -1447,8 +1514,8 @@ app.post("/api/huddles/:id/join", async (req, res) => {
       res.status(404).json({ message: "Huddle not found" });
       return;
     }
-    const isParticipant = await isActiveParticipant(id, current.userId);
-    if (!canAccessHuddle(row, { viewerId: current.userId, isParticipant, inviteCode: providedInviteCode(req) })) {
+    const { allowed } = await viewerCanAccess(row, current.userId);
+    if (!allowed) {
       res.status(404).json({ message: "Huddle not found" });
       return;
     }
@@ -1457,7 +1524,11 @@ app.post("/api/huddles/:id/join", async (req, res) => {
       res.status(result.reason === "not_found" ? 404 : 409).json({ message: result.message });
       return;
     }
-    res.json({ huddle_id: id, user_id: current.userId, joined_at: new Date().toISOString() });
+    if (result.waiting) {
+      res.status(202).json({ status: "waiting", huddle_id: id, message: "Waiting for the host to let you in" });
+      return;
+    }
+    res.json({ status: "joined", huddle_id: id, user_id: current.userId, joined_at: new Date().toISOString() });
   } catch (err) {
     console.error("POST /api/huddles/:id/join error:", err);
     res.status(500).json({ message: "Failed to join huddle" });
@@ -1487,6 +1558,306 @@ app.post("/api/huddles/:id/leave", async (req, res) => {
     console.error("POST /api/huddles/:id/leave error:", err);
     res.status(500).json({ message: "Failed to leave huddle" });
   }
+});
+
+/** GET /api/huddles/:id/members – host and co-hosts see everyone, including the waiting room. */
+app.get("/api/huddles/:id/members", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const membership = await getMembership(req.params.id, current.userId);
+    if (!canManageHuddle(membership)) {
+      res.status(403).json({ message: "Only the host or a co-host can see the member list" });
+      return;
+    }
+    res.json(await listMembers(req.params.id));
+  } catch (err) {
+    console.error("GET /api/huddles/:id/members error:", err);
+    res.status(500).json({ message: "Failed to load members" });
+  }
+});
+
+/** POST /api/huddles/:id/admit – let someone from the waiting room in. Body: { user_id }. */
+app.post("/api/huddles/:id/admit", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const membership = await getMembership(req.params.id, current.userId);
+    if (!canManageHuddle(membership)) {
+      res.status(403).json({ message: "Only the host or a co-host can admit people" });
+      return;
+    }
+    const userId = (req.body as { user_id?: unknown })?.user_id;
+    if (!isUuid(userId)) {
+      res.status(400).json({ message: "user_id must be a user id" });
+      return;
+    }
+    const outcome = await admitMember(req.params.id, userId);
+    if (outcome === "not_found") {
+      res.status(404).json({ message: "Huddle not found" });
+      return;
+    }
+    if (outcome === "not_waiting") {
+      res.status(409).json({ message: "That person is not waiting" });
+      return;
+    }
+    if (outcome === "full") {
+      res.status(409).json({ message: "The huddle is full" });
+      return;
+    }
+    res.json({ status: "admitted", user_id: userId });
+  } catch (err) {
+    console.error("POST /api/huddles/:id/admit error:", err);
+    res.status(500).json({ message: "Failed to admit" });
+  }
+});
+
+/**
+ * PATCH /api/huddles/:id/members/:userId – change a member's role or permissions.
+ * Body: any of role (host only: co_host | participant), can_speak, can_share_screen, is_muted.
+ */
+app.patch("/api/huddles/:id/members/:userId", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const actor = await getMembership(req.params.id, current.userId);
+    if (!canManageHuddle(actor)) {
+      res.status(403).json({ message: "Only the host or a co-host can change member permissions" });
+      return;
+    }
+    const targetId = req.params.userId;
+    if (!isUuid(targetId)) {
+      res.status(400).json({ message: "Invalid member id" });
+      return;
+    }
+    const target = await getMembership(req.params.id, targetId);
+    if (!target) {
+      res.status(404).json({ message: "That person is not in the huddle" });
+      return;
+    }
+    if (target.role === "host") {
+      res.status(409).json({ message: "The host's role cannot be changed" });
+      return;
+    }
+    // Co-hosts cannot change another co-host; only the host can.
+    if (target.role === "co_host" && actor?.role !== "host") {
+      res.status(403).json({ message: "Only the host can change a co-host" });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const patch: Partial<{ role: "co_host" | "participant"; can_speak: boolean; can_share_screen: boolean; is_muted: boolean }> = {};
+    if (body.role !== undefined) {
+      if (actor?.role !== "host") {
+        res.status(403).json({ message: "Only the host can change roles" });
+        return;
+      }
+      if (body.role !== "co_host" && body.role !== "participant") {
+        res.status(400).json({ message: "role must be co_host or participant" });
+        return;
+      }
+      patch.role = body.role;
+    }
+    for (const key of ["can_speak", "can_share_screen", "is_muted"] as const) {
+      if (body[key] !== undefined) {
+        if (typeof body[key] !== "boolean") {
+          res.status(400).json({ message: `${key} must be true or false` });
+          return;
+        }
+        patch[key] = body[key] as boolean;
+      }
+    }
+    if (Object.keys(patch).length === 0) {
+      res.status(400).json({ message: "Nothing to change" });
+      return;
+    }
+    const updated = await updateMember(req.params.id, targetId, patch);
+    if (!updated) {
+      res.status(404).json({ message: "That person is not in the huddle" });
+      return;
+    }
+    res.json({ user_id: targetId, ...patch });
+  } catch (err) {
+    console.error("PATCH /api/huddles/:id/members/:userId error:", err);
+    res.status(500).json({ message: "Failed to update member" });
+  }
+});
+
+/** DELETE /api/huddles/:id/members/:userId – remove someone from the room. The host is never removed. */
+app.delete("/api/huddles/:id/members/:userId", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const actor = await getMembership(req.params.id, current.userId);
+    if (!canManageHuddle(actor)) {
+      res.status(403).json({ message: "Only the host or a co-host can remove people" });
+      return;
+    }
+    const targetId = req.params.userId;
+    if (!isUuid(targetId)) {
+      res.status(400).json({ message: "Invalid member id" });
+      return;
+    }
+    const target = await getMembership(req.params.id, targetId);
+    if (!target) {
+      res.status(404).json({ message: "That person is not in the huddle" });
+      return;
+    }
+    if (target.role === "host") {
+      res.status(409).json({ message: "The host cannot be removed" });
+      return;
+    }
+    if (target.role === "co_host" && actor?.role !== "host") {
+      res.status(403).json({ message: "Only the host can remove a co-host" });
+      return;
+    }
+    await removeMember(req.params.id, targetId);
+    res.json({ removed: targetId });
+  } catch (err) {
+    console.error("DELETE /api/huddles/:id/members/:userId error:", err);
+    res.status(500).json({ message: "Failed to remove member" });
+  }
+});
+
+/** PATCH /api/huddles/:id/settings – host only. Body: { waiting_room: boolean }. */
+app.patch("/api/huddles/:id/settings", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const row = await getHuddleById(req.params.id);
+    if (!row) {
+      res.status(404).json({ message: "Huddle not found" });
+      return;
+    }
+    if (row.created_by !== current.userId) {
+      res.status(403).json({ message: "Only the host can change these settings" });
+      return;
+    }
+    const waitingRoom = (req.body as { waiting_room?: unknown })?.waiting_room;
+    if (typeof waitingRoom !== "boolean") {
+      res.status(400).json({ message: "waiting_room must be true or false" });
+      return;
+    }
+    await setWaitingRoom(row.id, waitingRoom);
+    res.json({ waiting_room: waitingRoom });
+  } catch (err) {
+    console.error("PATCH /api/huddles/:id/settings error:", err);
+    res.status(500).json({ message: "Failed to update settings" });
+  }
+});
+
+/** POST /api/huddles/:id/invites – host or co-host invites connected users. Body: { invitee_ids }. */
+app.post("/api/huddles/:id/invites", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const row = await getHuddleById(req.params.id);
+    if (!row) {
+      res.status(404).json({ message: "Huddle not found" });
+      return;
+    }
+    const membership = await getMembership(row.id, current.userId);
+    if (!canManageHuddle(membership) && row.created_by !== current.userId) {
+      res.status(403).json({ message: "Only the host or a co-host can invite people" });
+      return;
+    }
+    const validation = validateInviteeIds((req.body as { invitee_ids?: unknown })?.invitee_ids);
+    if (!validation.ok) {
+      res.status(400).json({ message: validation.message });
+      return;
+    }
+    const invitees = validation.value.filter((id) => id !== current.userId);
+    const connected = await Promise.all(invitees.map((id) => isConnectedTo(current.userId, id)));
+    if (connected.some((ok) => !ok)) {
+      res.status(400).json({ message: "You can only invite people you are connected with" });
+      return;
+    }
+    await addInvites(row.id, current.userId, invitees);
+    res.json({ invited: invitees.length });
+  } catch (err) {
+    console.error("POST /api/huddles/:id/invites error:", err);
+    res.status(500).json({ message: "Failed to send invites" });
+  }
+});
+
+const HUDDLE_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+const HUDDLE_MEDIA_TYPES: Record<string, { kind: "image" | "video" | "audio"; extension: string }> = {
+  "image/jpeg": { kind: "image", extension: "jpg" },
+  "image/png": { kind: "image", extension: "png" },
+  "image/webp": { kind: "image", extension: "webp" },
+  "video/mp4": { kind: "video", extension: "mp4" },
+  "video/webm": { kind: "video", extension: "webm" },
+  "audio/mpeg": { kind: "audio", extension: "mp3" },
+  "audio/mp4": { kind: "audio", extension: "m4a" },
+  "audio/wav": { kind: "audio", extension: "wav" },
+  "audio/ogg": { kind: "audio", extension: "ogg" },
+};
+const huddleMediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: HUDDLE_MEDIA_MAX_BYTES },
+  fileFilter: (_req: express.Request, file: { mimetype?: string }, cb: (err: Error | null, accept?: boolean) => void) => {
+    if (file.mimetype && HUDDLE_MEDIA_TYPES[file.mimetype]) {
+      cb(null, true);
+    } else {
+      cb(new Error("Promotion media must be an image, video or audio file"));
+    }
+  },
+}).single("file");
+
+/** POST /api/huddles/:id/media – host uploads promotion media (multipart field "file"). */
+app.post("/api/huddles/:id/media", (req, res) => {
+  huddleMediaUpload(req, res, async (uploadErr?: unknown) => {
+    try {
+      if (uploadErr) {
+        const message = uploadErr instanceof Error ? uploadErr.message : "Upload failed";
+        res.status(400).json({ message });
+        return;
+      }
+      const current = await getCurrentUserFromRequest(req);
+      if (!current) {
+        res.status(401).json({ message: "Missing or invalid authorization" });
+        return;
+      }
+      const row = await getHuddleById(req.params.id);
+      if (!row) {
+        res.status(404).json({ message: "Huddle not found" });
+        return;
+      }
+      if (row.created_by !== current.userId) {
+        res.status(403).json({ message: "Only the host can upload promotion media" });
+        return;
+      }
+      const file = (req as express.Request & { file?: { buffer: Buffer; mimetype: string } }).file;
+      if (!file) {
+        res.status(400).json({ message: "Attach a file in the 'file' field" });
+        return;
+      }
+      const spec = HUDDLE_MEDIA_TYPES[file.mimetype];
+      const path = await uploadHuddleMedia(row.id, file.buffer, file.mimetype, spec.extension);
+      await setHuddleMedia(row.id, path, spec.kind);
+      res.status(201).json({ media_type: spec.kind, media_url: huddleMediaUrl(path) });
+    } catch (err) {
+      console.error("POST /api/huddles/:id/media error:", err);
+      res.status(500).json({ message: "Failed to upload promotion media" });
+    }
+  });
 });
 
 /** POST /api/presence/heartbeat – mark the caller online. Clients call this about every 30 seconds. */

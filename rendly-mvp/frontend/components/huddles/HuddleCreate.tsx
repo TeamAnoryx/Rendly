@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
-import type { CreateHuddlePayload, CreateHuddleResponse } from '@/services/huddlesApi';
+import React, { useState, useCallback, useEffect } from 'react';
+import type { CreateHuddlePayload, CreateHuddleResponse, HuddleMode } from '@/services/huddlesApi';
+import { HUDDLE_MODE_LABELS } from '@/services/huddlesApi';
+import { getConnections, type Connection } from '@/services/connectionsApi';
 import { buildScheduledAt } from '@/lib/huddleSchedule';
 
 type HuddleCreateProps = {
@@ -12,6 +14,14 @@ type HuddleCreateProps = {
 
 const HUDDLE_TYPES = ['public', 'private', 'instant'] as const;
 const MAX_MEMBERS_OPTIONS = [10, 15, 20, 50] as const;
+const MODES: HuddleMode[] = ['open', 'seminar', 'hackathon', 'launch'];
+const MAX_INTENTS = 5;
+const INTENT_PATTERN = /^[a-z0-9][a-z0-9-]{0,29}$/;
+
+/** Normalise one intent typed by the user: lowercase, no leading #, spaces become hyphens. */
+export function normaliseIntent(raw: string): string {
+  return raw.trim().toLowerCase().replace(/^#/, '').replace(/\s+/g, '-');
+}
 
 export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCreateProps) {
   const [title, setTitle] = useState('');
@@ -21,12 +31,54 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
   const [date, setDate] = useState('');
   const [time, setTime] = useState('12:00');
   const [durationMinutes, setDurationMinutes] = useState<number>(30);
-  const [chatPermission, setChatPermission] = useState<'view_only' | 'allow'>('view_only');
-  const [reportUsername, setReportUsername] = useState('');
+  const [mode, setMode] = useState<HuddleMode>('open');
+  const [waitingRoom, setWaitingRoom] = useState(false);
+  const [intents, setIntents] = useState<string[]>([]);
+  const [intentDraft, setIntentDraft] = useState('');
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [inviteeIds, setInviteeIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [createdInviteUrl, setCreatedInviteUrl] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getConnections()
+      .then((list) => {
+        if (!cancelled) setConnections(list);
+      })
+      .catch(() => {
+        // Without the list the user can still create a huddle with no invitees.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const addIntent = useCallback(() => {
+    const tag = normaliseIntent(intentDraft);
+    if (!tag) return;
+    if (!INTENT_PATTERN.test(tag)) {
+      setSubmitError('Intents use lowercase letters, digits and hyphens (30 characters at most)');
+      return;
+    }
+    if (intents.includes(tag)) {
+      setIntentDraft('');
+      return;
+    }
+    if (intents.length >= MAX_INTENTS) {
+      setSubmitError(`A huddle can have at most ${MAX_INTENTS} intents`);
+      return;
+    }
+    setSubmitError(null);
+    setIntents([...intents, tag]);
+    setIntentDraft('');
+  }, [intentDraft, intents]);
+
+  const toggleInvitee = useCallback((id: string) => {
+    setInviteeIds((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]));
+  }, []);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -45,17 +97,16 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
         setSubmitError('Duration must be between 1 and 30 minutes');
         return;
       }
+      let scheduledAt: string | null = null;
+      if (date && time) {
+        scheduledAt = buildScheduledAt(date, time);
+        if (!scheduledAt) {
+          setSubmitError('Please enter a valid date and time');
+          return;
+        }
+      }
       setSubmitting(true);
       try {
-        let scheduledAt: string | null = null;
-        if (date && time) {
-          scheduledAt = buildScheduledAt(date, time);
-          if (!scheduledAt) {
-            setSubmitError('Please enter a valid date and time');
-            setSubmitting(false);
-            return;
-          }
-        }
         const result = await onCreate({
           title: trimmedTitle,
           description: description.trim() || null,
@@ -63,7 +114,11 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
           type,
           scheduled_at: scheduledAt,
           duration_minutes: durationMinutes,
-          settings: { chat_permission: chatPermission },
+          settings: {},
+          mode,
+          waiting_room: waitingRoom,
+          intents,
+          invitee_ids: inviteeIds,
         });
         setCreatedInviteUrl(result.invite_url);
       } catch (err) {
@@ -72,7 +127,7 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
         setSubmitting(false);
       }
     },
-    [title, description, type, maxParticipants, date, time, durationMinutes, chatPermission, onCreate]
+    [title, description, type, maxParticipants, date, time, durationMinutes, mode, waitingRoom, intents, inviteeIds, onCreate]
   );
 
   const handleCopyInvite = useCallback(() => {
@@ -96,24 +151,27 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
       <div className="dash-huddles-create dash-huddles-create--success">
         <h1 className="dash-huddles-create-title">Create Huddle</h1>
         <div className="dash-huddles-create-invite-box">
-          <p className="dash-huddles-create-invite-label">Invite link</p>
+          <p className="dash-huddles-create-invite-label">Huddle link</p>
           <div className="dash-huddles-create-invite-row">
             <input
               type="text"
               readOnly
               value={createdInviteUrl}
               className="dash-huddles-create-invite-input"
-              aria-label="Invite URL"
+              aria-label="Huddle link"
             />
             <button
               type="button"
               className="dash-huddles-create-invite-copy"
               onClick={handleCopyInvite}
-              aria-label="Copy invite link"
+              aria-label="Copy huddle link"
             >
               {copySuccess ? 'Copied!' : 'Copy'}
             </button>
           </div>
+          {type === 'private' && (
+            <p className="dash-huddles-create-hint">Only the people you invited can open this huddle.</p>
+          )}
           <button type="button" className="dash-huddles-create-btn dash-huddles-create-btn--primary" onClick={handleDone}>
             Done
           </button>
@@ -149,6 +207,41 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
             className="dash-huddles-create-textarea"
             rows={3}
           />
+          <label className="dash-huddles-create-label" htmlFor="huddle-intent">
+            Intents (like hashtags, up to {MAX_INTENTS}):
+          </label>
+          <div className="dash-huddles-create-options">
+            {intents.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                className="dash-huddles-create-opt dash-huddles-create-opt--on"
+                onClick={() => setIntents(intents.filter((t) => t !== tag))}
+                aria-label={`Remove intent ${tag}`}
+              >
+                #{tag} ×
+              </button>
+            ))}
+          </div>
+          <div className="dash-huddles-create-report-row">
+            <input
+              id="huddle-intent"
+              type="text"
+              placeholder="e.g. ai, hackathon"
+              value={intentDraft}
+              onChange={(e) => setIntentDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ',') {
+                  e.preventDefault();
+                  addIntent();
+                }
+              }}
+              className="dash-huddles-create-input"
+            />
+            <button type="button" className="dash-huddles-create-btn dash-huddles-create-btn--secondary" onClick={addIntent}>
+              Add
+            </button>
+          </div>
         </div>
 
         <div className="dash-huddles-create-columns">
@@ -168,6 +261,22 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
                   </button>
                 ))}
               </div>
+              <label className="dash-huddles-create-label">Format:</label>
+              <div className="dash-huddles-create-options">
+                {MODES.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`dash-huddles-create-opt ${mode === m ? 'dash-huddles-create-opt--on' : ''}`}
+                    onClick={() => setMode(m)}
+                  >
+                    {HUDDLE_MODE_LABELS[m]}
+                  </button>
+                ))}
+              </div>
+              <p className="dash-huddles-create-hint">
+                Seminar and app-launch audiences start listening only; you give them the floor.
+              </p>
               <label className="dash-huddles-create-label">Max members:</label>
               <div className="dash-huddles-create-options">
                 {MAX_MEMBERS_OPTIONS.map((n) => (
@@ -181,10 +290,35 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
                   </button>
                 ))}
               </div>
+              <label className="dash-huddles-create-label">
+                <input type="checkbox" checked={waitingRoom} onChange={(e) => setWaitingRoom(e.target.checked)} />{' '}
+                Waiting room: you let each person in
+              </label>
             </div>
+
             <div className="dash-huddles-create-card">
-              <h3 className="dash-huddles-create-card-title">Invite to huddle</h3>
-              <p className="dash-huddles-create-hint">Link will appear after you schedule.</p>
+              <h3 className="dash-huddles-create-card-title">Invite connections</h3>
+              {connections.length === 0 ? (
+                <p className="dash-huddles-create-hint">Connect with people first, then invite them here.</p>
+              ) : (
+                <ul className="dash-huddles-create-invitees">
+                  {connections.map((c) => (
+                    <li key={c.id}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={inviteeIds.includes(c.id)}
+                          onChange={() => toggleInvitee(c.id)}
+                        />{' '}
+                        {c.username ?? 'User'}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {type === 'private' && (
+                <p className="dash-huddles-create-hint">Private huddles are open only to people you invite here.</p>
+              )}
             </div>
             <button
               type="submit"
@@ -209,17 +343,15 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
                 className="dash-huddles-create-input"
               />
               <label className="dash-huddles-create-label" htmlFor="huddle-time">
-                Time:
+                Time (24-hour):
               </label>
-              <div className="dash-huddles-create-time-row">
-                <input
-                  id="huddle-time"
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  className="dash-huddles-create-input"
-                />
-              </div>
+              <input
+                id="huddle-time"
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="dash-huddles-create-input"
+              />
               <label className="dash-huddles-create-label" htmlFor="huddle-duration">
                 Duration: <span className="dash-huddles-create-hint">(max 30 min)</span>
               </label>
@@ -232,46 +364,6 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
                 onChange={(e) => setDurationMinutes(Number(e.target.value) || 30)}
                 className="dash-huddles-create-input"
               />
-            </div>
-            <div className="dash-huddles-create-card">
-              <h3 className="dash-huddles-create-card-title">Admin permissions</h3>
-              <label className="dash-huddles-create-label">Chat:</label>
-              <div className="dash-huddles-create-options">
-                <button
-                  type="button"
-                  className={`dash-huddles-create-opt ${chatPermission === 'view_only' ? 'dash-huddles-create-opt--on' : ''}`}
-                  onClick={() => setChatPermission('view_only')}
-                >
-                  View only
-                </button>
-                <button
-                  type="button"
-                  className={`dash-huddles-create-opt ${chatPermission === 'allow' ? 'dash-huddles-create-opt--on' : ''}`}
-                  onClick={() => setChatPermission('allow')}
-                >
-                  Allow
-                </button>
-              </div>
-              <label className="dash-huddles-create-label">Report:</label>
-              <div className="dash-huddles-create-report-row">
-                <input
-                  type="text"
-                  placeholder="@username"
-                  value={reportUsername}
-                  onChange={(e) => setReportUsername(e.target.value)}
-                  className="dash-huddles-create-input"
-                />
-                <button type="button" className="dash-huddles-create-btn dash-huddles-create-btn--secondary">
-                  Report
-                </button>
-              </div>
-            </div>
-            <div className="dash-huddles-create-card dash-huddles-create-card--stats">
-              <h3 className="dash-huddles-create-card-title">Statistics</h3>
-              <p className="dash-huddles-create-stat">Total public clicks: 0</p>
-              <p className="dash-huddles-create-stat">Pre booked: 0 / {maxParticipants}</p>
-              <p className="dash-huddles-create-stat">Available huddle seats: {maxParticipants} / {maxParticipants}</p>
-              <p className="dash-huddles-create-stat">Traction: Level I, Level II, Level III</p>
             </div>
           </div>
         </div>
