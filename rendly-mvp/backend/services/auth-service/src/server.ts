@@ -919,6 +919,31 @@ app.post("/api/users/me/avatar", avatarUpload.single("avatar"), async (req, res)
   }
 });
 
+/** GET /api/users/:id/card – name and avatar for one user (call screens, match rooms). Auth required. */
+app.get("/api/users/:id/card", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    if (!isUuid(req.params.id)) {
+      res.status(400).json({ message: "Invalid user id" });
+      return;
+    }
+    const user = await getUserById(req.params.id);
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
+    }
+    const u = user as { id: string; username?: string | null; avatar_url?: string | null };
+    res.json({ id: u.id, username: u.username ?? null, avatar_url: u.avatar_url ?? null });
+  } catch (err) {
+    console.error("GET /api/users/:id/card error:", err);
+    res.status(500).json({ message: "Failed to load user" });
+  }
+});
+
 /** Search users by username prefix. GET /api/users/search?username=... Requires Bearer token. */
 app.get("/api/users/search", async (req, res) => {
   try {

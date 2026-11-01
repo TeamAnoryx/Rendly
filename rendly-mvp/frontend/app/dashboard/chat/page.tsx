@@ -2,6 +2,7 @@
 
 import React, { Suspense } from 'react';
 import { ChatPageContent } from './ChatPageContent';
+import './whispers.css';
 
 export default function ChatPage() {
   return (

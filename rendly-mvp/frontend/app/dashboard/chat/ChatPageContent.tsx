@@ -5,11 +5,12 @@ import { useSearchParams } from 'next/navigation';
 import { useDashboard } from '@/hooks/useDashboard';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useCallContext } from '@/context/CallContext';
+import { usePresence } from '@/context/SocketContext';
+import websocket from '@/services/websocket';
 import { chat, type CallLogListItem } from '@/services/chat';
 import { getConnections, type Connection } from '@/services/connectionsApi';
 import { groupsApi, type GroupListItem, type GroupInvitePending } from '@/services/groups';
 import { GroupSettingsPanel } from '@/app/dashboard/chat/GroupSettingsPanel';
-import { ActiveVideoCallView } from '@/app/dashboard/chat/ActiveVideoCallView';
 
 type ChatTab = 'Group' | 'Whispers' | 'Archive';
 type ConnectionFilter = 'all' | 'unread' | 'favorites';
@@ -1157,7 +1158,7 @@ function ChatPageContent() {
   const { user: currentUser } = useDashboard();
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(true);
-  const { sendMessage: wsSendMessage, onMessageReceived, offMessageReceived, onMessageDeleted, onUserOnline, onUserOffline, joinConversation, leaveConversation, emitConversationRead, onConversationRead, onTypingIndicator, startTyping, stopTyping, isConnected: wsConnected } = useWebSocket();
+  const { sendMessage: wsSendMessage, onMessageReceived, offMessageReceived, onMessageDeleted, joinConversation, leaveConversation, emitConversationRead, onConversationRead, onTypingIndicator, startTyping, stopTyping, isConnected: wsConnected } = useWebSocket();
   const {
     callState,
     callType,
@@ -1238,7 +1239,8 @@ function ChatPageContent() {
   const [groupViewOnly, setGroupViewOnly] = useState(false);
   const [groupAmAdmin, setGroupAmAdmin] = useState(true);
   const [groupSettingsOpen, setGroupSettingsOpen] = useState(false);
-  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(() => new Set());
+  // Online status comes from the app-wide presence tracker (snapshot + live events).
+  const presence = usePresence();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesListWrapRef = useRef<HTMLDivElement>(null);
   const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1246,6 +1248,37 @@ function ChatPageContent() {
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedIdRef = useRef<string | null>(null);
+  // Debounced "mark read" for messages that arrive while their conversation is open.
+  const markReadTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const scheduleMarkRead = useCallback((conversationId: string) => {
+    if (conversationId === SELF_PLACEHOLDER_ID || conversationId.startsWith(CONNECTION_PLACEHOLDER_PREFIX)) return;
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return; // not actually seen
+    const timers = markReadTimersRef.current;
+    const existing = timers.get(conversationId);
+    if (existing) clearTimeout(existing);
+    timers.set(
+      conversationId,
+      setTimeout(() => {
+        timers.delete(conversationId);
+        chat
+          .markRead(conversationId)
+          .then(() => websocket.emitConversationRead(conversationId))
+          .catch((err) => console.warn('[chat] mark read failed', err));
+      }, 800)
+    );
+  }, []);
+  useEffect(() => {
+    const timers = markReadTimersRef.current;
+    return () => timers.forEach((t) => clearTimeout(t));
+  }, []);
+  useEffect(() => {
+    const onVisible = () => {
+      const id = selectedIdRef.current;
+      if (document.visibilityState === 'visible' && id) scheduleMarkRead(id);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [scheduleMarkRead]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const messagesCacheRef = useRef<Record<string, ChatMessage[]>>({});
@@ -1310,18 +1343,16 @@ function ChatPageContent() {
     }
   }, [selectedId, callState, startCall]);
 
+  // Ask presence about everyone in the list; isOnline() is the single source of truth.
+  const watchPresence = presence.watch;
   useEffect(() => {
-    onUserOnline((payload) => {
-      setOnlineUserIds((prev) => new Set(prev).add(payload.user_id));
-    });
-    onUserOffline((payload) => {
-      setOnlineUserIds((prev) => {
-        const next = new Set(prev);
-        next.delete(payload.user_id);
-        return next;
-      });
-    });
-  }, [onUserOnline, onUserOffline]);
+    watchPresence(conversations.map((c) => c.otherUserId).filter((id): id is string => !!id));
+  }, [conversations, watchPresence]);
+  const onlineUserIds = React.useMemo(
+    () => new Set(conversations.map((c) => c.otherUserId).filter((id): id is string => !!id && presence.isOnline(id))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversations, presence.version]
+  );
 
   const activeIndex = TABS.findIndex((t) => t.id === activeTab);
 
@@ -2030,6 +2061,8 @@ function ChatPageContent() {
         }
       }
       if (!isForSelected) return;
+      // The open conversation is being read: tell the server, or the badge comes back on reload.
+      if (isFromOther) scheduleMarkRead(msg.conversation_id);
       const chatMsg: ChatMessage = {
         id: msg.id,
         sender_id: msg.sender_id,
@@ -2878,7 +2911,7 @@ function ChatPageContent() {
                           key={item.id}
                           item={{
                             ...item,
-                            isOnline: item.otherUserId ? (onlineUserIds.has(item.otherUserId) || item.isOnline) : item.isOnline,
+                            isOnline: item.otherUserId ? presence.isOnline(item.otherUserId) : item.isOnline,
                           }}
                           currentUserId={currentUser?.id}
                           isActive={selectedId === item.id}
@@ -2988,7 +3021,7 @@ function ChatPageContent() {
                     : selectedConv?.avatar_url ?? null;
                   const initials = displayName.slice(0, 2).toUpperCase().replace(/[^A-Z0-9]/g, '') || '?';
                   const headerOnline = activeTab === 'Whispers' && selectedConv
-                    ? (selectedConv.otherUserId ? (onlineUserIds.has(selectedConv.otherUserId) || selectedConv.isOnline) : selectedConv.isOnline)
+                    ? (selectedConv.otherUserId ? presence.isOnline(selectedConv.otherUserId) : selectedConv.isOnline)
                     : false;
                   return (
                     <div className="chat-mobile-back-bar" aria-hidden>
@@ -3523,132 +3556,6 @@ function ChatPageContent() {
                       <SendIcon />
                     </button>
                   </div>
-                </div>
-              </div>
-              <div className="chat-right-calls-wrap">
-                <div
-                  className={`chat-right-video-section${isVideoCallActive ? ' chat-video-expanded' : ''}${isVideoCallActive && isResizingVideoPanel ? ' chat-video-expanded--resizing' : ''}`}
-                  id="chat-video-section"
-                  style={isVideoCallActive && !isMobileOrTablet ? { width: `${videoPanelWidthVw}vw` } : undefined}
-                >
-                  {isVideoCallActive && (
-                    <div
-                      className="chat-video-resize-handle"
-                      role="separator"
-                      aria-label="Resize video panel"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setIsResizingVideoPanel(true);
-                      }}
-                    />
-                  )}
-                  {callState !== 'idle' && callType === 'video' ? (
-                    <>
-                      {callState === 'ringing_outgoing' && (
-                        <div className="chat-call-ui chat-call-ui--ringing">
-                          <div className="chat-call-ringing-anim" aria-hidden />
-                          <p className="chat-call-ui-text">Calling {selectedConv?.name ?? '...'}...</p>
-                          <button type="button" className="chat-call-btn chat-call-btn--danger" onClick={endCall} aria-label="Cancel call">
-                            <EndCallIcon /> Cancel
-                          </button>
-                        </div>
-                      )}
-                      {callState === 'ringing_incoming' && incomingCall && (
-                        <div className="chat-call-ui chat-call-ui--incoming">
-                          <p className="chat-call-ui-text">Incoming video call</p>
-                          <div className="chat-call-ui-actions">
-                            <button type="button" className="chat-call-btn chat-call-btn--danger" onClick={rejectCall} aria-label="Decline">
-                              <EndCallIcon /> Decline
-                            </button>
-                            <button type="button" className="chat-call-btn chat-call-btn--primary" onClick={acceptCall} aria-label="Accept">
-                              <VideoCallIcon /> Accept
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      {callState === 'active' && (
-                        <ActiveVideoCallView
-                          showScreenShare={showScreenShareLayout}
-                          screenStream={screenStream}
-                          remoteScreenStream={remoteScreenStream}
-                          localStream={localStream}
-                          remoteStream={remoteStream}
-                          isMuted={isMuted}
-                          isVideoOff={isVideoOff}
-                          isScreenSharing={isScreenSharing}
-                          onToggleMute={toggleMute}
-                          onToggleVideo={toggleVideo}
-                          onToggleScreenShare={toggleScreenShare}
-                          onEndCall={endCall}
-                        />
-                      )}
-                    </>
-                  ) : (
-                    <div className="chat-call-ui chat-call-ui--idle">
-                      <span className="chat-call-label">Video call</span>
-                      {selectedId && selectedConv && !selectedConv.isBlocked ? (
-                        <>
-                          <p className="chat-call-ui-text">Call {selectedConv.name}</p>
-                          <button type="button" className="chat-call-btn chat-call-btn--primary" onClick={() => startCall(selectedId, 'video')} disabled={callState !== 'idle'} aria-label="Start video call">
-                            <VideoCallIcon /> Start video call
-                          </button>
-                        </>
-                      ) : (
-                        <p className="chat-call-ui-text chat-call-ui-text--muted">Select a conversation to start a video call</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="chat-right-audio-section" id="chat-audio-section">
-                  {callState !== 'idle' && callType === 'audio' ? (
-                    <>
-                      {callState === 'ringing_outgoing' && (
-                        <div className="chat-call-ui chat-call-ui--ringing chat-call-ui--compact">
-                          <p className="chat-call-ui-text">Calling {selectedConv?.name ?? '...'}...</p>
-                          <button type="button" className="chat-call-btn chat-call-btn--danger chat-call-btn--sm" onClick={endCall} aria-label="Cancel">
-                            <EndCallIcon /> Cancel
-                          </button>
-                        </div>
-                      )}
-                      {callState === 'ringing_incoming' && incomingCall && (
-                        <div className="chat-call-ui chat-call-ui--incoming chat-call-ui--compact">
-                          <p className="chat-call-ui-text">Incoming audio call</p>
-                          <div className="chat-call-ui-actions">
-                            <button type="button" className="chat-call-btn chat-call-btn--danger chat-call-btn--sm" onClick={rejectCall} aria-label="Decline">
-                              Decline
-                            </button>
-                            <button type="button" className="chat-call-btn chat-call-btn--primary chat-call-btn--sm" onClick={acceptCall} aria-label="Accept">
-                              <AudioCallIcon /> Accept
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      {callState === 'active' && (
-                        <div className="chat-call-ui chat-call-ui--active chat-call-ui--compact">
-                          <p className="chat-call-ui-text">{callConversationId ? (conversations.find((c) => c.id === callConversationId)?.name ?? 'In call') : 'In call'}</p>
-                          <div className="chat-call-controls chat-call-controls--compact">
-                            <button type="button" className={`chat-call-ctrl-btn ${isMuted ? 'chat-call-ctrl-btn--on' : ''}`} onClick={toggleMute} aria-label={isMuted ? 'Unmute' : 'Mute'}>
-                              <MuteIcon />
-                            </button>
-                            <button type="button" className="chat-call-ctrl-btn chat-call-ctrl-btn--danger" onClick={endCall} aria-label="End call">
-                              <EndCallIcon />
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="chat-call-ui chat-call-ui--idle chat-call-ui--compact">
-                      <span className="chat-call-label">Audio call</span>
-                      {selectedId && selectedConv && !selectedConv.isBlocked ? (
-                        <button type="button" className="chat-call-btn chat-call-btn--primary chat-call-btn--sm" onClick={() => startCall(selectedId, 'audio')} disabled={callState !== 'idle'} aria-label="Start audio call">
-                          <AudioCallIcon /> Start audio call
-                        </button>
-                      ) : (
-                        <p className="chat-call-ui-text chat-call-ui-text--muted">Select a conversation to start an audio call</p>
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
               {activeTab === 'Group' && (

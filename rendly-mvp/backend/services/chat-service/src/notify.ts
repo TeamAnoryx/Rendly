@@ -85,3 +85,20 @@ export async function notifyMessage(
     }
   }
 }
+
+/** Mark the user's unread message notifications for one conversation as read. Best-effort. */
+export async function markMessageNotificationsRead(userId: string, conversationId: string): Promise<void> {
+  if (!supabase) return;
+  try {
+    const { error } = await supabase
+      .from("notifications")
+      .update({ read_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .eq("type", "message")
+      .eq("payload->>conversation_id", conversationId)
+      .is("read_at", null);
+    if (error) console.error("[notify] mark message notifications read error:", error);
+  } catch (err) {
+    console.error("[notify] mark message notifications read failed:", err);
+  }
+}

@@ -421,10 +421,11 @@ export async function getGroupLastRead(userId: string, groupId: string): Promise
 export async function setGroupRead(userId: string, groupId: string): Promise<void> {
   if (!supabase) return;
   const now = new Date().toISOString();
-  await supabase.from("user_group_read").upsert(
+  const { error } = await supabase.from("user_group_read").upsert(
     { user_id: userId, group_id: groupId, last_read_at: now, updated_at: now },
     { onConflict: "user_id,group_id" }
   );
+  if (error) throw new Error(`setGroupRead failed: ${error.message}`);
 }
 
 /** Count unread messages in a group for user. Uses RPC when available (no full message fetch); else falls back to getGroupMessages. */
@@ -438,9 +439,11 @@ export async function getGroupUnreadCount(userId: string, groupId: string): Prom
   }
   const lastReadAt = await getGroupLastRead(userId, groupId);
   const { messages } = await getGroupMessages(groupId, userId, 500);
-  if (!lastReadAt) return messages.length;
+  // Your own messages are never unread.
+  const fromOthers = messages.filter((m: WhisperMessage) => (m.sent_by_id ?? m.sender_id) !== userId);
+  if (!lastReadAt) return fromOthers.length;
   const t = new Date(lastReadAt).getTime();
-  return messages.filter((m: WhisperMessage & { created_at?: string }) => new Date(m.created_at ?? 0).getTime() > t).length;
+  return fromOthers.filter((m: WhisperMessage & { created_at?: string }) => new Date(m.created_at ?? 0).getTime() > t).length;
 }
 
 /** Get call logs for current user (whispers.call_logs). */
@@ -802,10 +805,12 @@ export async function setConversationFavorite(userId: string, otherUserId: strin
 /** Mark conversation read (last_read_at). */
 export async function setConversationRead(userId: string, otherUserId: string): Promise<void> {
   if (!supabase) return;
-  await supabase.from("user_conversation_meta").upsert(
-    { user_id: userId, other_user_id: otherUserId, last_read_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("user_conversation_meta").upsert(
+    { user_id: userId, other_user_id: otherUserId, last_read_at: now, updated_at: now },
     { onConflict: "user_id,other_user_id" }
   );
+  if (error) throw new Error(`setConversationRead failed: ${error.message}`);
 }
 
 /** List user ids that are connected to the given user (from connections table). */

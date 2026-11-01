@@ -7,7 +7,7 @@ import { CallProvider } from '@/context/CallContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
 import { SocketProvider } from '@/context/SocketContext';
 import { AppShell } from '@/components/shell/AppShell';
-import { IncomingCallOverlay } from './chat/IncomingCallOverlay';
+import { CallStage } from '@/components/call/CallStage';
 import './dashboard.css';
 
 function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
@@ -35,7 +35,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <NotificationsProvider>
           <CallProvider>
             <DashboardLayoutInner>{children}</DashboardLayoutInner>
-            <IncomingCallOverlay />
+            <CallStage />
           </CallProvider>
         </NotificationsProvider>
       </SocketProvider>

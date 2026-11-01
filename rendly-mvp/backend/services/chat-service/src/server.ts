@@ -8,7 +8,7 @@ import multer from "multer";
 import { requireAuth, type CurrentUser } from "./auth";
 import { attachSocketIo, broadcastMessageReceived, broadcastMessageDeleted, emitToUser, getOnlineUserIds } from "./ws";
 import { getUserById, getUsersByIds, supabase } from "./supabase-users";
-import { notifyMessage, notifyUsers } from "./notify";
+import { markMessageNotificationsRead, notifyMessage, notifyUsers } from "./notify";
 import {
   whisperConversationId,
   parseConversationId,
@@ -187,12 +187,19 @@ app.patch("/api/conversations/:id/read", requireAuth, async (req: express.Reques
     res.status(400).json({ message: "Invalid conversation" });
     return;
   }
-  if (parsed.type === "whisper") {
-    await setConversationRead(user.userId, parsed.otherUserId);
-  } else {
-    await setGroupRead(user.userId, parsed.groupId);
+  try {
+    if (parsed.type === "whisper") {
+      await setConversationRead(user.userId, parsed.otherUserId);
+    } else {
+      await setGroupRead(user.userId, parsed.groupId);
+    }
+    // Reading the conversation also clears its message notifications in the bell.
+    await markMessageNotificationsRead(user.userId, req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("PATCH /api/conversations/:id/read error:", err);
+    res.status(500).json({ message: "Failed to mark as read" });
   }
-  res.json({ ok: true });
 });
 
 // ---------- Messages ----------
