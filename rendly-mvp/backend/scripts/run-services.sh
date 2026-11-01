@@ -57,7 +57,43 @@ cmd_start() {
     )
     echo "started $name on port $port_value (log: $LOG_DIR/$name.log)"
   done
-  echo "give services ~30-60s to compile, then run: scripts/run-services.sh status"
+  wait_until_healthy
+}
+
+# Wait for each service started by "start" to answer /health with 200.
+# Fails fast if its process has exited, and prints the tail of its log.
+wait_until_healthy() {
+  local timeout_seconds="${START_TIMEOUT_SECONDS:-120}"
+  local failed=0
+  for entry in "${SERVICES[@]}"; do
+    IFS=: read -r name _ port_var port <<<"$entry"
+    port_value="${!port_var:-$port}"
+    pid_file="$RUN_DIR/$name.pid"
+    pid="$(cat "$pid_file" 2>/dev/null || echo "")"
+    waited=0
+    code=000
+    while [ "$waited" -lt "$timeout_seconds" ]; do
+      code="$(curl -s -o /dev/null -w '%{http_code}' -m 3 "http://localhost:$port_value/health" || true)"
+      if [ "$code" = "200" ]; then
+        echo "healthy  $name on port $port_value"
+        continue 2
+      fi
+      if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+        break
+      fi
+      sleep 2
+      waited=$((waited + 2))
+    done
+    failed=1
+    echo "FAILED   $name on port $port_value (last /health: $code)"
+    echo "         last log lines:"
+    tail -n 8 "$LOG_DIR/$name.log" 2>/dev/null | sed 's/^/           /'
+  done
+  if [ "$failed" -ne 0 ]; then
+    echo "one or more services did not start. Fix the errors above, then run: scripts/run-services.sh start"
+    return 1
+  fi
+  echo "all services healthy"
 }
 
 cmd_stop() {
