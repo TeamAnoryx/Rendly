@@ -465,6 +465,10 @@ export default function HuddleRoom({
   const sendChat = () => {
     const text = draft.trim();
     if (!text) return;
+    if (!websocket.isConnected()) {
+      setNotice('Not connected — your message was not sent. It will stay in the box until you reconnect.');
+      return;
+    }
     websocket.emit('huddle:chat', { huddle_id: huddleId, room: roomRef.current, text });
     setDraft('');
   };
