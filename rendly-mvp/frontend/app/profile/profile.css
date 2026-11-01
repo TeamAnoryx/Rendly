@@ -14,7 +14,7 @@
 .profile-setup-bg {
   position: fixed;
   inset: 0;
-  background: linear-gradient(135deg, #3b3355 0%, #507dbc 50%, #bbd1ea 100%);
+  background: linear-gradient(135deg, #5d39ef 0%, #896bff 50%, #191527 100%);
   z-index: 0;
   animation: profile-bg-fade 0.4s ease-out forwards;
 }
@@ -30,10 +30,10 @@
   width: 90%;
   max-width: 700px;
   margin: 24px auto;
-  background: #fefcfd;
-  border: 2px solid #dae3e5;
+  background: #100e1a;
+  border: 2px solid #161323;
   border-radius: 24px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.33);
   padding: 24px;
   overflow: auto;
   animation: profile-card-enter 0.5s ease-out forwards;
@@ -69,14 +69,14 @@
 }
 
 .profile-setup-card::-webkit-scrollbar-thumb {
-  background: #507dbc;
+  background: #896bff;
   border-radius: 3px;
 }
 
 .profile-welcome {
   font-family: var(--font-chillax), sans-serif;
   font-weight: 700;
-  color: #04080f;
+  color: #e9e4fa;
   font-size: 1.5rem;
   margin-bottom: 20px;
   text-align: center;
@@ -112,16 +112,16 @@
   width: 100px;
   height: 100px;
   border-radius: 50%;
-  border: 4px solid #3b3355;
-  background: #f2f5f9;
+  border: 4px solid #5d39ef;
+  background: #120f1c;
   object-fit: cover;
-  box-shadow: 0 10px 30px rgba(59, 51, 85, 0.2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.44);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .profile-avatar:hover {
   transform: scale(1.05);
-  box-shadow: 0 12px 36px rgba(59, 51, 85, 0.25);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
 }
 
 @media (min-width: 640px) {
@@ -142,8 +142,8 @@
   font-family: var(--font-chillax), sans-serif;
   font-weight: 700;
   font-size: 2rem;
-  color: #3b3355;
-  background: #e8ecf1;
+  color: #d0c7f5;
+  background: #13111f;
 }
 
 .profile-username-pill-wrap {
@@ -163,10 +163,10 @@
   font-family: var(--font-chillax), sans-serif;
   font-weight: 700;
   font-size: 1.125rem;
-  color: #04080f;
-  border: 2px solid rgba(254, 252, 253, 0.7);
-  box-shadow: 0 0 0 2px #507dbc;
-  background: linear-gradient(135deg, #e8ecf1 0%, #f2f5f9 50%, #e8ecf1 100%);
+  color: #e9e4fa;
+  border: 2px solid rgba(16, 14, 26, 0.7);
+  box-shadow: 0 0 0 2px #5a3dcf;
+  background: linear-gradient(135deg, #13111f 0%, #120f1c 50%, #13111f 100%);
   background-size: 200% 200%;
   animation: profile-username-pill-border 3s ease-in-out infinite;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -176,7 +176,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #3b3355;
+  color: #d0c7f5;
   animation: profile-username-icon-pulse 2s ease-in-out infinite;
 }
 
@@ -191,12 +191,12 @@
 
 .profile-username-pill:hover {
   transform: scale(1.03);
-  box-shadow: 0 0 0 3px #507dbc, 0 4px 12px rgba(59, 51, 85, 0.15);
+  box-shadow: 0 0 0 3px #5a3dcf, 0 4px 12px rgba(0, 0, 0, 0.33);
 }
 
 @keyframes profile-username-pill-border {
-  0%, 100% { background-position: 0% 50%; box-shadow: 0 0 0 2px #507dbc; }
-  50% { background-position: 100% 50%; box-shadow: 0 0 0 3px #6b8cce, 0 0 0 5px rgba(80, 125, 188, 0.3); }
+  0%, 100% { background-position: 0% 50%; box-shadow: 0 0 0 2px #5a3dcf; }
+  50% { background-position: 100% 50%; box-shadow: 0 0 0 3px #7961d8, 0 0 0 5px rgba(90, 61, 207, 0.3); }
 }
 
 @keyframes profile-username-icon-pulse {
@@ -207,7 +207,7 @@
 .profile-user-info {
   text-align: center;
   padding-bottom: 20px;
-  border-bottom: 1px solid #dae3e5;
+  border-bottom: 1px solid #161323;
   margin-bottom: 24px;
 }
 
@@ -222,13 +222,13 @@
 .profile-user-email-link {
   font-weight: 400;
   font-size: 0.875rem;
-  color: #04080f;
+  color: #e9e4fa;
   text-decoration: none;
   transition: color 0.2s, text-decoration 0.2s;
 }
 
 .profile-user-email-link:hover {
-  color: #507dbc;
+  color: #9785e0;
   text-decoration: underline;
 }
 
@@ -261,12 +261,12 @@
   height: 36px;
   padding: 0 14px 0 12px;
   border-radius: 9999px;
-  background: #bbf7d0;
-  color: #04080f;
+  background: #171425;
+  color: #e9e4fa;
   font-size: 0.8125rem;
   font-weight: 600;
   text-decoration: none;
-  border: 2px solid #22c55e;
+  border: 2px solid #26d968;
   box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.3);
   animation: profile-pill-border 2.5s ease-in-out infinite;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
@@ -275,11 +275,11 @@
 .profile-verified-pill:hover {
   transform: scale(1.04);
   box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.35);
-  border-color: #16a34a;
+  border-color: #1ee166;
 }
 
 .profile-verified-pill:focus-visible {
-  outline: 2px solid #04080f;
+  outline: 2px solid #5d39ef;
   outline-offset: 2px;
 }
 
@@ -287,32 +287,32 @@
   width: 20px;
   height: 20px;
   flex-shrink: 0;
-  color: #04080f;
+  color: #e9e4fa;
 }
 
 .profile-verified-pill-badge {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
-  color: #166534;
+  color: #d3caf6;
   animation: profile-badge-pulse 1.5s ease-in-out infinite;
 }
 
 .profile-verified-pill-linkedin {
-  background: #cce5ff;
-  border-color: #0a66c2;
-  box-shadow: 0 0 0 0 rgba(10, 102, 194, 0.25);
+  background: #151221;
+  border-color: #896bff;
+  box-shadow: 0 0 0 0 rgba(47, 10, 194, 0.25);
   animation: profile-pill-border-linkedin 2.5s ease-in-out infinite;
 }
 
 .profile-verified-pill-linkedin:hover {
-  box-shadow: 0 0 0 3px rgba(10, 102, 194, 0.35);
-  border-color: #004182;
+  box-shadow: 0 0 0 3px rgba(47, 10, 194, 0.35);
+  border-color: #5d39ef;
 }
 
 .profile-verified-pill-hover-url {
   font-size: 0.6875rem;
-  color: #5d5d81;
+  color: #a9a3bf;
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -333,8 +333,8 @@
 }
 
 @keyframes profile-pill-border-linkedin {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(10, 102, 194, 0.25); }
-  50% { box-shadow: 0 0 0 2px rgba(10, 102, 194, 0.4), 0 0 12px rgba(10, 102, 194, 0.3); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(47, 10, 194, 0.25); }
+  50% { box-shadow: 0 0 0 2px rgba(47, 10, 194, 0.4), 0 0 12px rgba(47, 10, 194, 0.3); }
 }
 
 @keyframes profile-badge-pulse {
@@ -349,7 +349,7 @@
   padding: 0 10px;
   border-radius: 9999px;
   background: #35ffff;
-  color: #04080f;
+  color: #e9e4fa;
   font-size: 0.75rem;
   font-weight: 600;
   animation: profile-fade-in 0.2s ease-out both;
@@ -413,7 +413,7 @@
 .profile-label {
   font-family: var(--font-chillax), sans-serif;
   font-weight: 600;
-  color: #04080f;
+  color: #e9e4fa;
   font-size: 0.9375rem;
   margin-bottom: 8px;
   display: flex;
@@ -430,22 +430,22 @@
 .profile-input {
   width: 100%;
   padding: 12px 16px;
-  border: 2px solid #dae3e5;
+  border: 2px solid #161323;
   border-radius: 12px;
   font-size: 1rem;
-  background: #fefcfd;
+  background: #100e1a;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
 .profile-input:focus {
   outline: none;
-  border-color: #507dbc;
-  box-shadow: 0 0 0 3px rgba(80, 125, 188, 0.2);
+  border-color: #896bff;
+  box-shadow: 0 0 0 3px rgba(90, 61, 207, 0.2);
 }
 
 .profile-input-wrap.has-error .profile-input {
-  background-color: #fef2f2;
-  border-color: #fecaca;
+  background-color: #110f1b;
+  border-color: #151222;
 }
 
 .profile-input-wrap.has-error .profile-input:focus {
@@ -471,15 +471,15 @@
 .profile-input-wrap-username {
   display: flex;
   align-items: center;
-  border: 2px solid #dae3e5;
+  border: 2px solid #161323;
   border-radius: 12px;
-  background: #fefcfd;
+  background: #100e1a;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
 .profile-input-wrap-username.has-error {
-  background-color: #fef2f2;
-  border-color: #fecaca;
+  background-color: #110f1b;
+  border-color: #151222;
 }
 
 .profile-input-wrap-username .profile-username-at-icon {
@@ -489,7 +489,7 @@
   padding-left: 14px;
   font-size: 1.0625rem;
   font-weight: 600;
-  color: #5d5d81;
+  color: #a9a3bf;
   flex-shrink: 0;
   pointer-events: none;
 }
@@ -515,8 +515,8 @@
 }
 
 .profile-input-wrap-username:focus-within {
-  border-color: #507dbc;
-  box-shadow: 0 0 0 3px rgba(80, 125, 188, 0.2);
+  border-color: #896bff;
+  box-shadow: 0 0 0 3px rgba(90, 61, 207, 0.2);
 }
 
 .profile-input-wrap-username.has-error:focus-within {
@@ -526,13 +526,13 @@
 
 .profile-input-username {
   font-size: 1.0625rem;
-  color: #04080f;
+  color: #e9e4fa;
 }
 
 .profile-username-copied-toast {
   margin-top: 6px;
   font-size: 0.8125rem;
-  color: #16a34a;
+  color: #78eda3;
   font-weight: 500;
   animation: profile-fade-in 0.2s ease-out;
 }
@@ -542,7 +542,7 @@
   left: 12px;
   width: 20px;
   height: 20px;
-  color: #3b3355;
+  color: #d0c7f5;
   pointer-events: none;
 }
 
@@ -550,7 +550,7 @@
   position: absolute;
   right: 8px;
   padding: 4px;
-  color: #5d5d81;
+  color: #a9a3bf;
   background: none;
   border: none;
   cursor: pointer;
@@ -562,8 +562,8 @@
 }
 
 .profile-input-suffix-btn:hover {
-  color: #3b3355;
-  background: #f2f5f9;
+  color: #d0c7f5;
+  background: #120f1c;
 }
 
 .profile-username-status {
@@ -576,16 +576,16 @@
 }
 
 .profile-username-status.checking {
-  color: #5d5d81;
+  color: #a9a3bf;
 }
 
 .profile-username-status.available {
-  color: #16a34a;
+  color: #78eda3;
 }
 
 .profile-username-status.taken,
 .profile-username-status.invalid {
-  color: #dc2626;
+  color: #ea7b7b;
 }
 
 .profile-helper {
@@ -600,8 +600,8 @@
   align-items: center;
   text-align: center;
   padding: 20px 16px;
-  background: #f2f5f9;
-  border: 2px solid #dae3e5;
+  background: #120f1c;
+  border: 2px solid #161323;
   border-radius: 12px;
   margin-top: 4px;
 }
@@ -613,8 +613,8 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: #e8ecf1;
-  color: #507dbc;
+  background: #13111f;
+  color: #9785e0;
   margin-bottom: 10px;
 }
 
@@ -627,13 +627,13 @@
   font-family: var(--font-chillax), sans-serif;
   font-weight: 600;
   font-size: 1rem;
-  color: #04080f;
+  color: #e9e4fa;
   margin: 0 0 4px 0;
 }
 
 .profile-password-set-desc {
   font-size: 0.875rem;
-  color: #5d5d81;
+  color: #a9a3bf;
   margin: 0;
 }
 
@@ -644,7 +644,7 @@
 .profile-password-reqs-title {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #5d5d81;
+  color: #a9a3bf;
   margin-bottom: 6px;
 }
 
@@ -658,11 +658,11 @@
 }
 
 .profile-password-req.met {
-  color: #16a34a;
+  color: #78eda3;
 }
 
 .profile-password-req.unmet {
-  color: #dc2626;
+  color: #ea7b7b;
 }
 
 .profile-pw-icon {
@@ -673,7 +673,7 @@
 }
 
 .profile-pw-icon.met {
-  color: #16a34a;
+  color: #78eda3;
 }
 
 .profile-pw-icon.met svg {
@@ -681,7 +681,7 @@
 }
 
 .profile-pw-icon.unmet {
-  color: #dc2626;
+  color: #ea7b7b;
 }
 
 .profile-pw-icon.unmet svg {
@@ -703,20 +703,20 @@
 .profile-intents-title {
   font-family: var(--font-chillax), sans-serif;
   font-weight: 700;
-  color: #04080f;
+  color: #e9e4fa;
   font-size: 1rem;
   margin-bottom: 4px;
 }
 
 .profile-intents-subtitle {
   font-size: 0.875rem;
-  color: #5d5d81;
+  color: #a9a3bf;
   margin-bottom: 12px;
 }
 
 .profile-intents-counter {
   font-size: 0.875rem;
-  color: #04080f;
+  color: #e9e4fa;
   margin-bottom: 12px;
 }
 
@@ -745,10 +745,10 @@
   gap: 8px;
   height: 50px;
   padding: 12px 16px;
-  border: 2px solid #dae3e5;
+  border: 2px solid #161323;
   border-radius: 9999px;
-  background: #f2f5f9;
-  color: #5d5d81;
+  background: #120f1c;
+  color: #a9a3bf;
   font-weight: 700;
   font-size: 0.9375rem;
   cursor: pointer;
@@ -757,7 +757,7 @@
 
 .profile-intent-btn:hover {
   transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 .profile-intent-btn:active {
@@ -766,9 +766,9 @@
 
 .profile-intent-btn.selected {
   color: #fefcfd;
-  border: 2px solid rgba(254, 252, 253, 0.6);
-  box-shadow: 0 0 0 2px #507dbc;
-  background: linear-gradient(135deg, #3b3355 0%, #507dbc 50%, #6b8cce 100%);
+  border: 2px solid rgba(16, 14, 26, 0.6);
+  box-shadow: 0 0 0 2px #5a3dcf;
+  background: linear-gradient(135deg, #5d39ef 0%, #896bff 50%, #896bff 100%);
   background-size: 200% 200%;
   animation: profile-intent-gradient 4s ease infinite;
 }
@@ -787,10 +787,10 @@
 .profile-textarea {
   width: 100%;
   padding: 12px 16px;
-  border: 2px solid #dae3e5;
+  border: 2px solid #161323;
   border-radius: 12px;
   font-size: 1rem;
-  background: #fefcfd;
+  background: #100e1a;
   resize: none;
   rows: 4;
   min-height: 96px;
@@ -799,8 +799,8 @@
 
 .profile-textarea:focus {
   outline: none;
-  border-color: #507dbc;
-  box-shadow: 0 0 0 3px rgba(80, 125, 188, 0.2);
+  border-color: #896bff;
+  box-shadow: 0 0 0 3px rgba(90, 61, 207, 0.2);
 }
 
 .profile-char-count {
@@ -811,7 +811,7 @@
 }
 
 .profile-char-count.warn {
-  color: #cb6497;
+  color: #d98cb2;
 }
 
 .profile-terms-row {
@@ -824,13 +824,13 @@
 .profile-checkbox {
   width: 20px;
   height: 20px;
-  border: 2px solid #dae3e5;
+  border: 2px solid #161323;
   border-radius: 6px;
-  background: #fefcfd;
+  background: #100e1a;
   cursor: pointer;
   flex-shrink: 0;
   transition: all 0.2s ease;
-  accent-color: #3b3355;
+  accent-color: #5d39ef;
 }
 
 .profile-checkbox:hover {
@@ -839,12 +839,12 @@
 
 .profile-terms-label {
   font-size: 0.875rem;
-  color: #5d5d81;
+  color: #a9a3bf;
   cursor: pointer;
 }
 
 .profile-terms-label a {
-  color: #3b3355;
+  color: #d0c7f5;
   text-decoration: none;
 }
 
@@ -854,7 +854,7 @@
 
 .profile-terms-error {
   font-size: 0.75rem;
-  color: #cb6497;
+  color: #d98cb2;
   margin-top: 4px;
 }
 
@@ -908,13 +908,13 @@
 }
 
 .profile-btn-primary {
-  background: #3b3355;
+  background: #5d39ef;
   color: #fefcfd;
 }
 
 .profile-btn-primary:hover:not(:disabled) {
   transform: scale(1.05);
-  box-shadow: 0 8px 24px rgba(59, 51, 85, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
 }
 
 .profile-btn-primary:active:not(:disabled) {
@@ -928,12 +928,12 @@
 
 .profile-btn-secondary {
   background: transparent;
-  color: #3b3355;
-  border: 2px solid #3b3355;
+  color: #d0c7f5;
+  border: 2px solid #5d39ef;
 }
 
 .profile-btn-secondary:hover {
-  background: rgba(59, 51, 85, 0.08);
+  background: rgba(255, 255, 255, 0.104);
 }
 
 .profile-btn-icon {
@@ -955,19 +955,19 @@
 
 .profile-message-error {
   background: rgba(203, 100, 151, 0.12);
-  color: #cb6497;
+  color: #d98cb2;
   border: 1px solid rgba(203, 100, 151, 0.3);
 }
 
 .profile-message-success {
   background: rgba(53, 255, 255, 0.15);
-  color: #0d7377;
+  color: #d1c8f5;
   border: 1px solid rgba(53, 255, 255, 0.4);
 }
 
 .profile-skeleton {
   height: 24px;
-  background: linear-gradient(90deg, #e8ecf1 25%, #f2f5f9 50%, #e8ecf1 75%);
+  background: linear-gradient(90deg, #13111f 25%, #120f1c 50%, #13111f 75%);
   background-size: 200% 100%;
   animation: profile-skeleton 1.2s ease-in-out infinite;
   border-radius: 6px;
@@ -977,7 +977,7 @@
   width: 100px;
   height: 100px;
   border-radius: 50%;
-  background: linear-gradient(90deg, #e8ecf1 25%, #f2f5f9 50%, #e8ecf1 75%);
+  background: linear-gradient(90deg, #13111f 25%, #120f1c 50%, #13111f 75%);
   background-size: 200% 100%;
   animation: profile-skeleton 1.2s ease-in-out infinite;
 }
@@ -992,7 +992,7 @@
   border: none;
   padding: 4px;
   cursor: pointer;
-  color: #5d5d81;
+  color: #a9a3bf;
   border-radius: 4px;
   display: flex;
   align-items: center;
@@ -1001,15 +1001,15 @@
 }
 
 .profile-copy-btn:hover {
-  color: #3b3355;
-  background: #f2f5f9;
+  color: #d0c7f5;
+  background: #120f1c;
 }
 
 .profile-spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid rgba(254, 252, 253, 0.3);
-  border-top-color: #fefcfd;
+  border: 2px solid rgba(16, 14, 26, 0.3);
+  border-top-color: #100e1a;
   border-radius: 50%;
   animation: profile-spin 0.7s linear infinite;
 }

@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import PointsCard from '@/components/points/PointsCard';
+import '../account.css';
 import Link from 'next/link';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import {
@@ -690,6 +692,7 @@ export default function DashboardProfilePage() {
       </div>
 
       <div className="dash-profile-right">
+        <PointsCard />
         <div className="dash-profile-card dash-profile-card-interactive">
           <h2 className="dash-profile-title-with-icon">
             <IconSearch />

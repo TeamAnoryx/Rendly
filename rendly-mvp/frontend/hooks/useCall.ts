@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import websocket from '@/services/websocket';
 import { chat } from '@/services/chat';
 
-const STUN_SERVER = 'stun:stun.l.google.com:19302';
+const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 export type CallState = 'idle' | 'ringing_outgoing' | 'ringing_incoming' | 'active';
 
@@ -19,8 +19,31 @@ export type UseCallOptions = {
   onCallEnded?: (conversationId: string) => void;
 };
 
+type EndStatus = 'completed' | 'missed' | 'rejected' | 'cancelled';
+type SdpPayload = { conversation_id: string; user_id: string; sdp: RTCSessionDescriptionInit };
+type IcePayload = { conversation_id: string; user_id: string; candidate: RTCIceCandidateInit };
+
+/** Turn a start-call failure into something the caller can act on. */
+export function describeCallError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : '';
+  if (/offline|not online|callee_offline/i.test(msg)) return msg || "They're offline right now, so the call can't be placed.";
+  if (/permission|NotAllowed/i.test(msg)) return 'Allow camera and microphone access to make calls.';
+  if (/NotFound|device/i.test(msg)) return 'No camera or microphone was found.';
+  return msg || 'The call could not be started.';
+}
+
+/**
+ * 1:1 audio/video calls over WebRTC, signalled through the chat socket.
+ *
+ * Remote media: the first remote stream is the peer's camera/mic. A screen share arrives as a
+ * second stream, and the sharer also sends call:screen with its stream id (and null when it
+ * stops), so the receiver can show camera and screen side by side and drop back to the camera
+ * view when sharing ends.
+ */
 export function useCall(currentUserId: string | null, options?: UseCallOptions) {
-  const { onCallEnded } = options ?? {};
+  const onCallEndedRef = useRef(options?.onCallEnded);
+  onCallEndedRef.current = options?.onCallEnded;
+
   const [callState, setCallState] = useState<CallState>('idle');
   const [callType, setCallType] = useState<'audio' | 'video'>('video');
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -33,392 +56,384 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenStream, setScreenStreamState] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
 
+  // Refs mirror state so socket handlers never act on stale values.
+  const stateRef = useRef<CallState>('idle');
+  const convRef = useRef<string | null>(null);
+  const logRef = useRef<string | null>(null);
+  const typeRef = useRef<'audio' | 'video'>('video');
   const pcRef = useRef<RTCPeerConnection | null>(null);
-  const callStartedAtRef = useRef<number | null>(null);
-  const isCallerRef = useRef<boolean>(false);
-  const screenStreamRef = useRef<MediaStream | null>(null);
-  const remoteScreenStreamRef = useRef<MediaStream | null>(null);
-  /** Single remote MediaStream; we add each incoming track here so audio+video stay in one stream. */
-  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const localRef = useRef<MediaStream | null>(null);
+  const screenRef = useRef<MediaStream | null>(null);
+  const screenSendersRef = useRef<RTCRtpSender[]>([]);
+  const cameraStreamIdRef = useRef<string | null>(null);
+  const remoteScreenIdRef = useRef<string | null>(null);
+  const remoteCamRef = useRef<MediaStream | null>(null);
+  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
+  const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
+  const startedAtRef = useRef<number | null>(null);
+  const isCallerRef = useRef(false);
+
+  const setState = (s: CallState) => {
+    stateRef.current = s;
+    setCallState(s);
+  };
+  const setConv = (id: string | null) => {
+    convRef.current = id;
+    setConversationId(id);
+  };
+  const setLog = (id: string | null) => {
+    logRef.current = id;
+    setCallLogId(id);
+  };
 
   const cleanupMedia = useCallback(() => {
-    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
-    screenStreamRef.current = null;
+    screenRef.current?.getTracks().forEach((t) => t.stop());
+    screenRef.current = null;
+    screenSendersRef.current = [];
+    pcRef.current?.close();
+    pcRef.current = null;
+    localRef.current?.getTracks().forEach((t) => t.stop());
+    localRef.current = null;
+    remoteCamRef.current = null;
+    remoteStreamsRef.current.clear();
+    cameraStreamIdRef.current = null;
+    remoteScreenIdRef.current = null;
+    pendingIceRef.current = [];
+    startedAtRef.current = null;
+    isCallerRef.current = false;
+    setLocalStream(null);
+    setRemoteStream(null);
     setScreenStreamState(null);
     setRemoteScreenStream(null);
     setIsScreenSharing(false);
-    if (pcRef.current) {
-      pcRef.current.close();
-      pcRef.current = null;
-    }
-    localStream?.getTracks().forEach((t) => t.stop());
-    setLocalStream(null);
-    setRemoteStream(null);
-    remoteStreamRef.current?.getTracks().forEach((t) => t.stop());
-    remoteStreamRef.current = null;
-    setCallState('idle');
-    setConversationId(null);
-    setCallLogId(null);
+    setIsMuted(false);
+    setIsVideoOff(false);
     setIncomingCall(null);
-    callStartedAtRef.current = null;
-  }, [localStream]);
+    setState('idle');
+    setConv(null);
+    setLog(null);
+  }, []);
 
-  const endCallWithLog = useCallback(
-    async (status: 'completed' | 'missed' | 'rejected' | 'cancelled') => {
-      const convId = conversationId;
-      const cid = callLogId;
-      const started = callStartedAtRef.current;
-      if (cid && currentUserId) {
-        const duration =
-          status === 'completed' && started != null ? Math.round((Date.now() - started) / 1000) : undefined;
-        try {
-          await chat.endCall(cid, status, duration);
-        } catch {
-          // best effort
-        }
-        if (convId) onCallEnded?.(convId);
-      }
+  const finish = useCallback(
+    async (status: EndStatus) => {
+      const convId = convRef.current;
+      const logId = logRef.current;
+      const started = startedAtRef.current;
       cleanupMedia();
+      if (logId && currentUserId) {
+        const duration = status === 'completed' && started != null ? Math.round((Date.now() - started) / 1000) : undefined;
+        try {
+          await chat.endCall(logId, status, duration);
+        } catch (err) {
+          console.warn('[call] could not record the call end', err);
+        }
+      }
+      if (convId) onCallEndedRef.current?.(convId);
     },
-    [conversationId, callLogId, currentUserId, onCallEnded, cleanupMedia]
+    [cleanupMedia, currentUserId]
   );
 
-  useEffect(() => {
-    const handleIncoming = (payload: IncomingCall) => {
-      setIncomingCall(payload);
-      setCallType((payload.call_type === 'audio' ? 'audio' : 'video') as 'audio' | 'video');
-      setConversationId(payload.conversation_id);
-      setCallLogId(payload.call_log_id);
-      setCallState('ringing_incoming');
-    };
-    const handleAccepted = (payload: { conversation_id: string; call_log_id: string | null }) => {
-      if (conversationId !== payload.conversation_id) return;
-      setCallLogId((prev) => prev ?? payload.call_log_id);
-      setCallState('active');
-      callStartedAtRef.current = Date.now();
-      isCallerRef.current = true; // we were ringing_outgoing, so we are the caller
-    };
-    const handleRejected = (payload: { conversation_id: string; call_log_id: string | null }) => {
-      if (conversationId !== payload.conversation_id) return;
-      endCallWithLog('rejected');
-    };
-    const handleEnded = (payload: { conversation_id: string; call_log_id: string | null; status: string }) => {
-      if (conversationId !== payload.conversation_id) return;
-      endCallWithLog((payload.status as 'completed' | 'missed' | 'rejected' | 'cancelled') || 'completed');
-    };
+  /** Decide which remote stream is camera and which is screen, then publish to state. */
+  const publishRemote = useCallback(() => {
+    const screenId = remoteScreenIdRef.current;
+    let cam: MediaStream | null = null;
+    let screen: MediaStream | null = null;
+    const cameraId = cameraStreamIdRef.current;
+    remoteStreamsRef.current.forEach((stream, id) => {
+      if (stream.getTracks().length === 0) return;
+      if (id === screenId) screen = stream;
+      else if (!cameraId || id === cameraId) cam = cam ?? stream;
+      else screen = screen ?? stream; // an extra stream without a marker is a screen share
+    });
+    // A fresh MediaStream object makes <video> elements pick up added tracks.
+    setRemoteStream(cam ? new MediaStream((cam as MediaStream).getTracks()) : null);
+    setRemoteScreenStream(screen);
+  }, []);
 
-    websocket.onCallIncoming(handleIncoming);
-    websocket.onCallAccepted(handleAccepted);
-    websocket.onCallRejected(handleRejected);
-    websocket.onCallEnded(handleEnded);
+  const createPeer = useCallback(
+    (convId: string): RTCPeerConnection => {
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      pcRef.current = pc;
+      pc.onicecandidate = (e) => {
+        if (e.candidate && currentUserId) websocket.emitWebrtcIceCandidate(convId, currentUserId, e.candidate.toJSON());
+      };
+      pc.ontrack = (e) => {
+        const stream = e.streams[0] ?? new MediaStream([e.track]);
+        if (!cameraStreamIdRef.current && stream.id !== remoteScreenIdRef.current) cameraStreamIdRef.current = stream.id;
+        remoteStreamsRef.current.set(stream.id, stream);
+        const refresh = () => publishRemote();
+        stream.onremovetrack = refresh;
+        stream.onaddtrack = refresh;
+        e.track.onended = refresh;
+        e.track.onunmute = refresh;
+        publishRemote();
+      };
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === 'failed') {
+          setCallError('The connection dropped.');
+          void finish('completed');
+        }
+      };
+      return pc;
+    },
+    [currentUserId, publishRemote, finish]
+  );
+
+  const getMedia = async (type: 'audio' | 'video'): Promise<MediaStream> => {
+    const stream = await navigator.mediaDevices.getUserMedia(type === 'video' ? { audio: true, video: true } : { audio: true });
+    localRef.current = stream;
+    setLocalStream(stream);
+    return stream;
+  };
+
+  const flushIce = async (pc: RTCPeerConnection) => {
+    const queued = pendingIceRef.current;
+    pendingIceRef.current = [];
+    for (const c of queued) await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => undefined);
+  };
+
+  // Signalling handlers. Registered once per user; they read refs, so they are never stale.
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    websocket.onCallIncoming((payload) => {
+      if (stateRef.current !== 'idle') {
+        // Busy: decline politely so the caller isn't left ringing.
+        websocket.emitCallReject(payload.conversation_id, payload.call_log_id ?? undefined);
+        return;
+      }
+      const type = payload.call_type === 'audio' ? 'audio' : 'video';
+      typeRef.current = type;
+      setCallType(type);
+      setIncomingCall(payload);
+      setConv(payload.conversation_id);
+      setLog(payload.call_log_id);
+      setState('ringing_incoming');
+    });
+
+    websocket.onCallAccepted(async (payload) => {
+      const convId = convRef.current;
+      if (!convId || convId !== payload.conversation_id || stateRef.current !== 'ringing_outgoing') return;
+      if (!logRef.current && payload.call_log_id) setLog(payload.call_log_id);
+      setState('active');
+      startedAtRef.current = Date.now();
+      try {
+        const pc = createPeer(convId);
+        const stream = await getMedia(typeRef.current);
+        stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        websocket.emitWebrtcOffer(convId, currentUserId, offer);
+      } catch (err) {
+        console.error('[call] caller setup failed', err);
+        setCallError(describeCallError(err));
+        websocket.emitCallEnd(convId, logRef.current ?? undefined, 'cancelled');
+        void finish('cancelled');
+      }
+    });
+
+    websocket.onCallRejected((payload) => {
+      if (convRef.current !== payload.conversation_id) return;
+      setCallError('The call was declined.');
+      void finish('rejected');
+    });
+
+    websocket.onCallEnded((payload) => {
+      if (convRef.current !== payload.conversation_id) return;
+      void finish((payload.status as EndStatus) || 'completed');
+    });
+
+    websocket.onWebrtcOffer(async (payload: SdpPayload) => {
+      const pc = pcRef.current;
+      if (!pc || payload.conversation_id !== convRef.current || payload.user_id === currentUserId || !payload.sdp) return;
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        await flushIce(pc);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        websocket.emitWebrtcAnswer(payload.conversation_id, currentUserId, answer);
+        publishRemote();
+      } catch (err) {
+        console.error('[call] handling offer failed', err);
+      }
+    });
+
+    websocket.onWebrtcAnswer(async (payload: SdpPayload) => {
+      const pc = pcRef.current;
+      if (!pc || payload.conversation_id !== convRef.current || payload.user_id === currentUserId || !payload.sdp) return;
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        await flushIce(pc);
+      } catch (err) {
+        console.error('[call] handling answer failed', err);
+      }
+    });
+
+    websocket.onWebrtcIceCandidate((payload: IcePayload) => {
+      if (payload.conversation_id !== convRef.current || payload.user_id === currentUserId || !payload.candidate) return;
+      const pc = pcRef.current;
+      if (!pc || !pc.remoteDescription) {
+        pendingIceRef.current.push(payload.candidate);
+        return;
+      }
+      pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => undefined);
+    });
+
+    const offScreen = websocket.on<{ conversation_id: string; stream_id: string | null }>('call:screen', (payload) => {
+      if (payload.conversation_id !== convRef.current) return;
+      remoteScreenIdRef.current = payload.stream_id;
+      if (!payload.stream_id) {
+        // Sharing stopped: forget every non-camera stream so the view returns to the camera.
+        remoteStreamsRef.current.forEach((_s, id) => {
+          if (id !== cameraStreamIdRef.current) remoteStreamsRef.current.delete(id);
+        });
+      }
+      publishRemote();
+    });
 
     return () => {
-      websocket.onCallIncoming(() => { });
-      websocket.onCallAccepted(() => { });
-      websocket.onCallRejected(() => { });
-      websocket.onCallEnded(() => { });
+      offScreen();
     };
-  }, [conversationId, endCallWithLog]);
+  }, [currentUserId, createPeer, finish, publishRemote]);
 
   const startCall = useCallback(
     async (convId: string, type: 'audio' | 'video') => {
-      if (!currentUserId) return;
+      if (!currentUserId || stateRef.current !== 'idle') return;
+      setCallError(null);
       isCallerRef.current = true;
+      typeRef.current = type;
+      setCallType(type);
+      setConv(convId);
+      setState('ringing_outgoing');
       try {
         const result = await chat.startCall(convId, type);
         const logId = result?.call_log_id ?? null;
-        setCallLogId(logId);
-        setConversationId(convId);
-        setCallType(type);
-        setCallState('ringing_outgoing');
-        setIncomingCall(null);
+        setLog(logId);
         websocket.emitCallStart(convId, type, currentUserId, logId ?? undefined);
-      } catch {
-        setCallState('idle');
-        isCallerRef.current = false;
+      } catch (err) {
+        setCallError(describeCallError(err));
+        cleanupMedia();
       }
     },
-    [currentUserId]
+    [currentUserId, cleanupMedia]
   );
 
   const acceptCall = useCallback(async () => {
     const inc = incomingCall;
     if (!inc || !currentUserId) return;
+    setCallError(null);
     isCallerRef.current = false;
     const convId = inc.conversation_id;
-    const type = (inc.call_type === 'audio' ? 'audio' : 'video') as 'audio' | 'video';
-    setCallState('active');
-    setConversationId(convId);
-    setCallLogId(inc.call_log_id);
+    const type = inc.call_type === 'audio' ? 'audio' : 'video';
     setIncomingCall(null);
-    callStartedAtRef.current = Date.now();
-    websocket.emitCallAccept(convId, currentUserId, inc.call_log_id ?? undefined);
-
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: STUN_SERVER }] });
-    pcRef.current = pc;
-
-    const stream = await navigator.mediaDevices.getUserMedia(type === 'video' ? { audio: true, video: true } : { audio: true });
-    setLocalStream(stream);
-    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-    pc.ontrack = (e) => {
-      const tr = e.track;
-      const displaySurface = tr.getSettings?.().displaySurface;
-      const isScreen = displaySurface === 'monitor' || displaySurface === 'browser';
-      if (isScreen) {
-        const str = e.streams[0];
-        if (str) {
-          setRemoteScreenStream(str);
-          const clearRemoteScreen = () => setRemoteScreenStream(null);
-          tr.onended = clearRemoteScreen;
-          str.getTracks().forEach((t) => { t.onended = clearRemoteScreen; });
-        }
-      } else {
-        if (!remoteStreamRef.current) remoteStreamRef.current = new MediaStream();
-        remoteStreamRef.current.addTrack(tr);
-        setRemoteStream(new MediaStream(remoteStreamRef.current.getTracks()));
-      }
-    };
-    pc.onicecandidate = (e) => {
-      if (e.candidate) websocket.emitWebrtcIceCandidate(convId, currentUserId, e.candidate.toJSON());
-    };
-
-    const offerHandler = async (payload: { conversation_id: string; user_id: string; sdp: RTCSessionDescriptionInit }) => {
-      if (payload.conversation_id !== convId || !payload.sdp) return;
-      try {
-        await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-        setTimeout(() => {
-          const stream = remoteScreenStreamRef.current;
-          if (
-            stream &&
-            (!stream.active ||
-              stream.getTracks().length === 0 ||
-              stream.getTracks().every((t) => t.readyState === 'ended'))
-          ) {
-            setRemoteScreenStream(null);
-          }
-        }, 150);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        websocket.emitWebrtcAnswer(convId, currentUserId, answer);
-      } catch (err) {
-        console.error('Accept call setRemoteDescription/createAnswer:', err);
-      }
-    };
-    websocket.onWebrtcOffer(offerHandler);
-
-    const iceHandler = (payload: { conversation_id: string; user_id: string; candidate: RTCIceCandidateInit }) => {
-      if (payload.conversation_id !== convId || !payload.candidate) return;
-      pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => { });
-    };
-    websocket.onWebrtcIceCandidate(iceHandler);
-
-    return () => {
-      websocket.onWebrtcOffer(() => { });
-      websocket.onWebrtcIceCandidate(() => { });
-    };
-  }, [incomingCall, currentUserId]);
+    setState('active');
+    startedAtRef.current = Date.now();
+    try {
+      // Peer and media must be ready before the caller's offer arrives.
+      const pc = createPeer(convId);
+      const stream = await getMedia(type);
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      websocket.emitCallAccept(convId, currentUserId, inc.call_log_id ?? undefined);
+    } catch (err) {
+      console.error('[call] accept failed', err);
+      setCallError(describeCallError(err));
+      websocket.emitCallReject(convId, inc.call_log_id ?? undefined);
+      void finish('rejected');
+    }
+  }, [incomingCall, currentUserId, createPeer, finish]);
 
   const rejectCall = useCallback(() => {
     const inc = incomingCall;
-    if (inc) {
-      websocket.emitCallReject(inc.conversation_id, inc.call_log_id ?? undefined, currentUserId ?? undefined);
-      if (inc.call_log_id && currentUserId) {
-        chat.endCall(inc.call_log_id, 'rejected').catch(() => { });
-      }
-    }
-    setIncomingCall(null);
-    setCallState('idle');
-    setConversationId(null);
-    setCallLogId(null);
-  }, [incomingCall, currentUserId]);
+    if (inc) websocket.emitCallReject(inc.conversation_id, inc.call_log_id ?? undefined);
+    void finish('rejected');
+  }, [incomingCall, finish]);
 
   const endCall = useCallback(() => {
-    const convId = conversationId;
-    if (convId) websocket.emitCallEnd(convId, callLogId ?? undefined, 'cancelled', currentUserId ?? undefined);
-    endCallWithLog(callState === 'ringing_outgoing' ? 'cancelled' : 'completed');
-  }, [conversationId, callLogId, callState, currentUserId, endCallWithLog]);
-
-  useEffect(() => {
-    if (callState !== 'active') return;
-    if (!isCallerRef.current) return; // callee already set up PC in acceptCall
-    if (pcRef.current) return; // already created (e.g. Strict Mode double-mount)
-    const convId = conversationId;
-    if (!convId || !currentUserId) return;
-
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: STUN_SERVER }] });
-    pcRef.current = pc;
-
-    const answerHandler = async (payload: { conversation_id: string; user_id: string; sdp: RTCSessionDescriptionInit }) => {
-      if (payload.conversation_id !== convId || payload.user_id === currentUserId || !payload.sdp) return;
-      try {
-        await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-      } catch (err) {
-        console.error('Caller setRemoteDescription answer:', err);
-      }
-    };
-    const offerHandler = async (payload: { conversation_id: string; user_id: string; sdp: RTCSessionDescriptionInit }) => {
-      if (payload.conversation_id !== convId || payload.user_id === currentUserId || !payload.sdp) return;
-      try {
-        await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        websocket.emitWebrtcAnswer(convId, currentUserId, answer);
-      } catch (err) {
-        console.error('Caller setRemoteDescription/createAnswer (renegotiation):', err);
-      }
-    };
-    const iceHandler = (payload: { conversation_id: string; user_id: string; candidate: RTCIceCandidateInit }) => {
-      if (payload.conversation_id !== convId || payload.user_id === currentUserId || !payload.candidate) return;
-      pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => { });
-    };
-    websocket.onWebrtcAnswer(answerHandler);
-    websocket.onWebrtcOffer(offerHandler);
-    websocket.onWebrtcIceCandidate(iceHandler);
-
-    let stream: MediaStream | null = null;
-    navigator.mediaDevices
-      .getUserMedia(callType === 'video' ? { audio: true, video: true } : { audio: true })
-      .then((s) => {
-        stream = s;
-        setLocalStream(s);
-        s.getTracks().forEach((track) => pc.addTrack(track, s));
-        pc.ontrack = (e) => {
-          const track = e.track;
-          const displaySurface = track.getSettings?.().displaySurface;
-          const isScreen = displaySurface === 'monitor' || displaySurface === 'browser';
-          if (isScreen) {
-            const stream = e.streams[0];
-            if (stream) {
-              setRemoteScreenStream(stream);
-              const clearRemoteScreen = () => setRemoteScreenStream(null);
-              track.onended = clearRemoteScreen;
-              stream.getTracks().forEach((t) => { t.onended = clearRemoteScreen; });
-            }
-          } else {
-            if (!remoteStreamRef.current) remoteStreamRef.current = new MediaStream();
-            remoteStreamRef.current.addTrack(track);
-            setRemoteStream(new MediaStream(remoteStreamRef.current.getTracks()));
-          }
-        };
-        pc.onicecandidate = (e) => {
-          if (e.candidate) websocket.emitWebrtcIceCandidate(convId, currentUserId, e.candidate.toJSON());
-        };
-        return pc.createOffer();
-      })
-      .then((offer) => {
-        if (!pcRef.current) return;
-        return pc.setLocalDescription(offer).then(() => {
-          websocket.emitWebrtcOffer(convId, currentUserId, offer);
-        });
-      })
-      .catch((err) => {
-        console.error('Caller getUserMedia/createOffer:', err);
-        endCallWithLog('cancelled');
-      });
-
-    return () => {
-      websocket.onWebrtcAnswer(() => { });
-      websocket.onWebrtcOffer(() => { });
-      websocket.onWebrtcIceCandidate(() => { });
-      stream?.getTracks().forEach((t) => t.stop());
-    };
-  }, [callState === 'active' ? conversationId : null, currentUserId, callType]);
+    const convId = convRef.current;
+    const status: EndStatus = stateRef.current === 'ringing_outgoing' ? 'cancelled' : 'completed';
+    if (convId) websocket.emitCallEnd(convId, logRef.current ?? undefined, status);
+    void finish(status);
+  }, [finish]);
 
   const toggleMute = useCallback(() => {
-    localStream?.getAudioTracks().forEach((t) => {
-      t.enabled = isMuted;
+    setIsMuted((m) => {
+      localRef.current?.getAudioTracks().forEach((t) => {
+        t.enabled = m;
+      });
+      return !m;
     });
-    setIsMuted((m) => !m);
-  }, [localStream, isMuted]);
+  }, []);
 
   const toggleVideo = useCallback(() => {
-    localStream?.getVideoTracks().forEach((t) => {
-      t.enabled = isVideoOff;
+    setIsVideoOff((off) => {
+      localRef.current?.getVideoTracks().forEach((t) => {
+        t.enabled = off;
+      });
+      return !off;
     });
-    setIsVideoOff((v) => !v);
-  }, [localStream, isVideoOff]);
+  }, []);
+
+  const renegotiate = useCallback(async () => {
+    const pc = pcRef.current;
+    const convId = convRef.current;
+    if (!pc || !convId || !currentUserId) return;
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    websocket.emitWebrtcOffer(convId, currentUserId, offer);
+  }, [currentUserId]);
+
+  const stopScreenShare = useCallback(async () => {
+    const pc = pcRef.current;
+    const stream = screenRef.current;
+    const convId = convRef.current;
+    if (!stream) return;
+    screenRef.current = null;
+    stream.getTracks().forEach((t) => t.stop());
+    if (pc) screenSendersRef.current.forEach((s) => pc.getSenders().includes(s) && pc.removeTrack(s));
+    screenSendersRef.current = [];
+    setScreenStreamState(null);
+    setIsScreenSharing(false);
+    if (convId) websocket.emitScreenShare(convId, null);
+    try {
+      await renegotiate();
+    } catch (err) {
+      console.error('[call] renegotiate after screen share failed', err);
+    }
+  }, [renegotiate]);
 
   const toggleScreenShare = useCallback(async () => {
     const pc = pcRef.current;
-    const convId = conversationId;
+    const convId = convRef.current;
     if (!pc || !convId || !currentUserId) return;
-
-    if (isScreenSharing && screenStreamRef.current) {
-      const stream = screenStreamRef.current;
-      const senders = pc.getSenders();
-      stream.getTracks().forEach((track) => {
-        const sender = senders.find((s) => s.track === track);
-        if (sender) pc.removeTrack(sender);
-      });
-      stream.getTracks().forEach((t) => t.stop());
-      screenStreamRef.current = null;
-      setScreenStreamState(null);
-      setIsScreenSharing(false);
-      try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        websocket.emitWebrtcOffer(convId, currentUserId, offer);
-      } catch (err) {
-        console.error('Screen share off renegotiate:', err);
-      }
+    if (screenRef.current) {
+      await stopScreenShare();
       return;
     }
-
     try {
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      screenStreamRef.current = screenStream;
-      setScreenStreamState(screenStream);
-      screenStream.getTracks().forEach((track) => pc.addTrack(track, screenStream));
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      screenRef.current = stream;
+      setScreenStreamState(stream);
       setIsScreenSharing(true);
-      screenStream.getTracks().forEach((track) => {
-        track.onended = () => {
-          if (screenStreamRef.current === screenStream) {
-            screenStreamRef.current = null;
-            setScreenStreamState(null);
-            setIsScreenSharing(false);
-            const senders = pc.getSenders();
-            screenStream.getTracks().forEach((t) => {
-              const sender = senders.find((s) => s.track === t);
-              if (sender) pc.removeTrack(sender);
-            });
-            pc.createOffer().then((offer) => pc.setLocalDescription(offer)).then(() => {
-              if (convId && currentUserId) websocket.emitWebrtcOffer(convId, currentUserId, pc.localDescription!);
-            }).catch(() => { });
-          }
-        };
+      // Announce first so the peer files the new stream as a screen, not a camera.
+      websocket.emitScreenShare(convId, stream.id);
+      screenSendersRef.current = stream.getTracks().map((t) => pc.addTrack(t, stream));
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+        if (screenRef.current === stream) void stopScreenShare();
       });
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      websocket.emitWebrtcOffer(convId, currentUserId, offer);
+      await renegotiate();
     } catch (err) {
-      console.error('Screen share getDisplayMedia:', err);
+      // Cancelling the browser picker lands here too; that is not an error worth showing.
+      if (!(err instanceof DOMException && err.name === 'NotAllowedError')) {
+        console.error('[call] screen share failed', err);
+        setCallError('Screen sharing failed.');
+      }
     }
-  }, [conversationId, currentUserId, isScreenSharing]);
+  }, [currentUserId, renegotiate, stopScreenShare]);
 
-  useEffect(() => {
-    remoteScreenStreamRef.current = remoteScreenStream;
-  }, [remoteScreenStream]);
-
-  // Fallback: clear remote screen when stream tracks end or stream inactive (presentee sees screen until we clear)
-  useEffect(() => {
-    const stream = remoteScreenStream;
-    if (!stream) return;
-    const id = setInterval(() => {
-      if (!stream.active) {
-        setRemoteScreenStream(null);
-        return;
-      }
-      const tracks = stream.getTracks();
-      const emptyOrAllEnded =
-        tracks.length === 0 || (tracks.length > 0 && tracks.every((t) => t.readyState === 'ended'));
-      if (emptyOrAllEnded) {
-        setRemoteScreenStream(null);
-      }
-    }, 100);
-    return () => clearInterval(id);
-  }, [remoteScreenStream]);
+  // Stop media if the provider unmounts mid-call (e.g. logout).
+  useEffect(() => () => cleanupMedia(), [cleanupMedia]);
 
   const showScreenShareLayout = (isScreenSharing && !!screenStream) || !!remoteScreenStream;
 
@@ -436,6 +451,8 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
     isMuted,
     isVideoOff,
     isScreenSharing,
+    callError,
+    clearCallError: () => setCallError(null),
     startCall,
     acceptCall,
     rejectCall,

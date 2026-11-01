@@ -1,7 +1,9 @@
 import type { Server as HttpServer } from "http";
 import { Server } from "socket.io";
 import { getCurrentUserFromRequest } from "./auth";
-import { parseConversationId } from "./db";
+import { isGroupMember, parseConversationId } from "./db";
+import { attachHuddleRoom } from "./huddle-room";
+import { attachSparkRoom } from "./spark-room";
 
 export type MessageReceivedPayload = {
   id: string;
@@ -79,13 +81,23 @@ export function attachSocketIo(httpServer: HttpServer): Server {
     const userId = (socket as import("socket.io").Socket & { userId?: string }).userId;
     if (!userId) return;
     socket.join(userId);
+    attachHuddleRoom(io!, socket, userId);
+    attachSparkRoom(socket, userId);
 
     const becameOnline = addPresence(userId, socket.id);
     if (becameOnline && io) io.emit("user:online", { user_id: userId });
 
-    socket.on("join:conversation", (data: { conversation_id?: string; user_id?: string }) => {
-      const convId = data?.conversation_id;
-      if (convId) socket.join(convId);
+    // Only parties to a whisper, or members of a group, may join its room (rooms carry message broadcasts).
+    socket.on("join:conversation", async (data: { conversation_id?: string; user_id?: string }) => {
+      const convId = typeof data?.conversation_id === "string" ? data.conversation_id : "";
+      const parsed = convId ? parseConversationId(convId, userId) : null;
+      if (!parsed) return;
+      try {
+        if (parsed.type === "group" && !(await isGroupMember(parsed.groupId, userId))) return;
+        socket.join(convId);
+      } catch (err) {
+        console.error("[ws] join:conversation check failed:", err);
+      }
     });
 
     socket.on("leave:conversation", (data: { conversation_id?: string }) => {
@@ -95,23 +107,23 @@ export function attachSocketIo(httpServer: HttpServer): Server {
 
     socket.on("typing:start", (data: { conversation_id?: string; user_id?: string }) => {
       const convId = data?.conversation_id;
-      if (convId) socket.to(convId).emit("typing:indicator", { conversation_id: convId, user_id: userId, typing: true });
+      if (convId && socket.rooms.has(convId)) socket.to(convId).emit("typing:indicator", { conversation_id: convId, user_id: userId, typing: true });
     });
 
     socket.on("typing:stop", (data: { conversation_id?: string; user_id?: string }) => {
       const convId = data?.conversation_id;
-      if (convId) socket.to(convId).emit("typing:indicator", { conversation_id: convId, user_id: userId, typing: false });
+      if (convId && socket.rooms.has(convId)) socket.to(convId).emit("typing:indicator", { conversation_id: convId, user_id: userId, typing: false });
     });
 
     socket.on("conversation:read", (data: { conversation_id?: string; user_id?: string }) => {
       const convId = data?.conversation_id;
-      if (convId) socket.to(convId).emit("conversation:read", { conversation_id: convId, user_id: userId });
+      if (convId && socket.rooms.has(convId)) socket.to(convId).emit("conversation:read", { conversation_id: convId, user_id: userId });
     });
 
     // ----- Call signaling (1:1 whisper only) -----
     socket.on("call:start", (data: { conversation_id?: string; call_type?: string; initiator_id?: string; call_log_id?: string }) => {
       const convId = data?.conversation_id;
-      const initiatorId = data?.initiator_id ?? userId;
+      const initiatorId = userId;
       if (!convId) return;
       const parsed = parseConversationId(convId, initiatorId);
       if (!parsed || parsed.type !== "whisper") return;
@@ -126,7 +138,7 @@ export function attachSocketIo(httpServer: HttpServer): Server {
 
     socket.on("call:accept", (data: { conversation_id?: string; user_id?: string; call_log_id?: string }) => {
       const convId = data?.conversation_id;
-      const calleeId = data?.user_id ?? userId;
+      const calleeId = userId;
       if (!convId) return;
       const parsed = parseConversationId(convId, calleeId);
       if (!parsed || parsed.type !== "whisper") return;
@@ -140,7 +152,7 @@ export function attachSocketIo(httpServer: HttpServer): Server {
 
     socket.on("call:reject", (data: { conversation_id?: string; call_log_id?: string; user_id?: string }) => {
       const convId = data?.conversation_id;
-      const rejecterId = data?.user_id ?? userId;
+      const rejecterId = userId;
       if (!convId) return;
       const parsed = parseConversationId(convId, rejecterId);
       if (!parsed || parsed.type !== "whisper") return;
@@ -150,7 +162,7 @@ export function attachSocketIo(httpServer: HttpServer): Server {
 
     socket.on("call:end", (data: { conversation_id?: string; call_log_id?: string; status?: string; user_id?: string }) => {
       const convId = data?.conversation_id;
-      const enderId = data?.user_id ?? userId;
+      const enderId = userId;
       if (!convId) return;
       const parsed = parseConversationId(convId, enderId);
       if (!parsed || parsed.type !== "whisper") return;
@@ -164,7 +176,7 @@ export function attachSocketIo(httpServer: HttpServer): Server {
 
     socket.on("webrtc:offer", (data: { conversation_id?: string; user_id?: string; sdp?: { type?: string; sdp?: string } }) => {
       const convId = data?.conversation_id;
-      const senderId = data?.user_id ?? userId;
+      const senderId = userId;
       if (!convId || !data?.sdp) return;
       const parsed = parseConversationId(convId, senderId);
       if (!parsed || parsed.type !== "whisper") return;
@@ -173,7 +185,7 @@ export function attachSocketIo(httpServer: HttpServer): Server {
 
     socket.on("webrtc:answer", (data: { conversation_id?: string; user_id?: string; sdp?: { type?: string; sdp?: string } }) => {
       const convId = data?.conversation_id;
-      const senderId = data?.user_id ?? userId;
+      const senderId = userId;
       if (!convId || !data?.sdp) return;
       const parsed = parseConversationId(convId, senderId);
       if (!parsed || parsed.type !== "whisper") return;
@@ -182,7 +194,7 @@ export function attachSocketIo(httpServer: HttpServer): Server {
 
     socket.on("webrtc:ice-candidate", (data: { conversation_id?: string; user_id?: string; candidate?: { candidate?: string; sdpMLineIndex?: number; sdpMid?: string } }) => {
       const convId = data?.conversation_id;
-      const senderId = data?.user_id ?? userId;
+      const senderId = userId;
       if (!convId || !data?.candidate) return;
       const parsed = parseConversationId(convId, senderId);
       if (!parsed || parsed.type !== "whisper") return;
@@ -191,6 +203,23 @@ export function attachSocketIo(httpServer: HttpServer): Server {
         user_id: senderId,
         candidate: data.candidate,
       });
+    });
+
+    // Presence snapshot for a list of users (the client's conversation list). Bounded.
+    socket.on("presence:query", (data: { user_ids?: unknown }, ack?: (res: { online: string[] }) => void) => {
+      if (typeof ack !== "function") return;
+      const ids = Array.isArray(data?.user_ids) ? data.user_ids.filter((x): x is string => typeof x === "string").slice(0, 500) : [];
+      ack({ online: ids.filter((id) => presenceByUser.has(id)) });
+    });
+
+    // Screen share marker: tells the peer which incoming stream is the shared screen (null = stopped).
+    socket.on("call:screen", (data: { conversation_id?: string; stream_id?: unknown }) => {
+      const convId = data?.conversation_id;
+      if (!convId) return;
+      const parsed = parseConversationId(convId, userId);
+      if (!parsed || parsed.type !== "whisper") return;
+      const streamId = typeof data?.stream_id === "string" ? data.stream_id.slice(0, 128) : null;
+      socket.to(parsed.otherUserId).emit("call:screen", { conversation_id: convId, stream_id: streamId });
     });
 
     socket.on("disconnect", () => {

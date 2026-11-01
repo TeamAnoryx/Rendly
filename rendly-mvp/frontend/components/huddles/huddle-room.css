@@ -1,0 +1,399 @@
+/* Huddle room: stage (grid or share + filmstrip), control bar and side panel. */
+
+.hr {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.hr--panel {
+  grid-template-columns: 1fr 340px;
+}
+
+.hr-stage {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hr-topline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hr-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40vw;
+}
+
+.hr-notice {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgba(20, 18, 38, 0.95);
+  border: 1px solid var(--rd-border-strong);
+  box-shadow: 0 16px 40px -16px rgba(0, 0, 0, 0.9);
+  animation: rd-pop 0.3s var(--rd-ease) both;
+  font-size: 0.88rem;
+}
+
+.hr-notice--error {
+  border-color: rgba(251, 113, 133, 0.5);
+}
+
+.hr-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.hr-grid--1 {
+  grid-template-columns: 1fr;
+}
+
+.hr-grid--2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.hr-grid--4 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.hr-grid--6 {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: 1fr 1fr;
+}
+
+.hr-grid--9 {
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 1fr;
+  overflow-y: auto;
+}
+
+.hr-tile {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 18px;
+  background: radial-gradient(circle at 50% 40%, #1d1a36, #0c0b16);
+  border: 1px solid var(--rd-border);
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.hr-tile--speaking {
+  border-color: rgba(34, 211, 238, 0.9);
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.6), 0 0 30px -6px rgba(34, 211, 238, 0.7);
+}
+
+.hr-tile video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: opacity 0.25s;
+}
+
+.hr-mirror {
+  transform: scaleX(-1);
+}
+
+.hr-tile-avatar {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.hr-tile-name {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  max-width: calc(100% - 20px);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hr-tile-name em {
+  font-style: normal;
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--rd-grad);
+}
+
+.hr-tile--screen {
+  background: #000;
+}
+
+.hr-share {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 10px;
+}
+
+.hr-filmstrip {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hr-filmstrip .hr-tile {
+  flex: none;
+  aspect-ratio: 16 / 10;
+}
+
+.hr-controls {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border-radius: 999px;
+  margin: 0 auto;
+  background: rgba(14, 13, 26, 0.85);
+  border: 1px solid var(--rd-border);
+  backdrop-filter: blur(16px);
+}
+
+.hr-controls .call-ctl {
+  position: relative;
+  width: 46px;
+  height: 46px;
+}
+
+.hr-controls .call-ctl:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.hr-controls-sep {
+  width: 1px;
+  height: 28px;
+  background: var(--rd-border-strong);
+}
+
+.hr-panel {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: rd-page-in 0.3s var(--rd-ease) both;
+}
+
+.hr-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--rd-border);
+}
+
+.hr-people,
+.hr-rooms,
+.hr-settings {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.hr-subhead {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--rd-muted);
+  margin-top: 6px;
+}
+
+.hr-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hr-person-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hr-person-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.hr-person-actions .rd-icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+
+.hr-award {
+  display: grid;
+  grid-template-columns: 80px 1fr auto;
+  gap: 6px;
+  margin: 6px 0 4px 40px;
+}
+
+.hr-chat {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.hr-chat-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.hr-chat-line p {
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  width: fit-content;
+  max-width: 100%;
+  word-break: break-word;
+}
+
+.hr-chat-line--me {
+  align-self: flex-end;
+  text-align: right;
+}
+
+.hr-chat-line--me p {
+  background: rgba(139, 108, 255, 0.3);
+  margin-left: auto;
+}
+
+.hr-chat-input {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--rd-border);
+}
+
+.hr-chat-input .rd-input {
+  flex: 1;
+}
+
+.hr-room {
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--rd-border);
+}
+
+.hr-room--here {
+  border-color: rgba(139, 108, 255, 0.6);
+}
+
+.hr-room-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hr-room-head strong {
+  flex: 1;
+}
+
+.hr-rooms-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.hr-rooms-row label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.hr-err {
+  color: var(--rd-danger);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 1024px) {
+  .hr--panel {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 45%;
+  }
+  .hr-share {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 120px;
+  }
+  .hr-filmstrip {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .hr-filmstrip .hr-tile {
+    height: 100%;
+  }
+}
+
+@media (max-width: 767px) {
+  .hr-grid--2 {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+  .hr-grid--4,
+  .hr-grid--6,
+  .hr-grid--9 {
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: minmax(140px, 1fr);
+    overflow-y: auto;
+  }
+  .hr-controls {
+    border-radius: 18px;
+    gap: 6px;
+  }
+  .hr-controls .call-ctl {
+    width: 40px;
+    height: 40px;
+  }
+  .hr-controls-sep {
+    display: none;
+  }
+  .hr-title {
+    max-width: 50vw;
+  }
+}

@@ -1,10 +1,16 @@
 import {
   buildInviteUrl,
   canAccessHuddle,
+  validateIntents,
+  validateInviteeIds,
+  validateDisplayName,
   huddleEndsAt,
-  inviteCodeMatches,
   isLive,
   isUuid,
+  rankTrending,
+  trendingScore,
+  TRENDING_LIST_SIZE,
+  TRENDING_WEIGHTS,
   parseCategory,
   requestOrigin,
   toPublicHuddle,
@@ -32,38 +38,28 @@ function huddle(overrides: Partial<HuddleRow> = {}): HuddleRow {
     invite_code: "secret-code",
     settings: {},
     created_at: "2026-11-01T00:00:00.000Z",
+    mode: "open",
+    waiting_room: false,
+    media_path: null,
+    media_type: null,
     ...overrides,
   };
 }
 
 describe("canAccessHuddle", () => {
   test("public huddles are open to anyone", () => {
-    expect(canAccessHuddle(huddle(), { viewerId: STRANGER, isParticipant: false })).toBe(true);
+    expect(canAccessHuddle(huddle(), { viewerId: STRANGER, isParticipant: false, isInvited: false })).toBe(true);
   });
 
-  test("private huddle denies a stranger without a code", () => {
-    expect(canAccessHuddle(huddle({ type: "private" }), { viewerId: STRANGER, isParticipant: false })).toBe(false);
+  test("private huddle denies a stranger", () => {
+    expect(canAccessHuddle(huddle({ type: "private" }), { viewerId: STRANGER, isParticipant: false, isInvited: false })).toBe(false);
   });
 
-  test("private huddle denies a stranger with a wrong code", () => {
-    const ctx = { viewerId: STRANGER, isParticipant: false, inviteCode: "wrong-code!" };
-    expect(canAccessHuddle(huddle({ type: "private" }), ctx)).toBe(false);
-  });
-
-  test("private huddle allows creator, participant and code holder", () => {
+  test("private huddle allows creator, participant and invitee", () => {
     const h = huddle({ type: "private" });
-    expect(canAccessHuddle(h, { viewerId: OWNER, isParticipant: false })).toBe(true);
-    expect(canAccessHuddle(h, { viewerId: STRANGER, isParticipant: true })).toBe(true);
-    expect(canAccessHuddle(h, { viewerId: STRANGER, isParticipant: false, inviteCode: "secret-code" })).toBe(true);
-  });
-});
-
-describe("inviteCodeMatches", () => {
-  test("rejects missing, non-string and empty codes", () => {
-    expect(inviteCodeMatches(null, "x")).toBe(false);
-    expect(inviteCodeMatches("abc", undefined)).toBe(false);
-    expect(inviteCodeMatches("abc", ["abc"])).toBe(false);
-    expect(inviteCodeMatches("abc", "")).toBe(false);
+    expect(canAccessHuddle(h, { viewerId: OWNER, isParticipant: false, isInvited: false })).toBe(true);
+    expect(canAccessHuddle(h, { viewerId: STRANGER, isParticipant: true, isInvited: false })).toBe(true);
+    expect(canAccessHuddle(h, { viewerId: STRANGER, isParticipant: false, isInvited: true })).toBe(true);
   });
 });
 
@@ -97,6 +93,12 @@ describe("validateCreateHuddleInput", () => {
         scheduled_at: null,
         duration_minutes: null,
         settings: {},
+        mode: "open",
+        waiting_room: false,
+        intents: [],
+        invitee_ids: [],
+        allow_self_exit: true,
+        rewards_enabled: false,
       },
     });
   });
@@ -157,10 +159,10 @@ describe("helpers", () => {
     expect(parseCategory("")).toBe("all");
   });
 
-  test("buildInviteUrl adds the code only for private huddles", () => {
+  test("buildInviteUrl is the plain huddle link, with no code", () => {
     expect(buildInviteUrl("https://app.test", huddle())).toBe(`https://app.test/dashboard/huddles/${huddle().id}`);
     expect(buildInviteUrl("https://app.test", huddle({ type: "private" }))).toBe(
-      `https://app.test/dashboard/huddles/${huddle().id}?code=secret-code`
+      `https://app.test/dashboard/huddles/${huddle().id}`
     );
     expect(buildInviteUrl("", huddle())).toBe("");
   });
@@ -208,5 +210,177 @@ describe("huddle lifecycle", () => {
   test("toPublicHuddle exposes ends_at as ISO, or null", () => {
     expect(toPublicHuddle(startedAt(), STRANGER, 0).ends_at).toBe("2026-11-01T12:30:00.000Z");
     expect(toPublicHuddle(huddle(), STRANGER, 0).ends_at).toBeNull();
+  });
+});
+
+describe("trending", () => {
+  const NOW = Date.parse("2026-11-01T12:00:00.000Z");
+  const hour = 60 * 60 * 1000;
+  const base = { visits: 0, seatJoins: 0, tagVelocity: 0, lastActivityMs: NOW - 5 * hour, createdMs: NOW - 2 * hour };
+
+  test("a busier huddle ranks above a quiet one", () => {
+    const activity = new Map([
+      ["busy", { ...base, visits: 10, seatJoins: 4, lastActivityMs: NOW - 60_000 }],
+      ["quiet", { ...base, visits: 1, seatJoins: 0 }],
+    ]);
+    const ranked = rankTrending(
+      [
+        { id: "quiet", createdMs: NOW - 2 * hour },
+        { id: "busy", createdMs: NOW - 2 * hour },
+      ],
+      activity,
+      NOW
+    );
+    expect(ranked.map((r) => r.id)).toEqual(["busy", "quiet"]);
+  });
+
+  test("a recently active huddle outranks an idle one with the same velocity", () => {
+    const activity = new Map([
+      ["fresh", { ...base, visits: 3, seatJoins: 1, lastActivityMs: NOW - 60_000 }],
+      ["stale", { ...base, visits: 3, seatJoins: 1, lastActivityMs: NOW - 10 * hour }],
+    ]);
+    const ranked = rankTrending(
+      [
+        { id: "stale", createdMs: NOW - 2 * hour },
+        { id: "fresh", createdMs: NOW - 2 * hour },
+      ],
+      activity,
+      NOW
+    );
+    expect(ranked[0].id).toBe("fresh");
+  });
+
+  test("velocities are normalised so the score stays between 0 and 1", () => {
+    const activity = new Map([["only", { ...base, visits: 50, seatJoins: 20, lastActivityMs: NOW }]]);
+    const [top] = rankTrending([{ id: "only", createdMs: NOW - hour }], activity, NOW);
+    expect(top.score).toBeGreaterThan(0);
+    expect(top.score).toBeLessThanOrEqual(1);
+  });
+
+  test("an old huddle with no recent activity scores near zero", () => {
+    const old = { visits: 0, seatJoins: 0, tagVelocity: 0, lastActivityMs: NOW - 100 * hour, createdMs: NOW - 100 * hour };
+    expect(trendingScore(old, { maxVisits: 0, maxSeatJoins: 0, maxTagVelocity: 0 }, NOW)).toBeLessThan(0.01);
+  });
+});
+
+describe("validateIntents", () => {
+  test("normalises tags and removes duplicates", () => {
+    expect(validateIntents(["#Hackathon", " ai ", "ai"])).toEqual({ ok: true, value: ["hackathon", "ai"] });
+  });
+
+  test("absent means none", () => {
+    expect(validateIntents(undefined)).toEqual({ ok: true, value: [] });
+  });
+
+  test.each([
+    [["has space"], "intents use"],
+    [["UPPER_CASE"], "intents use"],
+    [["a".repeat(31)], "intents use"],
+    [["1", "2", "3", "4", "5", "6"], "at most 5"],
+    [[42], "each intent"],
+    ["ai", "must be a list"],
+  ])("rejects %j", (raw, message) => {
+    const result = validateIntents(raw);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain(message);
+  });
+});
+
+describe("validateInviteeIds", () => {
+  test("accepts unique user ids", () => {
+    expect(validateInviteeIds([OWNER, OWNER, STRANGER])).toEqual({ ok: true, value: [OWNER, STRANGER] });
+  });
+
+  test("rejects non-uuids and over-long lists", () => {
+    expect(validateInviteeIds(["not-a-uuid"]).ok).toBe(false);
+    expect(validateInviteeIds(Array.from({ length: 51 }, () => OWNER)).ok).toBe(false);
+  });
+});
+
+describe("validateCreateHuddleInput room fields", () => {
+  const base = { title: "Launch", max_participants: 10 };
+
+  test("defaults to an open huddle with no waiting room, intents or invitees", () => {
+    const result = validateCreateHuddleInput(base, NOW);
+    expect(result.ok && result.value).toMatchObject({ mode: "open", waiting_room: false, intents: [], invitee_ids: [] });
+  });
+
+  test("accepts seminar mode, waiting room, intents and invitees", () => {
+    const result = validateCreateHuddleInput(
+      { ...base, mode: "seminar", waiting_room: true, intents: ["ai", "launch"], invitee_ids: [STRANGER] },
+      NOW
+    );
+    expect(result.ok && result.value).toMatchObject({
+      mode: "seminar",
+      waiting_room: true,
+      intents: ["ai", "launch"],
+      invitee_ids: [STRANGER],
+    });
+  });
+
+  test("rejects an unknown mode and a non-boolean waiting room", () => {
+    expect(validateCreateHuddleInput({ ...base, mode: "party" }, NOW).ok).toBe(false);
+    expect(validateCreateHuddleInput({ ...base, waiting_room: "yes" }, NOW).ok).toBe(false);
+  });
+});
+
+describe("trending by intent tag", () => {
+  const NOW = Date.parse("2026-11-01T12:00:00.000Z");
+  const hour = 60 * 60 * 1000;
+  const quiet = { visits: 0, seatJoins: 0, tagVelocity: 0, lastActivityMs: NOW - 5 * hour, createdMs: NOW - 2 * hour };
+
+  test("a huddle whose tag is busy ranks above an equal huddle on a quiet tag", () => {
+    const activity = new Map([
+      ["busy-tag", { ...quiet, tagVelocity: 20 }],
+      ["quiet-tag", { ...quiet, tagVelocity: 1 }],
+    ]);
+    const ranked = rankTrending(
+      [
+        { id: "quiet-tag", createdMs: NOW - 2 * hour },
+        { id: "busy-tag", createdMs: NOW - 2 * hour },
+      ],
+      activity,
+      NOW
+    );
+    expect(ranked[0].id).toBe("busy-tag");
+  });
+
+  test("the weights still sum to 1", () => {
+    const sum = Object.values(TRENDING_WEIGHTS).reduce((a, b) => a + b, 0);
+    expect(sum).toBeCloseTo(1, 10);
+  });
+
+  test("the trending list shows five huddles", () => {
+    expect(TRENDING_LIST_SIZE).toBe(5);
+  });
+});
+
+describe("huddle settings and display names", () => {
+  const base = { title: "Quiz night", max_participants: 10 };
+
+  test("self-exit defaults on and rewards default off", () => {
+    const r = validateCreateHuddleInput(base, NOW);
+    expect(r.ok && r.value).toMatchObject({ allow_self_exit: true, rewards_enabled: false });
+  });
+
+  test("the host can lock exits and turn rewards on", () => {
+    const r = validateCreateHuddleInput({ ...base, allow_self_exit: false, rewards_enabled: true }, NOW);
+    expect(r.ok && r.value).toMatchObject({ allow_self_exit: false, rewards_enabled: true });
+  });
+
+  test("non-boolean settings are rejected", () => {
+    expect(validateCreateHuddleInput({ ...base, rewards_enabled: "yes" }, NOW).ok).toBe(false);
+    expect(validateCreateHuddleInput({ ...base, allow_self_exit: 1 }, NOW).ok).toBe(false);
+  });
+
+  test("display names are trimmed, spaces collapsed, and empty means the username", () => {
+    expect(validateDisplayName("  Dr.   Afnan  ")).toEqual({ ok: true, value: "Dr. Afnan" });
+    expect(validateDisplayName("")).toEqual({ ok: true, value: null });
+    expect(validateDisplayName(undefined)).toEqual({ ok: true, value: null });
+  });
+
+  test("display names over 40 characters or not text are rejected", () => {
+    expect(validateDisplayName("x".repeat(41)).ok).toBe(false);
+    expect(validateDisplayName(42).ok).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import '@/styles/globals.css';
+import '@/styles/rendly-theme.css';
 import LoadingProviderClient from '@/components/common/LoadingProviderClient';
 
 const inter = Inter({
@@ -12,7 +13,7 @@ const inter = Inter({
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#fefcfd',
+  themeColor: '#07070d',
 };
 
 export const metadata: Metadata = {
@@ -32,7 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} style={{ colorScheme: 'dark' }}>
       <head>
         <meta charSet="utf-8" />
       </head>

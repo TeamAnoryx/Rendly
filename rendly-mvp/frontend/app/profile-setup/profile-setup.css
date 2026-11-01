@@ -16,7 +16,7 @@
 .ps-bg {
   position: fixed;
   inset: 0;
-  background: linear-gradient(145deg, #2d2640 0%, #4a6fa5 45%, #a8c5e0 100%);
+  background: linear-gradient(145deg, #5d39ef 0%, #896bff 45%, #896bff 100%);
   z-index: 0;
   animation: ps-bg-in 0.5s ease-out forwards;
 }
@@ -32,10 +32,10 @@
   width: 100%;
   max-width: 440px;
   max-height: min(90dvh, 720px);
-  background: #fefcfd;
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: #100e1a;
+  border: 1px solid rgba(16, 13, 25, 0.6);
   border-radius: 20px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.264), 0 0 0 1px rgba(0, 0, 0, 0.25);
   padding: clamp(20px, 4vw, 28px);
   overflow: auto;
   animation: ps-card-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -55,7 +55,7 @@
 .ps-title {
   font-size: clamp(1.25rem, 2.5vw, 1.4rem);
   font-weight: 700;
-  color: #0d1117;
+  color: #e5e0fa;
   text-align: center;
   margin: 0 0 20px;
   letter-spacing: -0.02em;
@@ -72,16 +72,16 @@
   height: 72px;
   border-radius: 50%;
   object-fit: cover;
-  border: 3px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 3px solid rgba(16, 13, 25, 0.9);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.33);
 }
 
 .ps-avatar-initials {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #4a6fa5, #6b8cbe);
-  color: #fff;
+  background: linear-gradient(135deg, #896bff, #896bff);
+  color: #ffffff;
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -96,7 +96,7 @@
 }
 
 .ps-email-link {
-  color: #4a6fa5;
+  color: #9785e0;
   font-size: 0.9rem;
   text-decoration: none;
   font-weight: 500;
@@ -113,14 +113,14 @@
   width: 32px;
   height: 32px;
   border: none;
-  background: rgba(74, 111, 165, 0.12);
+  background: rgba(137, 107, 255, 0.12);
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.2s, transform 0.15s;
 }
 
 .ps-copy-btn:hover {
-  background: rgba(74, 111, 165, 0.22);
+  background: rgba(137, 107, 255, 0.22);
 }
 
 .ps-copy-btn:active {
@@ -153,13 +153,13 @@
 }
 
 .ps-badge-gh {
-  background: rgba(13, 17, 23, 0.08);
-  color: #0d1117;
+  background: rgba(255, 255, 255, 0.104);
+  color: #e5e0fa;
 }
 
 .ps-badge-li {
-  background: rgba(0, 119, 181, 0.12);
-  color: #0066a1;
+  background: rgba(137, 107, 255, 0.12);
+  color: #896ef7;
 }
 
 .ps-badge-icon {
@@ -172,7 +172,7 @@
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-  color: #059669;
+  color: #6ef7cd;
 }
 
 .ps-field {
@@ -183,7 +183,7 @@
   display: block;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #24292f;
+  color: #dbd4f7;
   margin-bottom: 6px;
 }
 
@@ -193,24 +193,24 @@
   gap: 10px;
   padding: 0 14px;
   height: 44px;
-  background: #f6f8fa;
-  border: 1px solid #d0d7de;
+  background: #110f1b;
+  border: 1px solid #181426;
   border-radius: 10px;
   transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
 }
 
 .ps-input-wrap:focus-within {
-  border-color: #4a6fa5;
-  box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.18);
-  background: #fff;
+  border-color: #896bff;
+  box-shadow: 0 0 0 3px rgba(76, 48, 191, 0.18);
+  background: #100d19;
 }
 
 .ps-input-wrap.ps-input-error {
-  border-color: #cf222e;
+  border-color: #db2431;
 }
 
 .ps-input-wrap .ps-at {
-  color: #57606a;
+  color: #afaac4;
   font-weight: 600;
   font-size: 0.95rem;
 }
@@ -220,12 +220,12 @@
   border: none;
   background: transparent;
   font-size: 0.95rem;
-  color: #0d1117;
+  color: #e5e0fa;
   outline: none;
 }
 
 .ps-input::placeholder {
-  color: #8c959f;
+  color: #9791b2;
 }
 
 .ps-input-suffix {
@@ -238,13 +238,13 @@
   background: transparent;
   border-radius: 6px;
   cursor: pointer;
-  color: #57606a;
+  color: #afaac4;
   transition: color 0.2s, background 0.2s;
 }
 
 .ps-input-suffix:hover {
-  color: #0d1117;
-  background: rgba(0, 0, 0, 0.06);
+  color: #e5e0fa;
+  background: rgba(255, 255, 255, 0.078);
 }
 
 .ps-username-status {
@@ -256,16 +256,16 @@
 }
 
 .ps-username-status.checking {
-  color: #57606a;
+  color: #afaac4;
 }
 
 .ps-username-status.available {
-  color: #059669;
+  color: #6ef7cd;
 }
 
 .ps-username-status.taken,
 .ps-username-status.invalid {
-  color: #cf222e;
+  color: #e97c83;
 }
 
 .ps-password-reqs {
@@ -279,26 +279,26 @@
   align-items: center;
   gap: 8px;
   font-size: 0.8rem;
-  color: #57606a;
+  color: #afaac4;
 }
 
 .ps-password-req.met {
-  color: #059669;
+  color: #6ef7cd;
 }
 
 .ps-password-req.unmet {
-  color: #8c959f;
+  color: #9791b2;
 }
 
 .ps-helper {
   font-size: 0.78rem;
-  color: #57606a;
+  color: #afaac4;
   margin-top: 4px;
 }
 
 .ps-error {
   font-size: 0.85rem;
-  color: #cf222e;
+  color: #e97c83;
   margin-top: 8px;
   display: flex;
   align-items: center;
@@ -314,8 +314,8 @@
   height: 46px;
   border: none;
   border-radius: 12px;
-  background: linear-gradient(135deg, #4a6fa5, #5a7fb5);
-  color: #fff;
+  background: linear-gradient(135deg, #896bff, #896bff);
+  color: #ffffff;
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
@@ -328,7 +328,7 @@
 
 .ps-submit:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(74, 111, 165, 0.35);
+  box-shadow: 0 6px 20px rgba(76, 48, 191, 0.35);
 }
 
 .ps-submit:active:not(:disabled) {
@@ -343,8 +343,8 @@
 .ps-spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
+  border: 2px solid rgba(16, 13, 25, 0.3);
+  border-top-color: #100d19;
   border-radius: 50%;
   animation: ps-spin 0.7s linear infinite;
 }
@@ -354,7 +354,7 @@
 }
 
 .ps-skeleton {
-  background: linear-gradient(90deg, #eaeef2 25%, #f0f3f6 50%, #eaeef2 75%);
+  background: linear-gradient(90deg, #13101e 25%, #120f1d 50%, #13101e 75%);
   background-size: 200% 100%;
   animation: ps-shimmer 1.2s ease-in-out infinite;
   border-radius: 8px;
@@ -397,7 +397,7 @@
 }
 
 .ps-no-token p {
-  color: #57606a;
+  color: #afaac4;
   margin-bottom: 16px;
 }
 
@@ -407,8 +407,8 @@
   justify-content: center;
   padding: 10px 20px;
   border-radius: 10px;
-  background: #4a6fa5;
-  color: #fff;
+  background: #896bff;
+  color: #ffffff;
   font-weight: 600;
   text-decoration: none;
   font-size: 0.9rem;

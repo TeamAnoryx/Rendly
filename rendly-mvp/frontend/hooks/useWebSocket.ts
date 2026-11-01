@@ -31,13 +31,14 @@ export function useWebSocket() {
     }
   }, []);
 
+  // The connection is app-wide (opened by SocketProvider in the dashboard layout); this hook
+  // only makes sure it exists and tracks its status. It never disconnects on unmount, so
+  // leaving the chat page no longer drops calls and presence.
   useEffect(() => {
     const token = getStoredAuthToken();
-    if (token) connect();
-    return () => {
-      websocket.disconnect();
-      setIsConnected(false);
-    };
+    if (token) void connect();
+    setIsConnected(websocket.isConnected());
+    return websocket.onStatus(setIsConnected);
   }, [connect]);
 
   const sendMessage = useCallback(
@@ -79,13 +80,9 @@ export function useWebSocket() {
     websocket.onMessageDeleted(callback);
   }, []);
 
-  const onUserOnline = useCallback((callback: (payload: { user_id: string }) => void) => {
-    websocket.onUserOnline(callback);
-  }, []);
+  const onUserOnline = useCallback((callback: (payload: { user_id: string }) => void) => websocket.onUserOnline(callback), []);
 
-  const onUserOffline = useCallback((callback: (payload: { user_id: string }) => void) => {
-    websocket.onUserOffline(callback);
-  }, []);
+  const onUserOffline = useCallback((callback: (payload: { user_id: string }) => void) => websocket.onUserOffline(callback), []);
 
   const startTyping = useCallback((conversationId: string, userId: string) => {
     websocket.startTyping(conversationId, userId);

@@ -1,121 +1,218 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
-import type { CreateHuddlePayload, CreateHuddleResponse } from '@/services/huddlesApi';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CreateHuddlePayload, CreateHuddleResponse, HuddleMode } from '@/services/huddlesApi';
+import { HUDDLE_MODE_LABELS, uploadHuddleThumbnail, videoDurationSeconds } from '@/services/huddlesApi';
+import { getConnections, type Connection } from '@/services/connectionsApi';
 import { buildScheduledAt } from '@/lib/huddleSchedule';
+import { Icon } from '@/components/shell/Icon';
 
 type HuddleCreateProps = {
   onCreate: (payload: CreateHuddlePayload) => Promise<CreateHuddleResponse>;
   onCancel: () => void;
-  onSuccess: () => void;
+  onSuccess: (huddleId: string) => void;
 };
 
 const HUDDLE_TYPES = ['public', 'private', 'instant'] as const;
 const MAX_MEMBERS_OPTIONS = [10, 15, 20, 50] as const;
+const MODES: HuddleMode[] = ['open', 'seminar', 'hackathon', 'launch'];
+const MAX_INTENTS = 5;
+const INTENT_PATTERN = /^[a-z0-9][a-z0-9-]{0,29}$/;
+const PROMO_MAX_SECONDS = 15;
+const THUMB_MAX_BYTES = 30 * 1024 * 1024;
+const TYPE_HINT: Record<(typeof HUDDLE_TYPES)[number], string> = {
+  public: 'Anyone can find and join',
+  private: 'Only people you invite',
+  instant: 'Starts now, open to all',
+};
+
+/** Normalise one intent typed by the user: lowercase, no leading #, spaces become hyphens. */
+export function normaliseIntent(raw: string): string {
+  return raw.trim().toLowerCase().replace(/^#/, '').replace(/\s+/g, '-');
+}
+
+function Seg<T extends string | number>({ value, options, onChange, label, render }: { value: T; options: readonly T[]; onChange: (v: T) => void; label: string; render?: (v: T) => React.ReactNode }) {
+  return (
+    <div className="hc-seg" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button key={String(o)} type="button" role="radio" aria-checked={value === o} className={`hc-seg-btn ${value === o ? 'hc-seg-btn--on' : ''}`} onClick={() => onChange(o)}>
+          {render ? render(o) : String(o)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Switch({ checked, onChange, title, hint }: { checked: boolean; onChange: (v: boolean) => void; title: string; hint: string }) {
+  return (
+    <label className="hr-switch-row">
+      <span>
+        <strong>{title}</strong>
+        <span className="rd-small rd-muted">{hint}</span>
+      </span>
+      <input type="checkbox" className="hr-switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    </label>
+  );
+}
 
 export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCreateProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [type, setType] = useState<CreateHuddlePayload['type']>('public');
+  const [type, setType] = useState<(typeof HUDDLE_TYPES)[number]>('public');
   const [maxParticipants, setMaxParticipants] = useState<10 | 15 | 20 | 50>(10);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('12:00');
   const [durationMinutes, setDurationMinutes] = useState<number>(30);
-  const [chatPermission, setChatPermission] = useState<'view_only' | 'allow'>('view_only');
-  const [reportUsername, setReportUsername] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [mode, setMode] = useState<HuddleMode>('open');
+  const [waitingRoom, setWaitingRoom] = useState(false);
+  const [allowSelfExit, setAllowSelfExit] = useState(true);
+  const [rewards, setRewards] = useState(true);
+  const [intents, setIntents] = useState<string[]>([]);
+  const [intentDraft, setIntentDraft] = useState('');
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [inviteeIds, setInviteeIds] = useState<string[]>([]);
+  const [thumb, setThumb] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState<null | 'create' | 'upload'>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [createdInviteUrl, setCreatedInviteUrl] = useState<string | null>(null);
-  const [copySuccess, setCopySuccess] = useState(false);
+  const [created, setCreated] = useState<{ id: string; url: string; thumbError: string | null } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const thumbUrl = useMemo(() => (thumb ? URL.createObjectURL(thumb) : null), [thumb]);
+  useEffect(() => () => {
+    if (thumbUrl) URL.revokeObjectURL(thumbUrl);
+  }, [thumbUrl]);
 
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      setSubmitError(null);
-      const trimmedTitle = title.trim().replace(/^@/, '');
-      if (!trimmedTitle) {
-        setSubmitError('Huddle name is required');
-        return;
-      }
-      if (!MAX_MEMBERS_OPTIONS.includes(maxParticipants)) {
-        setSubmitError('Please select max members (10, 15, 20, or 50)');
-        return;
-      }
-      if (durationMinutes < 1 || durationMinutes > 30) {
-        setSubmitError('Duration must be between 1 and 30 minutes');
-        return;
-      }
-      setSubmitting(true);
+  useEffect(() => {
+    let cancelled = false;
+    getConnections()
+      .then((list) => !cancelled && setConnections(list))
+      .catch(() => undefined); // the huddle can still be created without invitees
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const addIntent = useCallback(() => {
+    const tag = normaliseIntent(intentDraft);
+    if (!tag) return;
+    if (!INTENT_PATTERN.test(tag)) {
+      setSubmitError('Intents use lowercase letters, digits and hyphens (30 characters at most)');
+      return;
+    }
+    if (intents.includes(tag)) {
+      setIntentDraft('');
+      return;
+    }
+    if (intents.length >= MAX_INTENTS) {
+      setSubmitError(`A huddle can have at most ${MAX_INTENTS} intents`);
+      return;
+    }
+    setSubmitError(null);
+    setIntents([...intents, tag]);
+    setIntentDraft('');
+  }, [intentDraft, intents]);
+
+  const pickThumb = async (file: File | undefined) => {
+    if (fileRef.current) fileRef.current.value = '';
+    if (!file) return;
+    setSubmitError(null);
+    if (file.size > THUMB_MAX_BYTES) {
+      setSubmitError('That file is larger than 30 MB.');
+      return;
+    }
+    if (file.type.startsWith('video/')) {
       try {
-        let scheduledAt: string | null = null;
-        if (date && time) {
-          scheduledAt = buildScheduledAt(date, time);
-          if (!scheduledAt) {
-            setSubmitError('Please enter a valid date and time');
-            setSubmitting(false);
-            return;
-          }
+        const secs = await videoDurationSeconds(file);
+        if (secs > PROMO_MAX_SECONDS + 0.5) {
+          setSubmitError(`Promo videos can be at most ${PROMO_MAX_SECONDS} seconds (this one is ${Math.round(secs)} s).`);
+          return;
         }
-        const result = await onCreate({
-          title: trimmedTitle,
-          description: description.trim() || null,
-          max_participants: maxParticipants,
-          type,
-          scheduled_at: scheduledAt,
-          duration_minutes: durationMinutes,
-          settings: { chat_permission: chatPermission },
-        });
-        setCreatedInviteUrl(result.invite_url);
-      } catch (err) {
-        setSubmitError(err instanceof Error ? err.message : 'Failed to create huddle');
-      } finally {
-        setSubmitting(false);
+      } catch {
+        setSubmitError('Could not read that video.');
+        return;
       }
-    },
-    [title, description, type, maxParticipants, date, time, durationMinutes, chatPermission, onCreate]
-  );
+    }
+    setThumb(file);
+  };
 
-  const handleCopyInvite = useCallback(() => {
-    if (!createdInviteUrl) return;
-    navigator.clipboard.writeText(createdInviteUrl).then(
-      () => {
-        setCopySuccess(true);
-        setTimeout(() => setCopySuccess(false), 2000);
-      },
-      () => {}
-    );
-  }, [createdInviteUrl]);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitError(null);
+    const trimmedTitle = title.trim().replace(/^@/, '');
+    if (!trimmedTitle) return setSubmitError('Give your huddle a name');
+    if (durationMinutes < 1 || durationMinutes > 30) return setSubmitError('Duration must be between 1 and 30 minutes');
+    let scheduledAt: string | null = null;
+    if (type !== 'instant' && date && time) {
+      scheduledAt = buildScheduledAt(date, time);
+      if (!scheduledAt) return setSubmitError('Please enter a valid date and time');
+    }
+    setSubmitting('create');
+    try {
+      const result = await onCreate({
+        title: trimmedTitle,
+        description: description.trim() || null,
+        max_participants: maxParticipants,
+        type,
+        scheduled_at: scheduledAt,
+        duration_minutes: durationMinutes,
+        settings: {},
+        mode,
+        waiting_room: waitingRoom,
+        allow_self_exit: allowSelfExit,
+        rewards_enabled: rewards,
+        intents,
+        invitee_ids: inviteeIds,
+      });
+      let thumbError: string | null = null;
+      if (thumb) {
+        setSubmitting('upload');
+        try {
+          await uploadHuddleThumbnail(result.id, thumb);
+        } catch (err) {
+          thumbError = err instanceof Error ? err.message : 'The thumbnail could not be uploaded';
+        }
+      }
+      setCreated({ id: result.id, url: result.invite_url, thumbError });
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to create huddle');
+    } finally {
+      setSubmitting(null);
+    }
+  };
 
-  const handleDone = useCallback(() => {
-    setCreatedInviteUrl(null);
-    onSuccess();
-  }, [onSuccess]);
-
-  if (createdInviteUrl) {
+  if (created) {
     return (
-      <div className="dash-huddles-create dash-huddles-create--success">
-        <h1 className="dash-huddles-create-title">Create Huddle</h1>
-        <div className="dash-huddles-create-invite-box">
-          <p className="dash-huddles-create-invite-label">Invite link</p>
-          <div className="dash-huddles-create-invite-row">
-            <input
-              type="text"
-              readOnly
-              value={createdInviteUrl}
-              className="dash-huddles-create-invite-input"
-              aria-label="Invite URL"
-            />
-            <button
-              type="button"
-              className="dash-huddles-create-invite-copy"
-              onClick={handleCopyInvite}
-              aria-label="Copy invite link"
-            >
-              {copySuccess ? 'Copied!' : 'Copy'}
-            </button>
-          </div>
-          <button type="button" className="dash-huddles-create-btn dash-huddles-create-btn--primary" onClick={handleDone}>
-            Done
+      <div className="hc hc--done rd-card">
+        <div className="hc-done-icon">
+          <Icon name="check" size={28} />
+        </div>
+        <h2 className="rd-h1">Your huddle is ready</h2>
+        <p className="rd-muted">Share the link{type === 'private' ? ' with the people you invited' : ''}.</p>
+        <div className="hc-link">
+          <input className="rd-input" readOnly value={created.url} aria-label="Huddle link" />
+          <button
+            type="button"
+            className="rd-btn"
+            onClick={() =>
+              navigator.clipboard.writeText(created.url).then(
+                () => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                },
+                () => undefined
+              )
+            }
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+        {created.thumbError ? <p className="hl-err rd-small">Thumbnail: {created.thumbError}. You can add it from the huddle page.</p> : null}
+        <div className="hc-actions">
+          <button type="button" className="rd-btn rd-btn--primary rd-btn--lg" onClick={() => onSuccess(created.id)}>
+            Open huddle
+          </button>
+          <button type="button" className="rd-btn rd-btn--ghost" onClick={onCancel}>
+            Back to huddles
           </button>
         </div>
       </div>
@@ -123,170 +220,129 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
   }
 
   return (
-    <div className="dash-huddles-create">
-      <h1 className="dash-huddles-create-title">Create Huddle</h1>
-      <form onSubmit={handleSubmit} className="dash-huddles-create-form">
-        <div className="dash-huddles-create-block">
-          <label className="dash-huddles-create-label" htmlFor="huddle-name">
-            Huddle:
-          </label>
-          <input
-            id="huddle-name"
-            type="text"
-            placeholder="@huddle-name"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="dash-huddles-create-input"
-          />
-          <label className="dash-huddles-create-label" htmlFor="huddle-desc">
-            Description:
-          </label>
-          <textarea
-            id="huddle-desc"
-            placeholder="Describe your huddle…"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="dash-huddles-create-textarea"
-            rows={3}
-          />
-        </div>
+    <form className="hc rd-card" onSubmit={handleSubmit}>
+      <header className="hc-head">
+        <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" onClick={onCancel}>
+          <Icon name="back" size={16} /> Back
+        </button>
+        <h2 className="rd-h2">New huddle</h2>
+        <button type="submit" className="rd-btn rd-btn--primary" disabled={!!submitting}>
+          {submitting ? <span className="rd-spinner" /> : <Icon name="plus" size={16} />}
+          {submitting === 'upload' ? 'Uploading…' : submitting ? 'Creating…' : 'Create'}
+        </button>
+      </header>
 
-        <div className="dash-huddles-create-columns">
-          <div className="dash-huddles-create-col">
-            <div className="dash-huddles-create-card">
-              <h3 className="dash-huddles-create-card-title">Huddle Type & Max Members</h3>
-              <label className="dash-huddles-create-label">Huddle Type:</label>
-              <div className="dash-huddles-create-options">
-                {HUDDLE_TYPES.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    className={`dash-huddles-create-opt ${type === t ? 'dash-huddles-create-opt--on' : ''}`}
-                    onClick={() => setType(t)}
-                  >
-                    {t.charAt(0).toUpperCase() + t.slice(1)}
-                  </button>
-                ))}
-              </div>
-              <label className="dash-huddles-create-label">Max members:</label>
-              <div className="dash-huddles-create-options">
-                {MAX_MEMBERS_OPTIONS.map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    className={`dash-huddles-create-opt ${maxParticipants === n ? 'dash-huddles-create-opt--on' : ''}`}
-                    onClick={() => setMaxParticipants(n)}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="dash-huddles-create-card">
-              <h3 className="dash-huddles-create-card-title">Invite to huddle</h3>
-              <p className="dash-huddles-create-hint">Link will appear after you schedule.</p>
-            </div>
-            <button
-              type="submit"
-              className="dash-huddles-create-btn dash-huddles-create-btn--primary"
-              disabled={submitting}
-            >
-              {submitting ? 'Scheduling…' : 'Schedule this huddle'}
-            </button>
-          </div>
-
-          <div className="dash-huddles-create-col">
-            <div className="dash-huddles-create-card">
-              <h3 className="dash-huddles-create-card-title">Huddle Scheduler</h3>
-              <label className="dash-huddles-create-label" htmlFor="huddle-date">
-                Date:
-              </label>
-              <input
-                id="huddle-date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="dash-huddles-create-input"
-              />
-              <label className="dash-huddles-create-label" htmlFor="huddle-time">
-                Time:
-              </label>
-              <div className="dash-huddles-create-time-row">
-                <input
-                  id="huddle-time"
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  className="dash-huddles-create-input"
-                />
-              </div>
-              <label className="dash-huddles-create-label" htmlFor="huddle-duration">
-                Duration: <span className="dash-huddles-create-hint">(max 30 min)</span>
-              </label>
-              <input
-                id="huddle-duration"
-                type="number"
-                min={1}
-                max={30}
-                value={durationMinutes}
-                onChange={(e) => setDurationMinutes(Number(e.target.value) || 30)}
-                className="dash-huddles-create-input"
-              />
-            </div>
-            <div className="dash-huddles-create-card">
-              <h3 className="dash-huddles-create-card-title">Admin permissions</h3>
-              <label className="dash-huddles-create-label">Chat:</label>
-              <div className="dash-huddles-create-options">
-                <button
-                  type="button"
-                  className={`dash-huddles-create-opt ${chatPermission === 'view_only' ? 'dash-huddles-create-opt--on' : ''}`}
-                  onClick={() => setChatPermission('view_only')}
-                >
-                  View only
-                </button>
-                <button
-                  type="button"
-                  className={`dash-huddles-create-opt ${chatPermission === 'allow' ? 'dash-huddles-create-opt--on' : ''}`}
-                  onClick={() => setChatPermission('allow')}
-                >
-                  Allow
-                </button>
-              </div>
-              <label className="dash-huddles-create-label">Report:</label>
-              <div className="dash-huddles-create-report-row">
-                <input
-                  type="text"
-                  placeholder="@username"
-                  value={reportUsername}
-                  onChange={(e) => setReportUsername(e.target.value)}
-                  className="dash-huddles-create-input"
-                />
-                <button type="button" className="dash-huddles-create-btn dash-huddles-create-btn--secondary">
-                  Report
-                </button>
-              </div>
-            </div>
-            <div className="dash-huddles-create-card dash-huddles-create-card--stats">
-              <h3 className="dash-huddles-create-card-title">Statistics</h3>
-              <p className="dash-huddles-create-stat">Total public clicks: 0</p>
-              <p className="dash-huddles-create-stat">Pre booked: 0 / {maxParticipants}</p>
-              <p className="dash-huddles-create-stat">Available huddle seats: {maxParticipants} / {maxParticipants}</p>
-              <p className="dash-huddles-create-stat">Traction: Level I, Level II, Level III</p>
-            </div>
-          </div>
-        </div>
-
-        {submitError && (
-          <p className="dash-huddles-create-error" role="alert">
-            {submitError}
-          </p>
-        )}
-        <div className="dash-huddles-create-actions">
-          <button type="button" className="dash-huddles-create-btn dash-huddles-create-btn--secondary" onClick={onCancel}>
-            Back
+      <div className="hc-body rd-scroll">
+        <div className="hc-col">
+          <button type="button" className="hc-thumb" onClick={() => fileRef.current?.click()} aria-label="Add a poster image or a 15-second promo video">
+            {thumb && thumbUrl ? (
+              thumb.type.startsWith('video/') ? (
+                <video src={thumbUrl} autoPlay muted loop playsInline />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={thumbUrl} alt="" />
+              )
+            ) : (
+              <span className="hc-thumb-empty">
+                <Icon name="upload" size={24} />
+                <strong>Poster or 15 s promo</strong>
+                <span className="rd-small rd-muted">JPG, PNG, WebP, MP4 or WebM · up to 30 MB</span>
+              </span>
+            )}
           </button>
+          <input ref={fileRef} type="file" hidden accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" onChange={(e) => void pickThumb(e.target.files?.[0])} />
+          {thumb ? (
+            <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" onClick={() => setThumb(null)}>
+              Remove thumbnail
+            </button>
+          ) : null}
+
+          <label className="rd-label" htmlFor="hc-title">
+            Name
+          </label>
+          <input id="hc-title" className="rd-input" value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Friday AI quiz night" />
+          <label className="rd-label" htmlFor="hc-desc">
+            Description
+          </label>
+          <textarea id="hc-desc" className="rd-textarea" rows={3} value={description} maxLength={500} onChange={(e) => setDescription(e.target.value)} placeholder="What will happen in this huddle?" />
+
+          <label className="rd-label" htmlFor="hc-intent">
+            Intents (up to {MAX_INTENTS})
+          </label>
+          <div className="hc-intents">
+            {intents.map((tag) => (
+              <button key={tag} type="button" className="rd-chip rd-chip--on" onClick={() => setIntents(intents.filter((t) => t !== tag))} aria-label={`Remove ${tag}`}>
+                #{tag} <Icon name="close" size={12} />
+              </button>
+            ))}
+            <input
+              id="hc-intent"
+              className="rd-input hc-intent-input"
+              value={intentDraft}
+              onChange={(e) => setIntentDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ',') {
+                  e.preventDefault();
+                  addIntent();
+                }
+              }}
+              placeholder="#ai, #design… press Enter"
+              disabled={intents.length >= MAX_INTENTS}
+            />
+          </div>
         </div>
-      </form>
-    </div>
+
+        <div className="hc-col">
+          <span className="rd-label">Who can join</span>
+          <Seg value={type} options={HUDDLE_TYPES} onChange={setType} label="Huddle type" render={(t) => <span className="hc-seg-txt"><strong>{t}</strong><small>{TYPE_HINT[t]}</small></span>} />
+          <span className="rd-label">Format</span>
+          <Seg value={mode} options={MODES} onChange={setMode} label="Format" render={(m) => HUDDLE_MODE_LABELS[m]} />
+          <span className="rd-label">Seats</span>
+          <Seg value={maxParticipants} options={MAX_MEMBERS_OPTIONS} onChange={setMaxParticipants} label="Max members" />
+
+          {type !== 'instant' ? (
+            <div className="hc-row3">
+              <label>
+                <span className="rd-label">Date</span>
+                <input type="date" className="rd-input" value={date} onChange={(e) => setDate(e.target.value)} />
+              </label>
+              <label>
+                <span className="rd-label">Time</span>
+                <input type="time" className="rd-input" value={time} onChange={(e) => setTime(e.target.value)} />
+              </label>
+              <label>
+                <span className="rd-label">Minutes</span>
+                <input type="number" min={1} max={30} className="rd-input" value={durationMinutes} onChange={(e) => setDurationMinutes(Number(e.target.value) || 30)} />
+              </label>
+            </div>
+          ) : null}
+
+          <div className="hc-switches">
+            <Switch checked={waitingRoom} onChange={setWaitingRoom} title="Waiting room" hint="You admit each person." />
+            <Switch checked={allowSelfExit} onChange={setAllowSelfExit} title="People can leave freely" hint="Turn off to control entry and exit yourself." />
+            <Switch checked={rewards} onChange={setRewards} title="Rewards" hint="Give points for quizzes and competitions." />
+          </div>
+
+          {connections.length ? (
+            <>
+              <span className="rd-label">Invite connections</span>
+              <div className="hc-invitees rd-scroll">
+                {connections.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={`rd-chip ${inviteeIds.includes(c.id) ? 'rd-chip--on' : ''}`}
+                    onClick={() => setInviteeIds((cur) => (cur.includes(c.id) ? cur.filter((x) => x !== c.id) : [...cur, c.id]))}
+                  >
+                    @{c.username ?? 'user'}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
+      {submitError ? <p className="hl-err hc-error" role="alert">{submitError}</p> : null}
+    </form>
   );
 }

@@ -1,0 +1,637 @@
+/* Huddles: list, create form and pre-join lobby. Fits the main area; inner regions scroll. */
+
+/* ---------- list ---------- */
+.hpage-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.hpage-head > div:first-child {
+  flex: 1;
+  min-width: 200px;
+}
+
+.hpage-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--rd-muted);
+}
+
+.hpage-filter .rd-input {
+  width: 220px;
+}
+
+.hpage-scroll {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 4px 2px 12px;
+}
+
+.hsec-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.hsec-empty {
+  margin-top: 10px;
+}
+
+.hgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.hcard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid var(--rd-border);
+  background: var(--rd-surface);
+  color: inherit;
+  text-decoration: none;
+  box-shadow: var(--rd-shadow);
+}
+
+.hcard:hover {
+  border-color: rgba(139, 108, 255, 0.5);
+  box-shadow: var(--rd-shadow), var(--rd-glow);
+}
+
+.hcard-badges {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.hcard-badges .rd-badge {
+  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.hcard-badges .rd-badge--live {
+  background: rgba(225, 29, 72, 0.85);
+  color: #fff;
+}
+
+.hcard-rank {
+  background: rgba(139, 108, 255, 0.85) !important;
+  color: #fff;
+}
+
+.hcard-body {
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hcard-body h3 {
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hcard-tags,
+.hl-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: #a995ff;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.hcard--create {
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 220px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  font: inherit;
+  border: 1.5px dashed rgba(139, 108, 255, 0.55);
+  background:
+    radial-gradient(70% 70% at 50% 30%, rgba(139, 108, 255, 0.22), transparent 70%),
+    var(--rd-surface);
+}
+
+.hcard-create-icon {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--rd-grad);
+  color: #fff;
+  box-shadow: var(--rd-glow);
+  margin-bottom: 4px;
+}
+
+.hcard-skel {
+  height: 230px;
+  border-radius: 20px;
+}
+
+/* Poster */
+.hp {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: #0d0c18;
+}
+
+.hp--large {
+  flex: none;
+  max-height: 42vh;
+  width: 100%;
+  border-radius: 20px;
+  border: 1px solid var(--rd-border);
+}
+
+.hp img,
+.hp video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hp-initial {
+  font-family: var(--font-chillax, var(--font-sans));
+  font-size: 3rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+/* ---------- create ---------- */
+.hc {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rd-border);
+}
+
+.hc-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  padding: 18px;
+}
+
+.hc-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hc-thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-height: 240px;
+  width: 100%;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1.5px dashed var(--rd-border-strong);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.hc-thumb img,
+.hc-thumb video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hc-thumb-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.hc-intents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.hc-intent-input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.hc-seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--rd-border);
+}
+
+.hc-seg-btn {
+  padding: 8px 6px;
+  border-radius: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--rd-text-2);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-transform: capitalize;
+  transition: background 0.2s, color 0.2s;
+}
+
+.hc-seg-btn--on {
+  background: rgba(139, 108, 255, 0.3);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(139, 108, 255, 0.6);
+}
+
+.hc-seg-txt {
+  display: flex;
+  flex-direction: column;
+}
+
+.hc-seg-txt small {
+  font-weight: 400;
+  font-size: 0.7rem;
+  color: var(--rd-muted);
+  text-transform: none;
+}
+
+.hc-row3 {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 0.8fr;
+  gap: 8px;
+}
+
+.hc-switches {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.hc-invitees {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 120px;
+}
+
+.hc-error {
+  padding: 0 18px 14px;
+}
+
+.hc--done {
+  margin: auto;
+  width: min(560px, 100%);
+  flex: none;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 28px;
+}
+
+.hc-done-icon {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(52, 211, 153, 0.18);
+  color: var(--rd-success);
+  animation: rd-pop 0.4s var(--rd-ease) both;
+}
+
+.hc-link {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.hc-link .rd-input {
+  flex: 1;
+}
+
+.hc-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Switch rows (shared with the room's host settings) */
+.hr-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--rd-border);
+  cursor: pointer;
+}
+
+.hr-switch-row > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.hr-switch {
+  appearance: none;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.hr-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.25s var(--rd-ease);
+}
+
+.hr-switch:checked {
+  background: var(--rd-primary);
+}
+
+.hr-switch:checked::after {
+  transform: translateX(18px);
+}
+
+.hr-switch:disabled {
+  opacity: 0.5;
+}
+
+/* ---------- lobby ---------- */
+.hl {
+  position: relative;
+}
+
+.hl-back {
+  align-self: flex-start;
+}
+
+.hl-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 20px;
+}
+
+.hl-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.hl-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.hl-desc {
+  color: var(--rd-text-2);
+  white-space: pre-wrap;
+}
+
+.hl-join {
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+}
+
+.hl-join-btn {
+  width: 100%;
+}
+
+.hl-preview {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  border-radius: 16px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 40%, #1d1a36, #0c0b16);
+  border: 1px solid var(--rd-border);
+}
+
+.hl-preview video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hl-preview-off {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--rd-muted);
+  text-align: center;
+  padding: 12px;
+}
+
+.hl-preview-stop {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+}
+
+.hl-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 30px 10px;
+  text-align: center;
+}
+
+.hl-host {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+
+.hl-host .rd-h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hl-host-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hl-confirm {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(251, 113, 133, 0.08);
+  border: 1px solid rgba(251, 113, 133, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hl-invite {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hl-invite-list {
+  max-height: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hl-invite-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.hl-ok {
+  color: var(--rd-success);
+}
+
+.hl-err {
+  color: var(--rd-danger);
+  font-size: 0.88rem;
+}
+
+.hl-room-page {
+  padding: 12px;
+}
+
+.hl-room-err {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(20, 10, 16, 0.9);
+}
+
+@media (max-width: 1024px) {
+  .hc-body {
+    grid-template-columns: 1fr;
+  }
+  .hl-grid {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .hl-info {
+    overflow: visible;
+  }
+}
+
+@media (max-width: 767px) {
+  .hpage {
+    overflow-y: auto;
+  }
+  .hpage-head {
+    gap: 10px;
+  }
+  .hpage-filter,
+  .hpage-filter .rd-input {
+    width: 100%;
+  }
+  .hpage-head > .rd-btn {
+    width: 100%;
+  }
+  .hpage-scroll {
+    overflow: visible;
+  }
+  .hgrid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .hcard--create {
+    min-height: 160px;
+  }
+  .hc-row3 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .hc-seg {
+    grid-auto-flow: row;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .hgrid {
+    grid-template-columns: 1fr;
+  }
+}

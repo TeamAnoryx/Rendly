@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   listHuddles,
   createHuddle,
@@ -13,27 +13,36 @@ import {
 
 export type { HuddleListItem, CreateHuddlePayload, CreateHuddleResponse };
 
-export function useHuddles() {
+export function useHuddles(intent: string | null = null) {
   const [data, setData] = useState<HuddlesListResponse>({ trendy: [], live: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Only the first load (or a new filter) shows the skeleton; background refreshes keep the list.
+  const loadedRef = useRef<string | null | undefined>(undefined);
   const fetchHuddles = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    const first = loadedRef.current !== intent;
+    if (first) setLoading(true);
     try {
-      const result = await listHuddles('all');
+      const result = await listHuddles('all', intent);
       setData(result);
+      setError(null);
+      loadedRef.current = intent;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load huddles');
-      setData({ trendy: [], live: [] });
+      if (first) setData({ trendy: [], live: [] });
     } finally {
-      setLoading(false);
+      if (first) setLoading(false);
     }
-  }, []);
+  }, [intent]);
 
   useEffect(() => {
     fetchHuddles();
+    // Keep the lists live without a manual refresh.
+    const timer = setInterval(() => {
+      fetchHuddles();
+    }, 15_000);
+    return () => clearInterval(timer);
   }, [fetchHuddles]);
 
   const create = useCallback(

@@ -52,7 +52,12 @@ cmd_start() {
       cd "$BACKEND_DIR/$dir"
       export "$port_var=$port_value" PORT="$port_value"
       # setsid gives each service its own process group so stop can end npx and its child.
-      setsid nohup npx ts-node src/server.ts >"$LOG_DIR/$name.log" 2>&1 &
+      # Git Bash on Windows has no setsid; fall back to plain nohup there.
+      if command -v setsid >/dev/null 2>&1; then
+        setsid nohup npx ts-node src/server.ts >"$LOG_DIR/$name.log" 2>&1 &
+      else
+        nohup npx ts-node src/server.ts >"$LOG_DIR/$name.log" 2>&1 &
+      fi
       echo $! >"$pid_file"
     )
     echo "started $name on port $port_value (log: $LOG_DIR/$name.log)"
