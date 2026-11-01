@@ -1626,8 +1626,11 @@ app.post("/api/huddles/:id/join", async (req, res) => {
       res.status(result.reason === "not_found" ? 404 : 409).json({ message: result.message });
       return;
     }
+    // The seat is taken; a failed name save must not turn that into an error.
     const displayName = validateDisplayName((req.body as { display_name?: unknown } | undefined)?.display_name);
-    if (displayName.ok && displayName.value) await setDisplayName(id, current.userId, displayName.value);
+    if (displayName.ok && displayName.value) {
+      await setDisplayName(id, current.userId, displayName.value).catch((err) => console.error("[huddles] display name not saved:", err));
+    }
     if (result.waiting) {
       res.status(202).json({ status: "waiting", huddle_id: id, message: "Waiting for the host to let you in" });
       return;
@@ -1677,11 +1680,32 @@ app.get("/api/huddles/:id/members", async (req, res) => {
       return;
     }
     const membership = await getMembership(req.params.id, current.userId);
-    if (!canManageHuddle(membership)) {
-      res.status(403).json({ message: "Only the host or a co-host can see the member list" });
+    if (canManageHuddle(membership)) {
+      res.json(await listMembers(req.params.id));
       return;
     }
-    res.json(await listMembers(req.params.id));
+    // Admitted participants see who is in the room (names for video tiles), not the waiting list.
+    if (membership?.admitted) {
+      const members = await listMembers(req.params.id);
+      res.json(
+        members
+          .filter((m) => m.admitted)
+          .map((m) => ({
+            user_id: m.user_id,
+            username: m.username,
+            avatar_url: m.avatar_url,
+            display_name: m.display_name,
+            role: m.role,
+            admitted: true,
+            can_speak: m.can_speak,
+            can_share_screen: m.can_share_screen,
+            is_muted: m.is_muted,
+            joined_at: m.joined_at,
+          }))
+      );
+      return;
+    }
+    res.status(403).json({ message: "Join the huddle to see who is here" });
   } catch (err) {
     console.error("GET /api/huddles/:id/members error:", err);
     res.status(500).json({ message: "Failed to load members" });

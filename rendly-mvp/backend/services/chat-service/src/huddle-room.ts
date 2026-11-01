@@ -15,10 +15,41 @@ export const MAIN_ROOM = "main";
 const ROOM_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,19}$/;
 const CHAT_MAX_LENGTH = 500;
 
-type Seat = { role: "host" | "co_host" | "participant"; can_speak: boolean };
+type Seat = { role: "host" | "co_host" | "participant"; can_speak: boolean; can_share_screen: boolean };
 
 /** roomKey -> userId -> socket ids. roomKey is "<huddleId>:<room>". */
 const rooms = new Map<string, Map<string, Set<string>>>();
+
+/** huddleId -> userId -> breakout room the host assigned (absent = main room). */
+const assignments = new Map<string, Map<string, string>>();
+
+/** huddleId -> userId -> stream id of the screen they are sharing (only for permitted sharers). */
+const screens = new Map<string, Map<string, string>>();
+
+function isManager(seat: Seat | null): boolean {
+  return !!seat && (seat.role === "host" || seat.role === "co_host");
+}
+
+/** Whether people may move between rooms and leave on their own (huddles.allow_self_exit). */
+async function selfExitAllowed(huddleId: string): Promise<boolean> {
+  if (!supabase) return true;
+  const { data, error } = await supabase.from("huddles").select("allow_self_exit").eq("id", huddleId).maybeSingle();
+  if (error) {
+    console.error("[huddle-room] allow_self_exit lookup failed:", error);
+    return true;
+  }
+  return (data as { allow_self_exit?: boolean } | null)?.allow_self_exit !== false;
+}
+
+/** Rooms of a huddle with the people in each. */
+function roomsOf(huddleId: string): { room: string; user_ids: string[] }[] {
+  const prefix = `${huddleId}:`;
+  const out: { room: string; user_ids: string[] }[] = [];
+  for (const [key, members] of rooms) {
+    if (key.startsWith(prefix)) out.push({ room: key.slice(prefix.length), user_ids: Array.from(members.keys()) });
+  }
+  return out;
+}
 
 /** Socket ids for a user in a room. */
 function socketsOf(roomKey: string, userId: string): string[] {
@@ -34,7 +65,7 @@ export async function seatFor(huddleId: string, userId: string): Promise<Seat | 
   if (!supabase) return null;
   const { data, error } = await supabase
     .from("huddle_participants")
-    .select("role, can_speak")
+    .select("role, can_speak, can_share_screen")
     .eq("huddle_id", huddleId)
     .eq("user_id", userId)
     .is("left_at", null)
@@ -92,7 +123,10 @@ export function attachHuddleRoom(io: Server, socket: Socket, userId: string): vo
     joined.delete(roomKey);
     socket.leave(roomKey);
     const wentAway = removeFromRoom(roomKey, userId, socket.id);
-    if (wentAway) io.to(roomKey).emit("huddle:peer-left", { user_id: userId });
+    if (wentAway) {
+      screens.get(roomKey.split(":")[0])?.delete(userId);
+      io.to(roomKey).emit("huddle:peer-left", { user_id: userId });
+    }
   };
 
   socket.on("huddle:join", async (data: { huddle_id?: unknown; room?: unknown }, ack?: (r: unknown) => void) => {
@@ -107,13 +141,69 @@ export function attachHuddleRoom(io: Server, socket: Socket, userId: string): vo
       ack?.({ ok: false, message: "You do not have a seat in this huddle" });
       return;
     }
+    // Hosts and co-hosts may enter any room (to peek). Others go to main or the room they were
+    // assigned; when the host controls entry and exit, they cannot leave an assigned room.
+    if (!isManager(seat)) {
+      const assigned = assignments.get(huddleId)?.get(userId) ?? MAIN_ROOM;
+      if (room !== assigned) {
+        const free = room === MAIN_ROOM && (await selfExitAllowed(huddleId));
+        if (!free) {
+          ack?.({ ok: false, message: "The host decides who moves between rooms" });
+          return;
+        }
+        assignments.get(huddleId)?.delete(userId);
+      }
+    }
     const key = roomKeyFor(huddleId, room);
     const peers = Array.from(rooms.get(key)?.keys() ?? []).filter((id) => id !== userId);
     addToRoom(key, userId, socket.id);
     joined.add(key);
     socket.join(key);
     socket.to(key).emit("huddle:peer-joined", { user_id: userId });
-    ack?.({ ok: true, room, peers, role: seat.role, can_speak: seat.can_speak });
+    const sharing = Object.fromEntries(
+      Array.from(screens.get(huddleId)?.entries() ?? []).filter(([id]) => peers.includes(id))
+    );
+    ack?.({ ok: true, room, peers, role: seat.role, can_speak: seat.can_speak, can_share_screen: seat.can_share_screen || isManager(seat), screens: sharing });
+  });
+
+  /** Host/co-host: the huddle's rooms and who is in each (for breakouts and peeking). */
+  socket.on("huddle:rooms", async (data: { huddle_id?: unknown }, ack?: (r: unknown) => void) => {
+    if (typeof ack !== "function" || !isUuidLike(data?.huddle_id)) return;
+    const seat = await seatFor(data.huddle_id, userId);
+    if (!isManager(seat)) {
+      ack({ ok: false, message: "Only the host can see all rooms" });
+      return;
+    }
+    ack({ ok: true, rooms: roomsOf(data.huddle_id) });
+  });
+
+  /**
+   * Screen share marker: stream_id while sharing, null when stopped. Only people the host allowed
+   * (or hosts/co-hosts) are announced; clients render only announced screen streams.
+   */
+  socket.on("huddle:screen", async (data: { huddle_id?: unknown; room?: unknown; stream_id?: unknown }, ack?: (r: unknown) => void) => {
+    const reply = typeof ack === "function" ? ack : () => undefined;
+    if (!isUuidLike(data?.huddle_id) || !validRoom(data?.room)) return;
+    const key = roomKeyFor(data.huddle_id, data.room);
+    if (!joined.has(key)) return;
+    const streamId = typeof data.stream_id === "string" ? data.stream_id.slice(0, 128) : null;
+    if (streamId) {
+      const seat = await seatFor(data.huddle_id, userId);
+      if (!seat || !(seat.can_share_screen || isManager(seat))) {
+        reply({ ok: false, message: "Ask the host for permission to share your screen" });
+        return;
+      }
+      let map = screens.get(data.huddle_id);
+      if (!map) {
+        map = new Map();
+        screens.set(data.huddle_id, map);
+      }
+      map.set(userId, streamId);
+    } else {
+      screens.get(data.huddle_id)?.delete(userId);
+    }
+    socket.to(key).emit("huddle:screen", { from: userId, stream_id: streamId });
+    reply({ ok: true });
   });
 
   socket.on("huddle:leave", (data: { huddle_id?: unknown; room?: unknown }) => {
@@ -169,8 +259,16 @@ export function attachHuddleRoom(io: Server, socket: Socket, userId: string): vo
       if (!actor || (actor.role !== "host" && actor.role !== "co_host")) return;
       const entries = Object.entries(data.assignments as Record<string, unknown>).slice(0, 200);
       const movedToBreakout: string[] = [];
+      let map = assignments.get(data.huddle_id);
+      if (!map) {
+        map = new Map();
+        assignments.set(data.huddle_id, map);
+      }
       for (const [targetId, room] of entries) {
         if (!isUuidLike(targetId) || !validRoom(room)) continue;
+        if (!(await seatFor(data.huddle_id, targetId))) continue; // only people with a seat here
+        if (room === MAIN_ROOM) map.delete(targetId);
+        else map.set(targetId, room);
         for (const sid of socketsByUser(io, targetId)) {
           io.to(sid).emit("huddle:assigned", { huddle_id: data.huddle_id, room });
         }

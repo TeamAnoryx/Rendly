@@ -1,392 +1,420 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
-  admitHuddleMember,
+  cancelHuddle,
+  deleteHuddle,
   getHuddle,
   HUDDLE_MODE_LABELS,
   inviteToHuddle,
   joinHuddle,
   leaveHuddle,
-  listHuddleMembers,
-  removeHuddleMember,
-  setHuddleWaitingRoom,
-  updateHuddleMember,
-  uploadHuddleMedia,
+  setHuddleDisplayName,
+  uploadHuddleThumbnail,
+  videoDurationSeconds,
   type HuddleDetail,
-  type HuddleMember,
 } from '@/services/huddlesApi';
 import { getConnections, type Connection } from '@/services/connectionsApi';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import HuddleRoom from '@/components/huddles/HuddleRoom';
+import { HuddlePoster } from '@/components/huddles/HuddleList';
+import { Icon } from '@/components/shell/Icon';
+import '../huddles.css';
 
-/** How often a waiting person checks whether the host has let them in. */
-const WAITING_POLL_MS = 5000;
+const WAITING_POLL_MS = 4000;
+const PROMO_MAX_SECONDS = 15;
+
+function whenLabel(h: HuddleDetail): string {
+  if (h.cancelled_at) return 'Cancelled';
+  if (h.started_at && !h.ended_at) return 'Live now';
+  if (h.ended_at) return 'Ended';
+  if (h.scheduled_at) return new Date(h.scheduled_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return 'Starts when people join';
+}
+
+/** Camera preview for the lobby. Asks for the camera only after the user opts in. */
+function Preview() {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => () => stream?.getTracks().forEach((t) => t.stop()), [stream]);
+  useEffect(() => {
+    if (ref.current) ref.current.srcObject = stream;
+  }, [stream]);
+  const start = async () => {
+    setErr(null);
+    try {
+      setStream(await navigator.mediaDevices.getUserMedia({ video: true, audio: false }));
+    } catch {
+      setErr('Camera blocked or unavailable. You can still join and listen.');
+    }
+  };
+  return (
+    <div className="hl-preview">
+      <video ref={ref} autoPlay playsInline muted className="hr-mirror" style={{ opacity: stream ? 1 : 0 }} />
+      {!stream ? (
+        <div className="hl-preview-off">
+          <Icon name="video-off" size={28} />
+          <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" onClick={start}>
+            Check my camera
+          </button>
+          {err ? <p className="rd-small rd-muted">{err}</p> : null}
+        </div>
+      ) : (
+        <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm hl-preview-stop" onClick={() => setStream(null)}>
+          Turn off preview
+        </button>
+      )}
+    </div>
+  );
+}
+
+function HostTools({ huddle, onChanged, onGone }: { huddle: HuddleDetail; onChanged: () => Promise<void>; onGone: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<'cancel' | 'delete' | null>(null);
+  const [connections, setConnections] = useState<Connection[] | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const run = async (key: string, fn: () => Promise<void>) => {
+    setBusy(key);
+    setErr(null);
+    setMsg(null);
+    try {
+      await fn();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Something went wrong');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onFile = (file: File | undefined) => {
+    if (!file) return;
+    void run('thumb', async () => {
+      if (file.type.startsWith('video/')) {
+        const secs = await videoDurationSeconds(file);
+        if (secs > PROMO_MAX_SECONDS + 0.5) throw new Error(`Promo videos can be at most ${PROMO_MAX_SECONDS} seconds (this one is ${Math.round(secs)} s).`);
+      }
+      await uploadHuddleThumbnail(huddle.id, file);
+      await onChanged();
+      setMsg('Thumbnail updated.');
+    });
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  return (
+    <section className="rd-card hl-host">
+      <h3 className="rd-h2">
+        <Icon name="settings" size={16} /> Host tools
+      </h3>
+      <div className="hl-host-row">
+        <button type="button" className="rd-btn rd-btn--sm" disabled={busy === 'thumb'} onClick={() => fileRef.current?.click()}>
+          {busy === 'thumb' ? <span className="rd-spinner" /> : <Icon name="upload" size={15} />} Poster or 15 s promo
+        </button>
+        <input ref={fileRef} type="file" hidden accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" onChange={(e) => onFile(e.target.files?.[0])} />
+        <button
+          type="button"
+          className="rd-btn rd-btn--sm"
+          onClick={() => {
+            if (connections) setConnections(null);
+            else getConnections().then(setConnections).catch(() => setConnections([]));
+          }}
+        >
+          <Icon name="user-plus" size={15} /> Invite
+        </button>
+        {!huddle.cancelled_at ? (
+          <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" onClick={() => setConfirm('cancel')}>
+            Cancel huddle
+          </button>
+        ) : null}
+        <button type="button" className="rd-btn rd-btn--danger rd-btn--sm" onClick={() => setConfirm('delete')}>
+          <Icon name="trash" size={15} /> Delete
+        </button>
+      </div>
+      {confirm ? (
+        <div className="hl-confirm" role="alertdialog">
+          <p>{confirm === 'cancel' ? 'Cancel this huddle? Invitees are told it was cancelled.' : 'Delete this huddle permanently? This cannot be undone.'}</p>
+          <div className="hl-host-row">
+            <button
+              type="button"
+              className="rd-btn rd-btn--danger rd-btn--sm"
+              disabled={!!busy}
+              onClick={() =>
+                run(confirm, async () => {
+                  if (confirm === 'cancel') {
+                    await cancelHuddle(huddle.id);
+                    setConfirm(null);
+                    await onChanged();
+                  } else {
+                    await deleteHuddle(huddle.id);
+                    onGone();
+                  }
+                })
+              }
+            >
+              {busy ? <span className="rd-spinner" /> : null} Yes, {confirm}
+            </button>
+            <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" onClick={() => setConfirm(null)}>
+              Keep it
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {connections ? (
+        <div className="hl-invite">
+          {connections.length === 0 ? (
+            <p className="rd-small rd-muted">No connections to invite yet.</p>
+          ) : (
+            <>
+              <div className="hl-invite-list rd-scroll">
+                {connections.map((c) => (
+                  <label key={c.id} className="hl-invite-item">
+                    <input type="checkbox" checked={picked.includes(c.id)} onChange={() => setPicked((p) => (p.includes(c.id) ? p.filter((x) => x !== c.id) : [...p, c.id]))} />
+                    @{c.username ?? 'user'}
+                  </label>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="rd-btn rd-btn--primary rd-btn--sm"
+                disabled={picked.length === 0 || busy === 'invite'}
+                onClick={() =>
+                  run('invite', async () => {
+                    const n = await inviteToHuddle(huddle.id, picked);
+                    setPicked([]);
+                    setMsg(`Invited ${n} ${n === 1 ? 'person' : 'people'}.`);
+                  })
+                }
+              >
+                Send invites
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
+      {msg ? <p className="rd-small hl-ok">{msg}</p> : null}
+      {err ? <p className="rd-small hl-err">{err}</p> : null}
+    </section>
+  );
+}
 
 export default function HuddleDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const huddleId = typeof params?.huddle_id === 'string' ? params.huddle_id : '';
   const inviteCode = useSearchParams()?.get('code') ?? null;
+  const { user } = useCurrentUser();
   const [huddle, setHuddle] = useState<HuddleDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
+  const [inRoom, setInRoom] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const [leaveError, setLeaveError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!huddleId) return;
-    const fresh = await getHuddle(huddleId, inviteCode);
-    setHuddle(fresh);
+    setHuddle(await getHuddle(huddleId, inviteCode));
   }, [huddleId, inviteCode]);
 
   useEffect(() => {
     if (!huddleId) {
       setLoading(false);
-      setError('Invalid huddle');
+      setError('This huddle link is not valid.');
       return;
     }
     reload()
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
+      .catch((e) => setError(e instanceof Error ? e.message : 'Could not load the huddle'))
       .finally(() => setLoading(false));
   }, [huddleId, reload]);
 
-  // Waiting people are checked every few seconds until the host lets them in.
+  useEffect(() => {
+    if (user?.username && !displayName) setDisplayName(user.username);
+  }, [user?.username, displayName]);
+
+  // The waiting room checks in until the host admits you, then you go straight in.
   const waiting = huddle?.is_waiting === true;
   useEffect(() => {
     if (!waiting) return;
-    const timer = setInterval(() => {
-      reload().catch(() => {});
+    const id = setInterval(() => {
+      reload().catch(() => undefined);
     }, WAITING_POLL_MS);
-    return () => clearInterval(timer);
+    return () => clearInterval(id);
   }, [waiting, reload]);
+  const wasWaiting = useRef(false);
+  useEffect(() => {
+    if (waiting) wasWaiting.current = true;
+    else if (wasWaiting.current && huddle?.is_participant) {
+      wasWaiting.current = false;
+      setInRoom(true);
+    }
+  }, [waiting, huddle?.is_participant]);
 
-  const run = useCallback(
-    async (action: () => Promise<void>, failure: string) => {
-      setBusy(true);
-      setError(null);
-      try {
-        await action();
-        await reload();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : failure);
-      } finally {
-        setBusy(false);
+  const join = async () => {
+    if (!huddle) return;
+    setJoining(true);
+    setError(null);
+    const name = displayName.trim().replace(/\s+/g, ' ').slice(0, 40);
+    try {
+      if (huddle.is_participant) {
+        if (name) await setHuddleDisplayName(huddle.id, name).catch(() => undefined);
+      } else {
+        const res = await joinHuddle(huddle.id, inviteCode, name || null);
+        if (res.status === 'waiting') {
+          await reload();
+          return;
+        }
       }
-    },
-    [reload]
-  );
+      await reload();
+      setInRoom(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not join');
+    } finally {
+      setJoining(false);
+    }
+  };
 
-  const handleJoin = useCallback(() => {
-    run(async () => {
-      const result = await joinHuddle(huddleId, inviteCode);
-      setMessage(result.status === 'waiting' ? 'Waiting for the host to let you in.' : null);
-    }, 'Failed to join');
-  }, [huddleId, inviteCode, run]);
+  const leave = async () => {
+    if (!huddle) return;
+    setLeaveError(null);
+    try {
+      await leaveHuddle(huddle.id);
+      setInRoom(false);
+      await reload();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not leave';
+      setLeaveError(msg);
+    }
+  };
 
-  const handleLeave = useCallback(() => {
-    run(async () => {
-      await leaveHuddle(huddleId);
-      setMessage(null);
-    }, 'Failed to leave');
-  }, [huddleId, run]);
+  const endForAll = async () => {
+    if (!huddle || !window.confirm('End this huddle for everyone?')) return;
+    try {
+      await cancelHuddle(huddle.id);
+    } catch (e) {
+      setLeaveError(e instanceof Error ? e.message : 'Could not end the huddle');
+      return;
+    }
+    router.push('/dashboard/huddles');
+  };
 
-  if (loading) return <div className="dash-huddles-root"><div className="dash-huddles-loading">Loading…</div></div>;
-  if (error && !huddle) return <div className="dash-huddles-root"><div className="dash-huddles-error">{error}</div><Link href="/dashboard/huddles">Back to Huddles</Link></div>;
-  if (!huddle) return null;
+  if (loading) {
+    return (
+      <div className="rd-page">
+        <div className="rd-loader-screen">
+          <span className="rd-spinner rd-spinner--lg" />
+          <p className="rd-muted">Loading huddle…</p>
+        </div>
+      </div>
+    );
+  }
 
-  const isHost = huddle.your_role === 'host';
-  const canManage = huddle.your_role === 'host' || huddle.your_role === 'co_host';
+  if (!huddle) {
+    return (
+      <div className="rd-page">
+        <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm hl-back" onClick={() => router.push('/dashboard/huddles')}>
+          <Icon name="back" size={16} /> Huddles
+        </button>
+        <div className="rd-loader-screen">
+          <Icon name="huddle" size={36} />
+          <p>{error ?? 'Huddle not found.'}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (inRoom && huddle.is_participant) {
+    const canLeave = huddle.your_role === 'host' || huddle.your_role === 'co_host' || huddle.allow_self_exit !== false;
+    return (
+      <div className="rd-page hl-room-page">
+        {leaveError ? <p className="hl-err hl-room-err">{leaveError}</p> : null}
+        <HuddleRoom huddle={huddle} onLeave={() => void leave()} onEnd={huddle.your_role === 'host' ? () => void endForAll() : undefined} canLeave={canLeave} />
+      </div>
+    );
+  }
+
+  const isOwner = huddle.is_owner || huddle.your_role === 'host';
+  const cancelled = !!huddle.cancelled_at;
+  const full = huddle.participants_count >= huddle.max_participants && !huddle.is_participant;
 
   return (
-    <div className="dash-huddles-root">
-      <div className="dash-huddles-detail">
-        <Link href="/dashboard/huddles" className="dash-huddles-back">← Back to Huddles</Link>
-        <h1 className="dash-huddles-page-title">{huddle.title}</h1>
-        {huddle.description && <p className="dash-huddles-detail-desc">{huddle.description}</p>}
-        <p className="dash-huddles-detail-meta">
-          {huddle.participants_count} / {huddle.max_participants} participants · {huddle.type}
-          {huddle.mode && huddle.mode !== 'open' ? ` · ${HUDDLE_MODE_LABELS[huddle.mode]}` : ''}
-          {huddle.waiting_room ? ' · waiting room' : ''}
-        </p>
-        {huddle.intents && huddle.intents.length > 0 && (
-          <p className="dash-huddles-card-type">{huddle.intents.map((t) => `#${t}`).join('  ')}</p>
-        )}
+    <div className="rd-page hl">
+      <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm hl-back" onClick={() => router.push('/dashboard/huddles')}>
+        <Icon name="back" size={16} /> Huddles
+      </button>
+      <div className="hl-grid">
+        <section className="hl-info rd-scroll">
+          <HuddlePoster huddle={huddle} large />
+          <div className="hl-meta">
+            <span className={`rd-badge ${huddle.started_at && !huddle.ended_at && !cancelled ? 'rd-badge--live' : ''}`}>{whenLabel(huddle)}</span>
+            {huddle.mode ? <span className="rd-chip">{HUDDLE_MODE_LABELS[huddle.mode]}</span> : null}
+            <span className="rd-chip">
+              {huddle.type === 'private' ? <Icon name="lock" size={12} /> : <Icon name="globe" size={12} />} {huddle.type}
+            </span>
+            {huddle.rewards_enabled !== false ? (
+              <span className="rd-chip">
+                <Icon name="trophy" size={12} /> Rewards
+              </span>
+            ) : null}
+          </div>
+          <h1 className="rd-h1">{huddle.title}</h1>
+          {huddle.description ? <p className="hl-desc">{huddle.description}</p> : null}
+          {huddle.intents && huddle.intents.length ? (
+            <p className="hl-tags">
+              {huddle.intents.map((t) => (
+                <span key={t}>#{t}</span>
+              ))}
+            </p>
+          ) : null}
+          <p className="rd-muted rd-small">
+            {huddle.participants_count}/{huddle.max_participants} in the huddle
+            {huddle.duration_minutes ? ` · ${huddle.duration_minutes} min` : ''}
+            {huddle.allow_self_exit === false ? ' · host controls entry and exit' : ''}
+          </p>
+          {isOwner ? <HostTools huddle={huddle} onChanged={reload} onGone={() => router.push('/dashboard/huddles')} /> : null}
+        </section>
 
-        {huddle.media_url && huddle.media_type === 'image' && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={huddle.media_url} alt="" className="dash-huddles-media" />
-        )}
-        {huddle.media_url && huddle.media_type === 'video' && (
-          <video src={huddle.media_url} controls className="dash-huddles-media" />
-        )}
-        {huddle.media_url && huddle.media_type === 'audio' && (
-          <audio src={huddle.media_url} controls className="dash-huddles-media" />
-        )}
-
-        {message && <p className="dash-huddles-create-hint" role="status">{message}</p>}
-        {error && <p className="dash-huddles-create-error" role="alert">{error}</p>}
-
-        {huddle.is_participant ? (
-          <button type="button" className="dash-huddles-create-btn dash-huddles-create-btn--secondary" onClick={handleLeave} disabled={busy}>
-            {busy ? 'Leaving…' : 'Leave huddle'}
-          </button>
-        ) : huddle.is_waiting ? (
-          <p className="dash-huddles-create-hint">You are in the waiting room. This page updates when the host lets you in.</p>
-        ) : (
-          <button type="button" className="dash-huddles-create-btn dash-huddles-create-btn--primary" onClick={handleJoin} disabled={busy}>
-            {busy ? 'Joining…' : 'Join huddle'}
-          </button>
-        )}
-
-        {huddle.is_participant && huddle.your_role && (
-          <HuddleRoom
-            huddleId={huddleId}
-            role={huddle.your_role}
-            canSpeak={huddle.your_permissions?.can_speak ?? true}
-          />
-        )}
-
-        {canManage && (
-          <HostPanel huddleId={huddleId} isHost={isHost} waitingRoom={huddle.waiting_room ?? false} onChanged={reload} />
-        )}
-
-        {isHost && (
-          <MediaUpload huddleId={huddleId} onUploaded={reload} />
-        )}
-
-        {canManage && <InvitePanel huddleId={huddleId} onInvited={reload} />}
+        <section className="rd-card hl-join">
+          {cancelled ? (
+            <div className="hl-state">
+              <Icon name="calendar" size={30} />
+              <h2 className="rd-h2">This huddle was cancelled</h2>
+              <p className="rd-muted rd-small">The host called it off.</p>
+            </div>
+          ) : huddle.is_waiting ? (
+            <div className="hl-state">
+              <span className="rd-spinner rd-spinner--lg" />
+              <h2 className="rd-h2">Waiting for the host</h2>
+              <p className="rd-muted rd-small">You will be let in automatically. Keep this page open.</p>
+            </div>
+          ) : (
+            <>
+              <Preview />
+              <label className="rd-label" htmlFor="hl-name">
+                Your name in this huddle
+              </label>
+              <input
+                id="hl-name"
+                className="rd-input"
+                value={displayName}
+                maxLength={40}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="How others will see you"
+              />
+              {error ? <p className="rd-small hl-err">{error}</p> : null}
+              <button type="button" className="rd-btn rd-btn--primary rd-btn--lg hl-join-btn" onClick={() => void join()} disabled={joining || full || !displayName.trim()}>
+                {joining ? <span className="rd-spinner" /> : <Icon name="door" size={18} />}
+                {full ? 'Huddle is full' : huddle.is_participant ? 'Enter the room' : huddle.waiting_room && !isOwner ? 'Ask to join' : 'Join now'}
+              </button>
+              <p className="rd-small rd-muted">You join with your mic and camera off.</p>
+            </>
+          )}
+        </section>
       </div>
     </div>
-  );
-}
-
-/** Host and co-host controls: waiting room, admitting, roles, permissions and removal. */
-function HostPanel({
-  huddleId,
-  isHost,
-  waitingRoom,
-  onChanged,
-}: {
-  huddleId: string;
-  isHost: boolean;
-  waitingRoom: boolean;
-  onChanged: () => Promise<void>;
-}) {
-  const [members, setMembers] = useState<HuddleMember[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [busyUser, setBusyUser] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      setMembers(await listHuddleMembers(huddleId));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load members');
-    }
-  }, [huddleId]);
-
-  useEffect(() => {
-    load();
-    const timer = setInterval(load, WAITING_POLL_MS);
-    return () => clearInterval(timer);
-  }, [load]);
-
-  const act = useCallback(
-    async (userId: string, action: () => Promise<void>) => {
-      setBusyUser(userId);
-      setError(null);
-      try {
-        await action();
-        await load();
-        await onChanged();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Action failed');
-      } finally {
-        setBusyUser(null);
-      }
-    },
-    [load, onChanged]
-  );
-
-  const waitingList = members.filter((m) => !m.admitted);
-  const inRoom = members.filter((m) => m.admitted);
-
-  return (
-    <section className="dash-huddles-card-section" aria-label="Host controls">
-      <h2 className="dash-huddles-section-title">Host controls</h2>
-
-      {isHost && (
-        <label className="dash-huddles-create-label">
-          <input
-            type="checkbox"
-            checked={waitingRoom}
-            onChange={(e) => act('__room__', () => setHuddleWaitingRoom(huddleId, e.target.checked))}
-          />{' '}
-          Waiting room
-        </label>
-      )}
-
-      <h3 className="dash-huddles-create-card-title">Waiting ({waitingList.length})</h3>
-      {waitingList.length === 0 ? (
-        <p className="dash-huddles-create-hint">Nobody is waiting.</p>
-      ) : (
-        <ul className="dash-huddles-create-invitees">
-          {waitingList.map((m) => (
-            <li key={m.user_id}>
-              {m.username ?? 'User'}{' '}
-              <button type="button" className="dash-huddles-create-opt" disabled={busyUser === m.user_id} onClick={() => act(m.user_id, () => admitHuddleMember(huddleId, m.user_id))}>
-                Admit
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <h3 className="dash-huddles-create-card-title">In the room ({inRoom.length})</h3>
-      <ul className="dash-huddles-create-invitees">
-        {inRoom.map((m) => {
-          const isHostRow = m.role === 'host';
-          const disabled = busyUser === m.user_id;
-          return (
-            <li key={m.user_id}>
-              <strong>{m.username ?? 'User'}</strong>{' '}
-              <span className="dash-huddles-create-hint">
-                {m.role === 'host' ? 'host' : m.role === 'co_host' ? 'co-host' : 'participant'}
-              </span>
-              {!isHostRow && (
-                <>
-                  {' '}
-                  <label>
-                    <input type="checkbox" checked={m.can_speak} disabled={disabled}
-                      onChange={(e) => act(m.user_id, () => updateHuddleMember(huddleId, m.user_id, { can_speak: e.target.checked }))} />{' '}
-                    speak
-                  </label>{' '}
-                  <label>
-                    <input type="checkbox" checked={m.can_share_screen} disabled={disabled}
-                      onChange={(e) => act(m.user_id, () => updateHuddleMember(huddleId, m.user_id, { can_share_screen: e.target.checked }))} />{' '}
-                    share screen
-                  </label>{' '}
-                  <label>
-                    <input type="checkbox" checked={m.is_muted} disabled={disabled}
-                      onChange={(e) => act(m.user_id, () => updateHuddleMember(huddleId, m.user_id, { is_muted: e.target.checked }))} />{' '}
-                    muted
-                  </label>{' '}
-                  {isHost && (
-                    <button type="button" className="dash-huddles-create-opt" disabled={disabled}
-                      onClick={() => act(m.user_id, () => updateHuddleMember(huddleId, m.user_id, { role: m.role === 'co_host' ? 'participant' : 'co_host' }))}>
-                      {m.role === 'co_host' ? 'Remove co-host' : 'Make co-host'}
-                    </button>
-                  )}{' '}
-                  <button type="button" className="dash-huddles-create-opt" disabled={disabled}
-                    onClick={() => act(m.user_id, () => removeHuddleMember(huddleId, m.user_id))}>
-                    Remove
-                  </button>
-                </>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      {error && <p className="dash-huddles-create-error" role="alert">{error}</p>}
-    </section>
-  );
-}
-
-/** Upload promotion media (image, video or audio). Host only. */
-function MediaUpload({ huddleId, onUploaded }: { huddleId: string; onUploaded: () => Promise<void> }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleFile = useCallback(
-    async (file: File | undefined) => {
-      if (!file) return;
-      setBusy(true);
-      setError(null);
-      try {
-        await uploadHuddleMedia(huddleId, file);
-        await onUploaded();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Upload failed');
-      } finally {
-        setBusy(false);
-        if (inputRef.current) inputRef.current.value = '';
-      }
-    },
-    [huddleId, onUploaded]
-  );
-
-  return (
-    <section className="dash-huddles-card-section">
-      <h2 className="dash-huddles-section-title">Promotion</h2>
-      <p className="dash-huddles-create-hint">Add an image, video or audio clip to promote this huddle (25 MB max).</p>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/mpeg,audio/mp4,audio/wav,audio/ogg"
-        disabled={busy}
-        onChange={(e) => handleFile(e.target.files?.[0])}
-      />
-      {busy && <p className="dash-huddles-create-hint">Uploading…</p>}
-      {error && <p className="dash-huddles-create-error" role="alert">{error}</p>}
-    </section>
-  );
-}
-
-/** Invite connected users to a huddle. */
-function InvitePanel({ huddleId, onInvited }: { huddleId: string; onInvited: () => Promise<void> }) {
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    getConnections()
-      .then(setConnections)
-      .catch(() => setConnections([]));
-  }, []);
-
-  const send = useCallback(async () => {
-    setError(null);
-    setStatus(null);
-    try {
-      const count = await inviteToHuddle(huddleId, selected);
-      setStatus(`Invited ${count} ${count === 1 ? 'person' : 'people'}.`);
-      setSelected([]);
-      await onInvited();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to send invites');
-    }
-  }, [huddleId, selected, onInvited]);
-
-  return (
-    <section className="dash-huddles-card-section">
-      <h2 className="dash-huddles-section-title">Invite connections</h2>
-      {connections.length === 0 ? (
-        <p className="dash-huddles-create-hint">You have no connections to invite yet.</p>
-      ) : (
-        <>
-          <ul className="dash-huddles-create-invitees">
-            {connections.map((c) => (
-              <li key={c.id}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(c.id)}
-                    onChange={() => setSelected((cur) => (cur.includes(c.id) ? cur.filter((x) => x !== c.id) : [...cur, c.id]))}
-                  />{' '}
-                  {c.username ?? 'User'}
-                </label>
-              </li>
-            ))}
-          </ul>
-          <button type="button" className="dash-huddles-create-btn dash-huddles-create-btn--secondary" onClick={send} disabled={selected.length === 0}>
-            Send invites
-          </button>
-        </>
-      )}
-      {status && <p className="dash-huddles-create-hint" role="status">{status}</p>}
-      {error && <p className="dash-huddles-create-error" role="alert">{error}</p>}
-    </section>
   );
 }
