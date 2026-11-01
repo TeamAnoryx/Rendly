@@ -7,6 +7,11 @@ const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 let pgPool: Pool | null = null;
 /** When true, direct DB is disabled for this process (e.g. "Tenant or user not found"); use RPC only. */
 let directDbDisabled = false;
+/** After a connection-level failure, skip direct pg until this time (ms) and use the Supabase RPC. */
+let directDbRetryAt = 0;
+const DIRECT_DB_CONNECT_TIMEOUT_MS = 5000;
+const DIRECT_DB_COOLDOWN_MS = 5 * 60 * 1000;
+const CONNECTION_ERROR = /timeout exceeded when trying to connect|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|Connection terminated/i;
 
 /** Rewrite Supabase direct host (db.REF.supabase.co) to pooler so DNS resolves. Use dashboard pooler URI as-is to avoid "Tenant or user not found". */
 function toPoolerUrlIfNeeded(url: string): string {
@@ -23,7 +28,8 @@ function toPoolerUrlIfNeeded(url: string): string {
 }
 
 function getPgPool(): Pool | null {
-  if (directDbDisabled || pgPool) return pgPool ?? null;
+  if (directDbDisabled || Date.now() < directDbRetryAt) return null;
+  if (pgPool) return pgPool;
   let url = process.env.DATABASE_URL?.trim();
   if (!url) return null;
   if (!url.includes("pooler.supabase.com") && url.includes("db.") && url.includes(".supabase.co")) {
@@ -33,6 +39,8 @@ function getPgPool(): Pool | null {
     pgPool = new Pool({
       connectionString: url,
       max: 2,
+      // Fail fast when the database host is unreachable; callers fall back to the Supabase RPC.
+      connectionTimeoutMillis: DIRECT_DB_CONNECT_TIMEOUT_MS,
       ssl: url.includes("supabase") ? { rejectUnauthorized: false } : undefined,
     });
     return pgPool;
@@ -130,6 +138,9 @@ export async function appendWhisperMessage(userId: string, message: WhisperMessa
           pgPool = null;
           p?.end().catch(() => {});
           console.warn("[Chat] Direct DB pooler auth failed (Tenant or user not found). Using Supabase RPC for this process. Fix: set DATABASE_URL to the Transaction/Session pooler URI from Project Settings > Database.");
+        } else if (CONNECTION_ERROR.test(msg) || CONNECTION_ERROR.test(String(code ?? ""))) {
+          directDbRetryAt = Date.now() + DIRECT_DB_COOLDOWN_MS;
+          console.warn(`[Chat] Direct DB unreachable (${msg || code}); using Supabase RPC for ${DIRECT_DB_COOLDOWN_MS / 60000} min.`);
         } else {
           console.warn("[Chat] Direct DB append failed, falling back to Supabase RPC:", msg);
         }
@@ -194,7 +205,9 @@ export async function appendGroupMessage(groupId: string, message: WhisperMessag
       return;
     } catch (e) {
       if ((e as { code?: string }).code === "57014") throw e;
-      console.warn("[Chat] Direct DB group append failed, falling back to Supabase RPC:", (e as Error).message);
+      const msg = (e as Error).message || "";
+      if (CONNECTION_ERROR.test(msg)) directDbRetryAt = Date.now() + DIRECT_DB_COOLDOWN_MS;
+      console.warn("[Chat] Direct DB group append failed, falling back to Supabase RPC:", msg);
     }
   }
   if (!supabase) throw new Error("Supabase not configured");
