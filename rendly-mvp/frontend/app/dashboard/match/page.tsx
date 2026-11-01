@@ -173,7 +173,14 @@ function MatchRoom({
       setPartnerTyping(false);
       setLines((l) => [...l, { id: m.client_id ?? `${m.at}_${l.length}`, mine: false, text: m.text, at: m.at }].slice(-300));
     });
-    const offTyping = websocket.on<{ from: string; typing: boolean }>('spark:typing', (m) => m.from === partnerId && setPartnerTyping(m.typing));
+    // Typing signals are best-effort, so the indicator also clears itself if "stopped" never arrives.
+    let typingClear: ReturnType<typeof setTimeout> | null = null;
+    const offTyping = websocket.on<{ from: string; typing: boolean }>('spark:typing', (m) => {
+      if (m.from !== partnerId) return;
+      setPartnerTyping(m.typing);
+      if (typingClear) clearTimeout(typingClear);
+      typingClear = m.typing ? setTimeout(() => setPartnerTyping(false), 4000) : null;
+    });
     const offEnded = websocket.on<{ from: string; reason: string }>('spark:ended', (m) => {
       if (m.from !== partnerId) return;
       setEnded(m.reason === 'skip' ? `${partnerName} skipped.` : `${partnerName} left the match.`);
@@ -184,6 +191,7 @@ function MatchRoom({
       offStatus();
       offChat();
       offTyping();
+      if (typingClear) clearTimeout(typingClear);
       offEnded();
       offJoined();
     };
