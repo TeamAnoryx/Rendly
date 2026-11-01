@@ -45,6 +45,7 @@ export type CreateHuddleResponse = HuddleListItem & {
 };
 
 export type JoinHuddleResponse = { huddle_id: string; user_id: string; joined_at: string };
+export type LeaveHuddleResponse = { huddle_id: string; user_id: string; left_at: string };
 
 /** Parse a JSON body without throwing on empty or non-JSON responses (proxy errors, HTML pages). */
 async function readJson(res: Response): Promise<unknown> {
@@ -116,4 +117,13 @@ export async function joinHuddle(id: string, inviteCode?: string | null): Promis
     body: JSON.stringify(inviteCode ? { code: inviteCode } : {}),
   });
   return parseOrThrow<JoinHuddleResponse>(res, 'Failed to join huddle');
+}
+
+export async function leaveHuddle(id: string): Promise<LeaveHuddleResponse> {
+  const res = await authFetch(`/api/huddles/${encodeURIComponent(id)}/leave`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  return parseOrThrow<LeaveHuddleResponse>(res, 'Failed to leave huddle');
 }

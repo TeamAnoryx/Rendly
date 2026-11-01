@@ -26,11 +26,12 @@ export class HuddleStoreError extends Error {
 
 export type JoinResult =
   | { ok: true }
-  | { ok: false; reason: "not_found" | "ended" | "full"; message: string };
+  | { ok: false; reason: "not_found" | "ended" | "not_started" | "full"; message: string };
 
-const JOIN_FAILURE_MESSAGES: Record<"not_found" | "ended" | "full", string> = {
+const JOIN_FAILURE_MESSAGES: Record<"not_found" | "ended" | "not_started" | "full", string> = {
   not_found: "Huddle not found",
   ended: "Huddle has ended",
+  not_started: "Huddle has not started yet",
   full: "Huddle is full",
 };
 
@@ -173,7 +174,7 @@ export async function joinHuddle(huddleId: string, userId: string): Promise<Join
   if (error) throw new HuddleStoreError("join", error);
   const status: unknown = data;
   if (status === "ok") return { ok: true };
-  if (status === "not_found" || status === "ended" || status === "full") {
+  if (status === "not_found" || status === "ended" || status === "not_started" || status === "full") {
     return { ok: false, reason: status, message: JOIN_FAILURE_MESSAGES[status] };
   }
   throw new HuddleStoreError("join", `unexpected join_huddle result: ${String(status)}`);

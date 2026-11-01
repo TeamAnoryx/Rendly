@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { getHuddle, joinHuddle } from '@/services/huddlesApi';
+import { getHuddle, joinHuddle, leaveHuddle } from '@/services/huddlesApi';
 import type { HuddleDetail } from '@/services/huddlesApi';
 
 export default function HuddleDetailPage() {
@@ -14,6 +14,7 @@ export default function HuddleDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
     if (!huddleId) {
@@ -36,6 +37,15 @@ export default function HuddleDetailPage() {
       .finally(() => setJoining(false));
   }, [huddleId, inviteCode, joining]);
 
+  const handleLeave = useCallback(() => {
+    if (!huddleId || leaving) return;
+    setLeaving(true);
+    leaveHuddle(huddleId)
+      .then(() => getHuddle(huddleId, inviteCode).then(setHuddle))
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to leave'))
+      .finally(() => setLeaving(false));
+  }, [huddleId, inviteCode, leaving]);
+
   if (loading) return <div className="dash-huddles-root"><div className="dash-huddles-loading">Loading…</div></div>;
   if (error && !huddle) return <div className="dash-huddles-root"><div className="dash-huddles-error">{error}</div><Link href="/dashboard/huddles">Back to Huddles</Link></div>;
   if (!huddle) return null;
@@ -50,14 +60,25 @@ export default function HuddleDetailPage() {
           {huddle.participants_count} / {huddle.max_participants} participants · {huddle.type}
         </p>
         {error && <p className="dash-huddles-create-error" role="alert">{error}</p>}
-        <button
-          type="button"
-          className="dash-huddles-create-btn dash-huddles-create-btn--primary"
-          onClick={handleJoin}
-          disabled={joining || huddle.is_participant}
-        >
-          {huddle.is_participant ? 'Joined' : joining ? 'Joining…' : 'Join huddle'}
-        </button>
+        {huddle.is_participant ? (
+          <button
+            type="button"
+            className="dash-huddles-create-btn dash-huddles-create-btn--secondary"
+            onClick={handleLeave}
+            disabled={leaving}
+          >
+            {leaving ? 'Leaving…' : 'Leave huddle'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="dash-huddles-create-btn dash-huddles-create-btn--primary"
+            onClick={handleJoin}
+            disabled={joining}
+          >
+            {joining ? 'Joining…' : 'Join huddle'}
+          </button>
+        )}
       </div>
     </div>
   );

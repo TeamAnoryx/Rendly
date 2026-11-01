@@ -6,10 +6,12 @@
 --   started_at + duration_minutes  (when duration_minutes is set), and
 --   ended_at                       (when set).
 -- A huddle with no duration and no ended_at stays live until it is closed.
+-- A scheduled huddle (scheduled_at set) cannot be joined before scheduled_at.
 
 -- ---------------------------------------------------------------------------
 -- join_huddle: replaces the 20250613 version.
 -- The first successful join sets started_at. Joins after the end time are refused.
+-- Returns: ok | not_found | ended | not_started | full.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION join_huddle(p_huddle_id UUID, p_user_id UUID)
 RETURNS TEXT
@@ -38,6 +40,9 @@ BEGIN
      AND v_huddle.duration_minutes IS NOT NULL
      AND v_now >= v_huddle.started_at + make_interval(mins => v_huddle.duration_minutes) THEN
     RETURN 'ended';
+  END IF;
+  IF v_huddle.scheduled_at IS NOT NULL AND v_now < v_huddle.scheduled_at THEN
+    RETURN 'not_started';
   END IF;
 
   IF EXISTS (

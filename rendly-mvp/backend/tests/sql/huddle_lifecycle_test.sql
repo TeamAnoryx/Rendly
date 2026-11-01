@@ -1,5 +1,6 @@
 -- Assertions for the huddle lifecycle RPCs. Runs inside a transaction and rolls back,
 -- so it leaves no rows behind.
+-- Covers join, leave, capacity, duration, privacy, the live-list limit and scheduling.
 -- Requires: 20250612_huddles.sql, 20250613_huddle_join_and_rls.sql and
 -- 20250614_huddle_lifecycle.sql applied, and a users(id UUID) table.
 -- Run:  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/supabase/tests/huddle_lifecycle_test.sql
@@ -13,6 +14,7 @@ DECLARE
   v_users UUID[] := ARRAY(SELECT gen_random_uuid() FROM generate_series(1, 12));
   v_h UUID;
   v_private UUID;
+  v_future UUID;
   v_expired UUID;
   v_result TEXT;
   v_left_at TIMESTAMPTZ;
@@ -87,6 +89,18 @@ BEGIN
   END LOOP;
   SELECT count(*) INTO v_count FROM list_live_huddles(v_owner, 2);
   IF v_count <> 2 THEN RAISE EXCEPTION 'FAIL 7: limit 2 returned %', v_count; END IF;
+
+  -- 8. Scheduling: a huddle cannot be joined before scheduled_at; after it, the join works.
+  INSERT INTO huddles (created_by, title, max_participants, duration_minutes, scheduled_at)
+  VALUES (v_owner, 'future', 10, 30, now() + interval '1 hour') RETURNING id INTO v_future;
+  v_result := join_huddle(v_future, v_users[1]);
+  IF v_result <> 'not_started' THEN RAISE EXCEPTION 'FAIL 8: join before scheduled_at returned %', v_result; END IF;
+  IF (SELECT started_at FROM huddles WHERE id = v_future) IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL 8: refused join still set started_at';
+  END IF;
+  UPDATE huddles SET scheduled_at = now() - interval '1 minute' WHERE id = v_future;
+  v_result := join_huddle(v_future, v_users[1]);
+  IF v_result <> 'ok' THEN RAISE EXCEPTION 'FAIL 8: join after scheduled_at returned %', v_result; END IF;
 
   RAISE NOTICE 'huddle lifecycle tests passed';
 END $$;
