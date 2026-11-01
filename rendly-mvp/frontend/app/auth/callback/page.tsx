@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useOAuth } from '@/hooks/useOAuth';
 import { LINKEDIN_PKCE_STORAGE_KEY } from '@/lib/pkce';
-import { LINK_TO_GITHUB_ID_KEY } from '@/lib/auth-storage';
+import { LINK_TO_GITHUB_ID_KEY, RENDLY_SESSION_TOKEN } from '@/lib/auth-storage';
 
 const GITHUB_STORAGE_KEY = 'rendly_oauth_github';
 const LINKEDIN_STORAGE_KEY = 'rendly_oauth_linkedin';
@@ -54,6 +54,7 @@ export default function CallbackPage() {
         const key = provider === 'github' ? GITHUB_STORAGE_KEY : LINKEDIN_STORAGE_KEY;
         const otherKey = provider === 'github' ? LINKEDIN_STORAGE_KEY : GITHUB_STORAGE_KEY;
         try {
+          localStorage.removeItem(RENDLY_SESSION_TOKEN);
           localStorage.setItem(
             key,
             JSON.stringify({

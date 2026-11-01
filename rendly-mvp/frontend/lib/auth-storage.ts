@@ -13,12 +13,13 @@ export const RENDLY_CURRENT_USER_CACHE_KEY = "rendly_current_user_cache";
 
 type StoredAuth = { verified?: boolean; user?: unknown; token?: string | null };
 
-/** Returns the first available JWT; always prefers session (password login) when present so every account gets correct dashboard/profile. Then GitHub, then LinkedIn. Used for /api/users/me. */
+/** Returns the active JWT for the current session.
+ * Prefer the freshest OAuth provider token (GitHub/LinkedIn) because a stale password session
+ * token can survive a callback and cause the dashboard to bounce back to /login.
+ */
 export function getStoredAuthToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const session = localStorage.getItem(RENDLY_SESSION_TOKEN);
-    if (session && session.trim()) return session.trim();
     const g = localStorage.getItem(GITHUB_STORAGE_KEY);
     if (g) {
       const d: StoredAuth = JSON.parse(g);
@@ -29,6 +30,8 @@ export function getStoredAuthToken(): string | null {
       const d: StoredAuth = JSON.parse(l);
       if (d?.verified && d?.token) return d.token;
     }
+    const session = localStorage.getItem(RENDLY_SESSION_TOKEN);
+    if (session && session.trim()) return session.trim();
   } catch {
     // ignore
   }
