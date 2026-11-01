@@ -1,0 +1,275 @@
+/* Profile and Settings redesign layer (on top of the converted legacy styles). Both fit the
+ * main area: columns or the active section scroll inside, the page itself never does. */
+
+/* ---------- shared card look ---------- */
+.dash-profile-card,
+.dash-settings-card,
+.dash-profile-hero {
+  background: var(--rd-surface) !important;
+  border: 1px solid var(--rd-border);
+  border-radius: var(--rd-radius) !important;
+  box-shadow: var(--rd-shadow) !important;
+  backdrop-filter: blur(14px);
+}
+
+.dash-profile-input,
+.dash-settings-root input:not([type='checkbox']):not([type='radio']),
+.dash-settings-root textarea,
+.dash-settings-root select {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid var(--rd-border-strong) !important;
+  color: var(--rd-text) !important;
+  border-radius: 12px !important;
+}
+
+.dash-profile-input:focus,
+.dash-settings-root input:focus,
+.dash-settings-root textarea:focus {
+  outline: none;
+  border-color: rgba(139, 108, 255, 0.7) !important;
+  box-shadow: 0 0 0 4px rgba(139, 108, 255, 0.18);
+}
+
+/* ---------- profile ---------- */
+.dash-profile-root {
+  height: 100%;
+  min-height: 0;
+  padding: 16px 20px;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.dash-profile-left,
+.dash-profile-right {
+  gap: 14px;
+  padding-right: 4px;
+}
+
+.dash-profile-hero {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(70% 120% at 100% 0%, rgba(139, 108, 255, 0.3), transparent 60%),
+    radial-gradient(60% 100% at 0% 100%, rgba(34, 211, 238, 0.14), transparent 60%),
+    var(--rd-surface) !important;
+}
+
+.dash-profile-hero-avatar {
+  box-shadow: 0 0 0 4px rgba(139, 108, 255, 0.35), var(--rd-glow);
+}
+
+/* Points & rankings */
+.pts {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background:
+    radial-gradient(80% 120% at 100% 0%, rgba(251, 191, 36, 0.16), transparent 60%),
+    var(--rd-surface);
+  scroll-margin-top: 12px;
+}
+
+.pts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pts-total {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-chillax, var(--font-sans));
+  font-size: 2rem;
+  font-weight: 700;
+  color: #fde68a;
+}
+
+.pts-rank {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: rgba(139, 108, 255, 0.18);
+  border: 1px solid rgba(139, 108, 255, 0.4);
+  font-weight: 700;
+}
+
+.pts-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.pts-tabs button {
+  flex: 1;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--rd-border);
+  background: transparent;
+  color: var(--rd-text-2);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.pts-tabs .pts-tab--on {
+  background: rgba(139, 108, 255, 0.25);
+  color: #fff;
+  border-color: rgba(139, 108, 255, 0.6);
+}
+
+.pts-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.pts-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 12px;
+}
+
+.pts-me {
+  background: rgba(139, 108, 255, 0.16);
+}
+
+.pts-pos {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--rd-muted);
+}
+
+.pts-pos--1 {
+  background: linear-gradient(135deg, #fde68a, #f59e0b);
+  color: #3b2300;
+}
+
+.pts-pos--2 {
+  background: linear-gradient(135deg, #e5e7eb, #9ca3af);
+  color: #1f2937;
+}
+
+.pts-pos--3 {
+  background: linear-gradient(135deg, #fdba74, #c2410c);
+  color: #2b1100;
+}
+
+.pts-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pts-plus {
+  color: var(--rd-success);
+}
+
+.pts-minus {
+  color: var(--rd-danger);
+}
+
+/* ---------- settings ---------- */
+.dash-settings-root {
+  height: 100%;
+  overflow: hidden;
+}
+
+.dash-settings-main {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 24px;
+  gap: 4px;
+  max-width: 980px;
+}
+
+.set-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+
+.set-tab {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--rd-border);
+  background: var(--rd-surface);
+  color: var(--rd-text-2);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition: all 0.2s var(--rd-ease);
+}
+
+.set-tab--on {
+  background: rgba(139, 108, 255, 0.25);
+  border-color: rgba(139, 108, 255, 0.6);
+  color: #fff;
+}
+
+/* One section at a time; the active section scrolls inside if it is long. */
+.dash-settings-grid[data-active] {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+  grid-template-columns: 1fr !important;
+  padding-bottom: 8px;
+}
+
+.dash-settings-grid[data-active] > section {
+  display: none;
+  animation: rd-page-in 0.3s var(--rd-ease) both;
+}
+
+.dash-settings-grid[data-active='privacy'] > section[data-tab='privacy'],
+.dash-settings-grid[data-active='report'] > section[data-tab='report'],
+.dash-settings-grid[data-active='contact'] > section[data-tab='contact'],
+.dash-settings-grid[data-active='legal'] > section[data-tab='legal'],
+.dash-settings-grid[data-active='account'] > section[data-tab='account'] {
+  display: block;
+}
+
+@media (max-width: 767px) {
+  .dash-profile-root {
+    padding: 10px;
+    overflow-y: auto;
+  }
+  .dash-settings-main {
+    padding: 12px;
+  }
+  .set-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 10px 0;
+  }
+  .set-tab {
+    flex: none;
+  }
+}
+
+/* Cards keep their natural height; the column scrolls instead of squashing them. */
+.dash-profile-left > *,
+.dash-profile-right > * {
+  flex-shrink: 0;
+}

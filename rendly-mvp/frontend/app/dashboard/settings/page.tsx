@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import '../account.css';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -91,7 +92,17 @@ const PERMISSION_ITEMS: { key: keyof UserSettings; label: string; description: s
   { key: 'on_device_site_data', label: 'On-device site data', description: 'Store data on this device' },
 ];
 
+const SETTINGS_TABS = [
+  { id: 'privacy', label: 'Privacy' },
+  { id: 'report', label: 'Report' },
+  { id: 'contact', label: 'Contact us' },
+  { id: 'legal', label: 'Terms & policy' },
+  { id: 'account', label: 'Account' },
+] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number]['id'];
+
 export default function SettingsPage() {
+  const [tab, setTab] = useState<SettingsTab>('privacy');
   const router = useRouter();
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [blockedLoading, setBlockedLoading] = useState(true);
@@ -240,10 +251,17 @@ export default function SettingsPage() {
       <div className="dash-settings-main">
         <h1 className="dash-settings-title">Settings</h1>
         <p className="dash-settings-subtitle">Manage your account, privacy, and preferences.</p>
+        <nav className="set-tabs" role="tablist" aria-label="Settings sections">
+          {SETTINGS_TABS.map((t) => (
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={`set-tab ${tab === t.id ? 'set-tab--on' : ''}`} onClick={() => setTab(t.id)}>
+              {t.label}
+            </button>
+          ))}
+        </nav>
 
-        <div className="dash-settings-grid">
+        <div className="dash-settings-grid" data-active={tab}>
           {/* Blocked users */}
-          <section className="dash-settings-card" aria-labelledby="settings-blocked-heading">
+          <section className="dash-settings-card" aria-labelledby="settings-blocked-heading" data-tab="privacy">
             <h2 id="settings-blocked-heading" className="dash-settings-card-title">
               <IconBlock />
               Blocked users
@@ -280,7 +298,7 @@ export default function SettingsPage() {
           </section>
 
           {/* Delete account */}
-          <section className="dash-settings-card dash-settings-card-danger" aria-labelledby="settings-delete-heading">
+          <section className="dash-settings-card dash-settings-card-danger" aria-labelledby="settings-delete-heading" data-tab="account">
             <h2 id="settings-delete-heading" className="dash-settings-card-title">
               <IconTrash />
               Delete account
@@ -296,7 +314,7 @@ export default function SettingsPage() {
           </section>
 
           {/* Report */}
-          <section className="dash-settings-card" aria-labelledby="settings-report-heading">
+          <section className="dash-settings-card" aria-labelledby="settings-report-heading" data-tab="report">
             <h2 id="settings-report-heading" className="dash-settings-card-title">
               <IconReport />
               Report
@@ -395,7 +413,7 @@ export default function SettingsPage() {
           </section>
 
           {/* Contact us — right of Report */}
-          <section className="dash-settings-card" aria-labelledby="settings-contact-heading">
+          <section className="dash-settings-card" aria-labelledby="settings-contact-heading" data-tab="contact">
             <h2 id="settings-contact-heading" className="dash-settings-card-title">
               <IconMail />
               Contact us
@@ -441,7 +459,7 @@ export default function SettingsPage() {
           </section>
 
           {/* Terms, Privacy & User Policy — full width, accordion */}
-          <section className="dash-settings-card dash-settings-card-wide" aria-labelledby="settings-legal-heading">
+          <section className="dash-settings-card dash-settings-card-wide" aria-labelledby="settings-legal-heading" data-tab="legal">
             <h2 id="settings-legal-heading" className="dash-settings-card-title">
               <IconDoc />
               Terms, Privacy & User Policy
@@ -527,7 +545,7 @@ export default function SettingsPage() {
           </section>
 
           {/* Permissions */}
-          <section className="dash-settings-card dash-settings-card-wide" aria-labelledby="settings-permissions-heading">
+          <section className="dash-settings-card dash-settings-card-wide" aria-labelledby="settings-permissions-heading" data-tab="privacy">
             <h2 id="settings-permissions-heading" className="dash-settings-card-title">
               <IconSliders />
               Permissions
