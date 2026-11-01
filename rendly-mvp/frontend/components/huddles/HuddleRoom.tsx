@@ -414,6 +414,8 @@ export default function HuddleRoom({
       if (me && !isManager) {
         setCanShare(me.can_share_screen);
         setCanSpeak(me.can_speak);
+        // The saved mute state is the source of truth; the socket event only makes it instant.
+        setMutedByHost(me.is_muted);
       }
     } catch (err) {
       console.warn('[huddle] members unavailable', err);
