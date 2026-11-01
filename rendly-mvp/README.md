@@ -61,7 +61,6 @@ npm install
 ```bash
 cd backend
 npm install
-npx lerna bootstrap
 ```
 
 ### Development
@@ -79,7 +78,7 @@ cd frontend
 npm run dev
 ```
 
-Frontend: http://localhost:3000 (or 3001 if port 3000 is in use)
+Frontend: http://localhost:3001
 API Gateway: http://localhost:80 (when running docker-compose from backend/)
 
 ### Services
