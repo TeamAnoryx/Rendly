@@ -2,6 +2,7 @@ import type { Server as HttpServer } from "http";
 import { Server } from "socket.io";
 import { getCurrentUserFromRequest } from "./auth";
 import { parseConversationId } from "./db";
+import { attachHuddleRoom } from "./huddle-room";
 
 export type MessageReceivedPayload = {
   id: string;
@@ -79,6 +80,7 @@ export function attachSocketIo(httpServer: HttpServer): Server {
     const userId = (socket as import("socket.io").Socket & { userId?: string }).userId;
     if (!userId) return;
     socket.join(userId);
+    attachHuddleRoom(io!, socket, userId);
 
     const becameOnline = addPresence(userId, socket.id);
     if (becameOnline && io) io.emit("user:online", { user_id: userId });

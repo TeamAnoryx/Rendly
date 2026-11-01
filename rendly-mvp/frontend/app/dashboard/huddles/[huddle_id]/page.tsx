@@ -19,6 +19,7 @@ import {
   type HuddleMember,
 } from '@/services/huddlesApi';
 import { getConnections, type Connection } from '@/services/connectionsApi';
+import HuddleRoom from '@/components/huddles/HuddleRoom';
 
 /** How often a waiting person checks whether the host has let them in. */
 const WAITING_POLL_MS = 5000;
@@ -138,14 +139,12 @@ export default function HuddleDetailPage() {
           </button>
         )}
 
-        {huddle.is_participant && (
-          <section className="dash-huddles-card-section">
-            <h2 className="dash-huddles-section-title">Room</h2>
-            <p className="dash-huddles-create-hint">
-              Your role: {huddle.your_role === 'host' ? 'host' : huddle.your_role === 'co_host' ? 'co-host' : 'participant'}
-              {huddle.your_permissions && !huddle.your_permissions.can_speak ? ' · listening only' : ''}
-            </p>
-          </section>
+        {huddle.is_participant && huddle.your_role && (
+          <HuddleRoom
+            huddleId={huddleId}
+            role={huddle.your_role}
+            canSpeak={huddle.your_permissions?.can_speak ?? true}
+          />
         )}
 
         {canManage && (
