@@ -39,3 +39,6 @@ Thumbs.db
 # Docker
 .dockerignore
 docker-compose.override.yml
+
+# Local tool data
+.cto-toolkit/

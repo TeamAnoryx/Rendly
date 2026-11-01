@@ -1,146 +1,173 @@
 /**
  * Huddles (group video calls) and participants.
- * Uses Supabase; tables: huddles, huddle_participants.
+ * Uses Supabase; tables: huddles, huddle_participants; RPC: join_huddle.
+ *
+ * Database failures throw HuddleStoreError so callers can answer 500
+ * instead of mistaking an outage for "not found" or "empty".
  */
 
 import crypto from "crypto";
 import { supabase } from "./supabase-users";
+import { isUuid, type CreateHuddleInput, type HuddleCategory, type HuddleRow } from "./huddle-rules";
 
-export type HuddleType = "public" | "private" | "instant";
+export type { HuddleRow, HuddleType } from "./huddle-rules";
 
-export type HuddleRow = {
-  id: string;
-  created_by: string;
-  title: string;
-  description: string | null;
-  max_participants: number;
-  type: HuddleType;
-  is_active: boolean;
-  started_at: string | null;
-  ended_at: string | null;
-  scheduled_at: string | null;
-  duration_minutes: number | null;
-  invite_code: string | null;
-  settings: Record<string, unknown>;
-  created_at: string;
-};
+const LIST_LIMIT = 100;
+const TRENDY_LIMIT = 20;
+const INVITE_CODE_BYTES = 8;
 
-export type HuddleParticipantRow = {
-  id: string;
-  huddle_id: string;
-  user_id: string;
-  joined_at: string;
-  left_at: string | null;
-  duration_seconds: number | null;
-};
-
-function generateInviteCode(): string {
-  return crypto.randomBytes(8).toString("base64url");
+export class HuddleStoreError extends Error {
+  constructor(operation: string, cause: unknown) {
+    super(`[huddles] ${operation} failed`);
+    this.name = "HuddleStoreError";
+    console.error(`[huddles] ${operation} error:`, cause);
+  }
 }
 
-/** List huddles: live = active and started, trendy = recent or by participant count. */
-export async function listHuddles(category: "trendy" | "live" | "all"): Promise<{ trendy: HuddleRow[]; live: HuddleRow[] }> {
-  if (!supabase) return { trendy: [], live: [] };
-  const { data: all, error } = await supabase
+export type JoinResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" | "ended" | "full"; message: string };
+
+const JOIN_FAILURE_MESSAGES: Record<"not_found" | "ended" | "full", string> = {
+  not_found: "Huddle not found",
+  ended: "Huddle has ended",
+  full: "Huddle is full",
+};
+
+function requireClient() {
+  if (!supabase) throw new HuddleStoreError("connect", "Supabase is not configured");
+  return supabase;
+}
+
+function generateInviteCode(): string {
+  return crypto.randomBytes(INVITE_CODE_BYTES).toString("base64url");
+}
+
+function isLive(huddle: HuddleRow, nowIso: string): boolean {
+  return huddle.is_active && huddle.started_at != null && (huddle.ended_at == null || huddle.ended_at > nowIso);
+}
+
+/**
+ * List huddles the viewer may see: every non-private huddle plus private ones they created.
+ * live = active and started; trendy = the most recent of the rest.
+ */
+export async function listHuddles(
+  category: HuddleCategory,
+  viewerId: string
+): Promise<{ trendy: HuddleRow[]; live: HuddleRow[] }> {
+  if (!isUuid(viewerId)) return { trendy: [], live: [] };
+  const client = requireClient();
+  const { data, error } = await client
     .from("huddles")
     .select("*")
+    .or(`type.neq.private,created_by.eq.${viewerId}`)
     .order("created_at", { ascending: false })
-    .limit(100);
-  if (error) {
-    console.error("[huddles] list error:", error);
-    return { trendy: [], live: [] };
-  }
-  const rows = (all ?? []) as HuddleRow[];
-  const now = new Date().toISOString();
-  const live = rows.filter(
-    (h) => h.is_active && h.started_at != null && (h.ended_at == null || h.ended_at > now)
-  );
-  const trendy = rows.filter((h) => !live.includes(h)).slice(0, 20);
+    .limit(LIST_LIMIT);
+  if (error) throw new HuddleStoreError("list", error);
+
+  const rows = (data ?? []) as HuddleRow[];
+  const nowIso = new Date().toISOString();
+  const live = rows.filter((h) => isLive(h, nowIso));
+  const liveIds = new Set(live.map((h) => h.id));
+  const trendy = rows.filter((h) => !liveIds.has(h.id)).slice(0, TRENDY_LIMIT);
+
   if (category === "live") return { trendy: [], live };
   if (category === "trendy") return { trendy, live: [] };
   return { trendy, live };
 }
 
-/** List active huddles (for dashboard home). Same as live. */
-export async function listActiveHuddles(): Promise<HuddleRow[]> {
-  const { live } = await listHuddles("live");
+/** Active (live) huddles visible to the viewer, for the dashboard home. */
+export async function listActiveHuddles(viewerId: string): Promise<HuddleRow[]> {
+  const { live } = await listHuddles("live", viewerId);
   return live;
 }
 
-/** Create a huddle. Returns created row with invite_code. */
-export async function createHuddle(
-  createdBy: string,
-  payload: {
-    title: string;
-    description?: string | null;
-    max_participants: number;
-    type?: HuddleType;
-    scheduled_at?: string | null;
-    duration_minutes?: number | null;
-    settings?: Record<string, unknown>;
-  }
-): Promise<HuddleRow | null> {
-  if (!supabase || !createdBy) return null;
-  const max = payload.max_participants;
-  if (![10, 15, 20, 50].includes(max)) return null;
-  const inviteCode = generateInviteCode();
+/** Create a huddle from already-validated input. */
+export async function createHuddle(createdBy: string, input: CreateHuddleInput): Promise<HuddleRow> {
+  const client = requireClient();
   const row = {
     created_by: createdBy,
-    title: payload.title.trim().slice(0, 255) || "Untitled Huddle",
-    description: payload.description?.trim() || null,
-    max_participants: max,
-    type: payload.type ?? "public",
+    title: input.title,
+    description: input.description,
+    max_participants: input.max_participants,
+    type: input.type,
     is_active: true,
     started_at: null,
     ended_at: null,
-    scheduled_at: payload.scheduled_at || null,
-    duration_minutes: payload.duration_minutes ?? null,
-    invite_code: inviteCode,
-    settings: payload.settings ?? {},
+    scheduled_at: input.scheduled_at,
+    duration_minutes: input.duration_minutes,
+    invite_code: generateInviteCode(),
+    settings: input.settings,
   };
-  const { data, error } = await supabase.from("huddles").insert(row).select("*").single();
-  if (error) {
-    console.error("[huddles] create error:", error);
-    return null;
-  }
+  const { data, error } = await client.from("huddles").insert(row).select("*").single();
+  if (error || !data) throw new HuddleStoreError("create", error ?? "no row returned");
   return data as HuddleRow;
 }
 
-/** Get one huddle by id. */
+/** One huddle by id, or null when it does not exist. */
 export async function getHuddleById(id: string): Promise<HuddleRow | null> {
-  if (!supabase || !id) return null;
-  const { data, error } = await supabase.from("huddles").select("*").eq("id", id).maybeSingle();
-  if (error) return null;
-  return data as HuddleRow | null;
+  if (!isUuid(id)) return null;
+  const client = requireClient();
+  const { data, error } = await client.from("huddles").select("*").eq("id", id).maybeSingle();
+  if (error) throw new HuddleStoreError("get", error);
+  return (data as HuddleRow | null) ?? null;
 }
 
-/** Get participant count for a huddle. */
-export async function getHuddleParticipantCount(huddleId: string): Promise<number> {
-  if (!supabase || !huddleId) return 0;
-  const { count, error } = await supabase
+/** Active participant counts for many huddles in one query. Missing ids count as 0. */
+export async function getParticipantCounts(huddleIds: string[]): Promise<Map<string, number>> {
+  const counts = new Map<string, number>(huddleIds.map((id) => [id, 0]));
+  const ids = huddleIds.filter(isUuid);
+  if (ids.length === 0) return counts;
+  const client = requireClient();
+  const { data, error } = await client
     .from("huddle_participants")
-    .select("*", { count: "exact", head: true })
-    .eq("huddle_id", huddleId)
+    .select("huddle_id")
+    .in("huddle_id", ids)
     .is("left_at", null);
-  if (error) return 0;
-  return count ?? 0;
+  if (error) throw new HuddleStoreError("count participants", error);
+  for (const row of (data ?? []) as { huddle_id: string }[]) {
+    counts.set(row.huddle_id, (counts.get(row.huddle_id) ?? 0) + 1);
+  }
+  return counts;
 }
 
-/** Join a huddle. Returns true if joined (or already in). */
-export async function joinHuddle(huddleId: string, userId: string): Promise<{ ok: boolean; message?: string }> {
-  if (!supabase || !huddleId || !userId) return { ok: false, message: "Missing id or user" };
-  const huddle = await getHuddleById(huddleId);
-  if (!huddle) return { ok: false, message: "Huddle not found" };
-  if (huddle.ended_at) return { ok: false, message: "Huddle has ended" };
-  const current = await getHuddleParticipantCount(huddleId);
-  if (current >= huddle.max_participants) return { ok: false, message: "Huddle is full" };
-  const { error } = await supabase.from("huddle_participants").upsert(
-    { huddle_id: huddleId, user_id: userId, joined_at: new Date().toISOString(), left_at: null },
-    { onConflict: "huddle_id,user_id", ignoreDuplicates: false }
-  );
-  if (error) {
-    console.error("[huddles] join error:", error);
-    return { ok: false, message: "Failed to join" };
+/** Active participant count for one huddle. */
+export async function getHuddleParticipantCount(huddleId: string): Promise<number> {
+  const counts = await getParticipantCounts([huddleId]);
+  return counts.get(huddleId) ?? 0;
+}
+
+/** Whether the user is currently in the huddle. */
+export async function isActiveParticipant(huddleId: string, userId: string): Promise<boolean> {
+  if (!isUuid(huddleId) || !isUuid(userId)) return false;
+  const client = requireClient();
+  const { data, error } = await client
+    .from("huddle_participants")
+    .select("id")
+    .eq("huddle_id", huddleId)
+    .eq("user_id", userId)
+    .is("left_at", null)
+    .maybeSingle();
+  if (error) throw new HuddleStoreError("check participant", error);
+  return data != null;
+}
+
+/**
+ * Join a huddle. The capacity check and the insert run inside the join_huddle
+ * SQL function under a row lock, so concurrent joins cannot exceed max_participants.
+ * Access control (private huddles) is the caller's job.
+ */
+export async function joinHuddle(huddleId: string, userId: string): Promise<JoinResult> {
+  if (!isUuid(huddleId) || !isUuid(userId)) {
+    return { ok: false, reason: "not_found", message: JOIN_FAILURE_MESSAGES.not_found };
   }
-  return { ok: true };
+  const client = requireClient();
+  const { data, error } = await client.rpc("join_huddle", { p_huddle_id: huddleId, p_user_id: userId });
+  if (error) throw new HuddleStoreError("join", error);
+  const status: unknown = data;
+  if (status === "ok") return { ok: true };
+  if (status === "not_found" || status === "ended" || status === "full") {
+    return { ok: false, reason: status, message: JOIN_FAILURE_MESSAGES[status] };
+  }
+  throw new HuddleStoreError("join", `unexpected join_huddle result: ${String(status)}`);
 }

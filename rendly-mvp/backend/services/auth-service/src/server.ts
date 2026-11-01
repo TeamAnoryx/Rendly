@@ -33,9 +33,19 @@ import {
   createHuddle,
   getHuddleById,
   getHuddleParticipantCount,
+  getParticipantCounts,
+  isActiveParticipant,
   joinHuddle,
-  type HuddleType,
+  type HuddleRow,
 } from "./huddles";
+import {
+  buildInviteUrl,
+  canAccessHuddle,
+  parseCategory,
+  requestOrigin,
+  toPublicHuddle,
+  validateCreateHuddleInput,
+} from "./huddle-rules";
 
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config();
@@ -1290,6 +1300,23 @@ app.post("/api/contact", async (req, res) => {
   }
 });
 
+/** Origin used to build invite links for this request. */
+function inviteOrigin(req: express.Request): string {
+  return requestOrigin(req.get("origin"), req.get("referer"));
+}
+
+/** Shape huddles for output with participant counts from a single query. */
+async function toPublicHuddles(rows: HuddleRow[], viewerId: string) {
+  const counts = await getParticipantCounts(rows.map((h) => h.id));
+  return rows.map((h) => toPublicHuddle(h, viewerId, counts.get(h.id) ?? 0));
+}
+
+/** Invite code sent by the client, from the JSON body or the ?code= query. */
+function providedInviteCode(req: express.Request): unknown {
+  const fromBody = (req.body as { code?: unknown } | undefined)?.code;
+  return fromBody ?? req.query.code;
+}
+
 /** GET /api/huddles/active – list active (live) huddles for dashboard. */
 app.get("/api/huddles/active", async (req, res) => {
   try {
@@ -1298,22 +1325,15 @@ app.get("/api/huddles/active", async (req, res) => {
       res.status(401).json({ message: "Missing or invalid authorization" });
       return;
     }
-    const rows = await listActiveHuddles();
-    const withCount = await Promise.all(
-      rows.map(async (h) => ({
-        id: h.id,
+    const rows = await listActiveHuddles(current.userId);
+    const huddles = await toPublicHuddles(rows, current.userId);
+    res.json(
+      huddles.map((h) => ({
+        ...h,
         topic: h.title,
-        title: h.title,
-        description: h.description,
-        max_participants: h.max_participants,
-        type: h.type,
-        is_active: h.is_active,
-        participants_count: await getHuddleParticipantCount(h.id),
-        created_at: h.created_at,
-        canJoin: true,
+        canJoin: h.participants_count < h.max_participants,
       }))
     );
-    res.json(withCount);
   } catch (err) {
     console.error("GET /api/huddles/active error:", err);
     res.status(500).json({ message: "Failed to list huddles" });
@@ -1328,27 +1348,12 @@ app.get("/api/huddles", async (req, res) => {
       res.status(401).json({ message: "Missing or invalid authorization" });
       return;
     }
-    const category = (req.query.category as string) || "all";
-    const valid = ["trendy", "live", "all"].includes(category) ? (category as "trendy" | "live" | "all") : "all";
-    const { trendy, live } = await listHuddles(valid);
-    const enrich = async (rows: Awaited<ReturnType<typeof listHuddles>>["trendy"]) => {
-      return Promise.all(
-        rows.map(async (h) => ({
-          id: h.id,
-          title: h.title,
-          description: h.description,
-          max_participants: h.max_participants,
-          type: h.type,
-          is_active: h.is_active,
-          scheduled_at: h.scheduled_at,
-          duration_minutes: h.duration_minutes,
-          invite_code: h.invite_code,
-          created_at: h.created_at,
-          participants_count: await getHuddleParticipantCount(h.id),
-        }))
-      );
-    };
-    res.json({ trendy: await enrich(trendy), live: await enrich(live) });
+    const category = parseCategory(req.query.category);
+    const { trendy, live } = await listHuddles(category, current.userId);
+    res.json({
+      trendy: await toPublicHuddles(trendy, current.userId),
+      live: await toPublicHuddles(live, current.userId),
+    });
   } catch (err) {
     console.error("GET /api/huddles error:", err);
     res.status(500).json({ message: "Failed to list huddles" });
@@ -1363,51 +1368,15 @@ app.post("/api/huddles", async (req, res) => {
       res.status(401).json({ message: "Missing or invalid authorization" });
       return;
     }
-    const body = req.body || {};
-    const title = typeof body.title === "string" ? body.title.trim() : "";
-    if (!title) {
-      res.status(400).json({ message: "Title is required" });
+    const validation = validateCreateHuddleInput(req.body);
+    if (!validation.ok) {
+      res.status(400).json({ message: validation.message });
       return;
     }
-    const maxParticipants = Number(body.max_participants);
-    if (![10, 15, 20, 50].includes(maxParticipants)) {
-      res.status(400).json({ message: "max_participants must be 10, 15, 20, or 50" });
-      return;
-    }
-    const type = ["public", "private", "instant"].includes(body.type) ? (body.type as HuddleType) : "public";
-    const durationMinutes = body.duration_minutes != null ? Number(body.duration_minutes) : null;
-    if (durationMinutes != null && (durationMinutes < 1 || durationMinutes > 30)) {
-      res.status(400).json({ message: "duration_minutes must be between 1 and 30" });
-      return;
-    }
-    const row = await createHuddle(current.userId, {
-      title,
-      description: body.description ?? null,
-      max_participants: maxParticipants,
-      type,
-      scheduled_at: body.scheduled_at ?? null,
-      duration_minutes: durationMinutes,
-      settings: body.settings ?? undefined,
-    });
-    if (!row) {
-      res.status(500).json({ message: "Failed to create huddle" });
-      return;
-    }
-    const origin = req.get("origin") || req.get("referer")?.replace(/\/$/, "").replace(/#.*$/, "") || "";
-    const inviteUrl = origin ? `${origin}/dashboard/huddles/${row.id}` : "";
+    const row = await createHuddle(current.userId, validation.value);
     res.status(201).json({
-      id: row.id,
-      created_by: row.created_by,
-      title: row.title,
-      description: row.description,
-      max_participants: row.max_participants,
-      type: row.type,
-      is_active: row.is_active,
-      scheduled_at: row.scheduled_at,
-      duration_minutes: row.duration_minutes,
-      invite_code: row.invite_code,
-      created_at: row.created_at,
-      invite_url: inviteUrl,
+      ...toPublicHuddle(row, current.userId, 0),
+      invite_url: buildInviteUrl(inviteOrigin(req), row),
     });
   } catch (err) {
     console.error("POST /api/huddles error:", err);
@@ -1415,7 +1384,11 @@ app.post("/api/huddles", async (req, res) => {
   }
 });
 
-/** GET /api/huddles/:id – get one huddle. */
+/**
+ * GET /api/huddles/:id[?code=] – get one huddle.
+ * Private huddles are only visible to the creator, current participants, or holders of
+ * the invite code. Everyone else gets 404 so private huddle ids cannot be probed.
+ */
 app.get("/api/huddles/:id", async (req, res) => {
   try {
     const current = await getCurrentUserFromRequest(req);
@@ -1424,22 +1397,22 @@ app.get("/api/huddles/:id", async (req, res) => {
       return;
     }
     const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ message: "Huddle id required" });
-      return;
-    }
     const row = await getHuddleById(id);
     if (!row) {
       res.status(404).json({ message: "Huddle not found" });
       return;
     }
-    const participants_count = await getHuddleParticipantCount(id);
-    const origin = req.get("origin") || req.get("referer")?.replace(/\/$/, "").replace(/#.*$/, "") || "";
-    const inviteUrl = origin ? `${origin}/dashboard/huddles/${row.id}` : "";
+    const isParticipant = await isActiveParticipant(id, current.userId);
+    if (!canAccessHuddle(row, { viewerId: current.userId, isParticipant, inviteCode: providedInviteCode(req) })) {
+      res.status(404).json({ message: "Huddle not found" });
+      return;
+    }
+    const huddle = toPublicHuddle(row, current.userId, await getHuddleParticipantCount(id));
+    const canShareInvite = row.type !== "private" || huddle.is_owner;
     res.json({
-      ...row,
-      participants_count,
-      invite_url: inviteUrl,
+      ...huddle,
+      is_participant: isParticipant,
+      invite_url: canShareInvite ? buildInviteUrl(inviteOrigin(req), row) : "",
     });
   } catch (err) {
     console.error("GET /api/huddles/:id error:", err);
@@ -1447,7 +1420,7 @@ app.get("/api/huddles/:id", async (req, res) => {
   }
 });
 
-/** POST /api/huddles/:id/join – join a huddle. */
+/** POST /api/huddles/:id/join – join a huddle. Body or query may carry { code } for private huddles. */
 app.post("/api/huddles/:id/join", async (req, res) => {
   try {
     const current = await getCurrentUserFromRequest(req);
@@ -1456,13 +1429,19 @@ app.post("/api/huddles/:id/join", async (req, res) => {
       return;
     }
     const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ message: "Huddle id required" });
+    const row = await getHuddleById(id);
+    if (!row) {
+      res.status(404).json({ message: "Huddle not found" });
+      return;
+    }
+    const isParticipant = await isActiveParticipant(id, current.userId);
+    if (!canAccessHuddle(row, { viewerId: current.userId, isParticipant, inviteCode: providedInviteCode(req) })) {
+      res.status(404).json({ message: "Huddle not found" });
       return;
     }
     const result = await joinHuddle(id, current.userId);
     if (!result.ok) {
-      res.status(400).json({ message: result.message || "Cannot join" });
+      res.status(result.reason === "not_found" ? 404 : 409).json({ message: result.message });
       return;
     }
     res.json({ huddle_id: id, user_id: current.userId, joined_at: new Date().toISOString() });

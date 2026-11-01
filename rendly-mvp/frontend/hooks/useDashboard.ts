@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getResolvedApiUrl, getResolvedApiUrlSync } from '@/lib/resolvedApiUrl';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { authFetch } from '@/lib/api';
+import { joinHuddle as joinHuddleRequest } from '@/services/huddlesApi';
 
 export const DASHBOARD_INTENTS = ['Light chat', 'Brainstorm', 'Motivation', 'Collaborate'] as const;
 export type DashboardIntent = (typeof DASHBOARD_INTENTS)[number];
@@ -142,15 +143,8 @@ export function useDashboard() {
   }, [fetchStats, fetchHuddles]);
 
   const joinHuddle = useCallback(async (huddleId: string) => {
-    try {
-      await authFetch(`/api/huddles/${huddleId}/join`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      await fetchHuddles();
-    } catch {
-      // ignore
-    }
+    await joinHuddleRequest(huddleId);
+    await fetchHuddles();
   }, [fetchHuddles]);
 
   return {

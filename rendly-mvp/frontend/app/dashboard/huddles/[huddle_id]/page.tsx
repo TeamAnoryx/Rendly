@@ -1,15 +1,15 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getHuddle, joinHuddle } from '@/services/huddlesApi';
 import type { HuddleDetail } from '@/services/huddlesApi';
 
 export default function HuddleDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const huddleId = typeof params?.huddle_id === 'string' ? params.huddle_id : '';
+  const inviteCode = useSearchParams()?.get('code') ?? null;
   const [huddle, setHuddle] = useState<HuddleDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,20 +21,20 @@ export default function HuddleDetailPage() {
       setError('Invalid huddle');
       return;
     }
-    getHuddle(huddleId)
+    getHuddle(huddleId, inviteCode)
       .then(setHuddle)
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false));
-  }, [huddleId]);
+  }, [huddleId, inviteCode]);
 
   const handleJoin = useCallback(() => {
     if (!huddleId || joining) return;
     setJoining(true);
-    joinHuddle(huddleId)
-      .then(() => router.push(`/dashboard/huddles/${huddleId}`))
+    joinHuddle(huddleId, inviteCode)
+      .then(() => getHuddle(huddleId, inviteCode).then(setHuddle))
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to join'))
       .finally(() => setJoining(false));
-  }, [huddleId, joining, router]);
+  }, [huddleId, inviteCode, joining]);
 
   if (loading) return <div className="dash-huddles-root"><div className="dash-huddles-loading">Loading…</div></div>;
   if (error && !huddle) return <div className="dash-huddles-root"><div className="dash-huddles-error">{error}</div><Link href="/dashboard/huddles">Back to Huddles</Link></div>;
@@ -54,9 +54,9 @@ export default function HuddleDetailPage() {
           type="button"
           className="dash-huddles-create-btn dash-huddles-create-btn--primary"
           onClick={handleJoin}
-          disabled={joining}
+          disabled={joining || huddle.is_participant}
         >
-          {joining ? 'Joining…' : 'Join huddle'}
+          {huddle.is_participant ? 'Joined' : joining ? 'Joining…' : 'Join huddle'}
         </button>
       </div>
     </div>
