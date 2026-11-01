@@ -9,7 +9,6 @@ type HuddleListProps = {
   live: HuddleListItem[];
   loading: boolean;
   error: string | null;
-  onJoin?: (id: string) => void;
 };
 
 function Carousel({
@@ -81,7 +80,7 @@ function Carousel({
   );
 }
 
-export default function HuddleList({ trendy, live, loading, error, onJoin }: HuddleListProps) {
+export default function HuddleList({ trendy, live, loading, error }: HuddleListProps) {
   if (loading) {
     return (
       <div className="dash-huddles-root">

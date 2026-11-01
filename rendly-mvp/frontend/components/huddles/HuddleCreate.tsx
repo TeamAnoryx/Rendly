@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import type { CreateHuddlePayload, CreateHuddleResponse } from '@/services/huddlesApi';
+import { buildScheduledAt } from '@/lib/huddleSchedule';
 
 type HuddleCreateProps = {
   onCreate: (payload: CreateHuddlePayload) => Promise<CreateHuddleResponse>;
@@ -19,7 +20,6 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
   const [maxParticipants, setMaxParticipants] = useState<10 | 15 | 20 | 50>(10);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('12:00');
-  const [amPm, setAmPm] = useState<'AM' | 'PM'>('AM');
   const [durationMinutes, setDurationMinutes] = useState<number>(30);
   const [chatPermission, setChatPermission] = useState<'view_only' | 'allow'>('view_only');
   const [reportUsername, setReportUsername] = useState('');
@@ -49,12 +49,12 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
       try {
         let scheduledAt: string | null = null;
         if (date && time) {
-          const [h, m] = time.split(':').map(Number);
-          let hour = h;
-          if (amPm === 'PM' && hour < 12) hour += 12;
-          if (amPm === 'AM' && hour === 12) hour = 0;
-          scheduledAt = new Date(date).toISOString();
-          scheduledAt = new Date(new Date(date).setHours(hour, m || 0, 0, 0)).toISOString();
+          scheduledAt = buildScheduledAt(date, time);
+          if (!scheduledAt) {
+            setSubmitError('Please enter a valid date and time');
+            setSubmitting(false);
+            return;
+          }
         }
         const result = await onCreate({
           title: trimmedTitle,
@@ -72,7 +72,7 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
         setSubmitting(false);
       }
     },
-    [title, description, type, maxParticipants, date, time, amPm, durationMinutes, chatPermission, onCreate]
+    [title, description, type, maxParticipants, date, time, durationMinutes, chatPermission, onCreate]
   );
 
   const handleCopyInvite = useCallback(() => {
@@ -219,22 +219,6 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
                   onChange={(e) => setTime(e.target.value)}
                   className="dash-huddles-create-input"
                 />
-                <div className="dash-huddles-create-options">
-                  <button
-                    type="button"
-                    className={`dash-huddles-create-opt ${amPm === 'AM' ? 'dash-huddles-create-opt--on' : ''}`}
-                    onClick={() => setAmPm('AM')}
-                  >
-                    AM
-                  </button>
-                  <button
-                    type="button"
-                    className={`dash-huddles-create-opt ${amPm === 'PM' ? 'dash-huddles-create-opt--on' : ''}`}
-                    onClick={() => setAmPm('PM')}
-                  >
-                    PM
-                  </button>
-                </div>
               </div>
               <label className="dash-huddles-create-label" htmlFor="huddle-duration">
                 Duration: <span className="dash-huddles-create-hint">(max 30 min)</span>

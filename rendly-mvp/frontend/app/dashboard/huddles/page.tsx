@@ -6,7 +6,7 @@ import HuddleCreate from '@/components/huddles/HuddleCreate';
 import { useHuddles } from '@/hooks/useHuddles';
 
 export default function HuddlesPage() {
-  const { trendy, live, loading, error, createHuddle, joinHuddle } = useHuddles();
+  const { trendy, live, loading, error, createHuddle } = useHuddles();
   const [view, setView] = useState<'list' | 'create'>('list');
 
   return (
@@ -21,7 +21,6 @@ export default function HuddlesPage() {
             live={live}
             loading={loading}
             error={error}
-            onJoin={joinHuddle}
           />
           <button
             type="button"

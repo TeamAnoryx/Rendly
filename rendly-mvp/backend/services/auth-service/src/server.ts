@@ -36,6 +36,7 @@ import {
   getParticipantCounts,
   isActiveParticipant,
   joinHuddle,
+  leaveHuddle,
   type HuddleRow,
 } from "./huddles";
 import {
@@ -1448,6 +1449,31 @@ app.post("/api/huddles/:id/join", async (req, res) => {
   } catch (err) {
     console.error("POST /api/huddles/:id/join error:", err);
     res.status(500).json({ message: "Failed to join huddle" });
+  }
+});
+
+/**
+ * POST /api/huddles/:id/leave – free the caller's seat.
+ * Unknown huddles and huddles the caller is not in both get 404, so this does not reveal
+ * whether a private huddle exists.
+ */
+app.post("/api/huddles/:id/leave", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const id = req.params.id;
+    const result = await leaveHuddle(id, current.userId);
+    if (!result.ok) {
+      res.status(404).json({ message: "Huddle not found or you are not in it" });
+      return;
+    }
+    res.json({ huddle_id: id, user_id: current.userId, left_at: new Date().toISOString() });
+  } catch (err) {
+    console.error("POST /api/huddles/:id/leave error:", err);
+    res.status(500).json({ message: "Failed to leave huddle" });
   }
 });
 

@@ -1,7 +1,9 @@
 import {
   buildInviteUrl,
   canAccessHuddle,
+  huddleEndsAt,
   inviteCodeMatches,
+  isLive,
   isUuid,
   parseCategory,
   requestOrigin,
@@ -167,5 +169,44 @@ describe("helpers", () => {
     expect(requestOrigin("https://app.test", undefined)).toBe("https://app.test");
     expect(requestOrigin(undefined, "https://app.test/dashboard?x=1#y")).toBe("https://app.test");
     expect(requestOrigin("javascript:alert(1)", "garbage")).toBe("");
+  });
+});
+
+describe("huddle lifecycle", () => {
+  const START = "2026-11-01T12:00:00.000Z";
+  const startedAt = (overrides: Partial<HuddleRow> = {}) => huddle({ started_at: START, duration_minutes: 30, ...overrides });
+
+  test("huddleEndsAt is started_at plus duration", () => {
+    expect(huddleEndsAt(startedAt())).toBe(Date.parse("2026-11-01T12:30:00.000Z"));
+  });
+
+  test("huddleEndsAt uses the earlier of duration end and ended_at", () => {
+    expect(huddleEndsAt(startedAt({ ended_at: "2026-11-01T12:10:00.000Z" }))).toBe(Date.parse("2026-11-01T12:10:00.000Z"));
+    expect(huddleEndsAt(startedAt({ ended_at: "2026-11-01T13:00:00.000Z" }))).toBe(Date.parse("2026-11-01T12:30:00.000Z"));
+  });
+
+  test("huddleEndsAt is null before the first join or without any end", () => {
+    expect(huddleEndsAt(huddle({ duration_minutes: 30 }))).toBeNull();
+    expect(huddleEndsAt(startedAt({ duration_minutes: null }))).toBeNull();
+  });
+
+  test("isLive is false before start, after the duration, and when inactive", () => {
+    const before = Date.parse("2026-11-01T12:29:59.000Z");
+    const after = Date.parse("2026-11-01T12:30:00.000Z");
+    expect(isLive(huddle({ duration_minutes: 30 }), before)).toBe(false);
+    expect(isLive(startedAt(), before)).toBe(true);
+    expect(isLive(startedAt(), after)).toBe(false);
+    expect(isLive(startedAt({ is_active: false }), before)).toBe(false);
+  });
+
+  test("a started huddle with no timed end stays live until ended_at", () => {
+    const later = Date.parse("2030-01-01T00:00:00.000Z");
+    expect(isLive(startedAt({ duration_minutes: null }), later)).toBe(true);
+    expect(isLive(startedAt({ duration_minutes: null, ended_at: "2026-11-01T13:00:00.000Z" }), later)).toBe(false);
+  });
+
+  test("toPublicHuddle exposes ends_at as ISO, or null", () => {
+    expect(toPublicHuddle(startedAt(), STRANGER, 0).ends_at).toBe("2026-11-01T12:30:00.000Z");
+    expect(toPublicHuddle(huddle(), STRANGER, 0).ends_at).toBeNull();
   });
 });

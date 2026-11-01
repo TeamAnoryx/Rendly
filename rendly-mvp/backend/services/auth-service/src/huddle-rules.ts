@@ -181,9 +181,35 @@ export function buildInviteUrl(origin: string, huddle: Pick<HuddleRow, "id" | "t
   return base;
 }
 
+/**
+ * When a huddle stops being live, as epoch ms: the earlier of started_at + duration_minutes
+ * and ended_at. Null when it has not started or has no end yet.
+ */
+export function huddleEndsAt(huddle: Pick<HuddleRow, "started_at" | "ended_at" | "duration_minutes">): number | null {
+  if (huddle.started_at == null) return null;
+  const startedMs = Date.parse(huddle.started_at);
+  if (Number.isNaN(startedMs)) return null;
+  const ends: number[] = [];
+  if (huddle.duration_minutes != null) ends.push(startedMs + huddle.duration_minutes * 60 * 1000);
+  if (huddle.ended_at != null) {
+    const endedMs = Date.parse(huddle.ended_at);
+    if (!Number.isNaN(endedMs)) ends.push(endedMs);
+  }
+  return ends.length === 0 ? null : Math.min(...ends);
+}
+
+/** Live: active, started, and not yet past its end time. Mirrors the list_live_huddles SQL. */
+export function isLive(huddle: Pick<HuddleRow, "is_active" | "started_at" | "ended_at" | "duration_minutes">, nowMs: number): boolean {
+  if (!huddle.is_active || huddle.started_at == null) return false;
+  const endsAt = huddleEndsAt(huddle);
+  return endsAt == null || endsAt > nowMs;
+}
+
 export type PublicHuddle = Omit<HuddleRow, "invite_code" | "created_by" | "settings"> & {
   participants_count: number;
   is_owner: boolean;
+  /** When the huddle stops being live (ISO), or null when it has no end yet. */
+  ends_at: string | null;
   invite_code?: string | null;
 };
 
@@ -191,10 +217,12 @@ export type PublicHuddle = Omit<HuddleRow, "invite_code" | "created_by" | "setti
 export function toPublicHuddle(huddle: HuddleRow, viewerId: string, participantsCount: number): PublicHuddle {
   const { invite_code, created_by, settings: _settings, ...rest } = huddle;
   const isOwner = created_by === viewerId;
+  const endsAt = huddleEndsAt(huddle);
   return {
     ...rest,
     participants_count: participantsCount,
     is_owner: isOwner,
+    ends_at: endsAt == null ? null : new Date(endsAt).toISOString(),
     ...(isOwner ? { invite_code } : {}),
   };
 }

@@ -7,32 +7,8 @@ import {
   DASHBOARD_INTENTS,
   type DashboardIntent,
   type Huddle,
-  type HuddleParticipant,
 } from '@/hooks/useDashboard';
-
-function HuddleAvatars({ participants }: { participants: HuddleParticipant[] }) {
-  const show = participants.slice(0, 4);
-  return (
-    <div className="dash-home-huddle-avatars">
-      {show.map((p) => (
-        <div key={p.id} className="dash-home-huddle-avatar-wrap" title={p.username ?? p.id}>
-          {p.avatar_url ? (
-            <img
-              src={p.avatar_url}
-              alt=""
-              className="dash-home-huddle-avatar"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <span className="dash-home-huddle-avatar dash-home-huddle-avatar-initials">
-              {(p.username ?? '?').slice(0, 1).toUpperCase()}
-            </span>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
+import { formatTimeLeft } from '@/lib/huddleActive';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -43,7 +19,6 @@ export default function DashboardPage() {
     selectedIntent,
     setSelectedIntent,
     loading,
-    formatTimeLeft,
     joinHuddle,
   } = useDashboard();
 
@@ -163,9 +138,8 @@ export default function DashboardPage() {
                     {formatTimeLeft(huddle.timeLeftSeconds)}
                   </p>
                   <div className="dash-home-huddle-participants">
-                    <HuddleAvatars participants={huddle.participants} />
                     <span className="dash-home-huddle-count">
-                      {huddle.participants.length}
+                      {huddle.participantsCount}
                       {huddle.maxParticipants != null
                         ? ` / ${huddle.maxParticipants}`
                         : ''}{' '}

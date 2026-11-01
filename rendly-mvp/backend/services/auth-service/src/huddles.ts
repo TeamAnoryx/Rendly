@@ -8,11 +8,11 @@
 
 import crypto from "crypto";
 import { supabase } from "./supabase-users";
-import { isUuid, type CreateHuddleInput, type HuddleCategory, type HuddleRow } from "./huddle-rules";
+import { isLive, isUuid, type CreateHuddleInput, type HuddleCategory, type HuddleRow } from "./huddle-rules";
 
 export type { HuddleRow, HuddleType } from "./huddle-rules";
 
-const LIST_LIMIT = 100;
+const LIVE_LIMIT = 100;
 const TRENDY_LIMIT = 20;
 const INVITE_CODE_BYTES = 8;
 
@@ -43,35 +43,42 @@ function generateInviteCode(): string {
   return crypto.randomBytes(INVITE_CODE_BYTES).toString("base64url");
 }
 
-function isLive(huddle: HuddleRow, nowIso: string): boolean {
-  return huddle.is_active && huddle.started_at != null && (huddle.ended_at == null || huddle.ended_at > nowIso);
+/** Live huddles visible to the viewer, filtered and limited in SQL (list_live_huddles). */
+async function fetchLiveHuddles(viewerId: string): Promise<HuddleRow[]> {
+  const client = requireClient();
+  const { data, error } = await client.rpc("list_live_huddles", { p_viewer_id: viewerId, p_limit: LIVE_LIMIT });
+  if (error) throw new HuddleStoreError("list live", error);
+  return (data ?? []) as HuddleRow[];
 }
 
 /**
  * List huddles the viewer may see: every non-private huddle plus private ones they created.
- * live = active and started; trendy = the most recent of the rest.
+ * live = active, started and before its end time (queried separately, so the live set is
+ * not cut off by the trendy query's row limit); trendy = the most recent huddles that are not live.
  */
 export async function listHuddles(
   category: HuddleCategory,
   viewerId: string
 ): Promise<{ trendy: HuddleRow[]; live: HuddleRow[] }> {
   if (!isUuid(viewerId)) return { trendy: [], live: [] };
+  const live = await fetchLiveHuddles(viewerId);
+  if (category === "live") return { trendy: [], live };
+
+  const liveIds = new Set(live.map((h) => h.id));
   const client = requireClient();
   const { data, error } = await client
     .from("huddles")
     .select("*")
     .or(`type.neq.private,created_by.eq.${viewerId}`)
     .order("created_at", { ascending: false })
-    .limit(LIST_LIMIT);
+    .limit(TRENDY_LIMIT + liveIds.size);
   if (error) throw new HuddleStoreError("list", error);
 
-  const rows = (data ?? []) as HuddleRow[];
-  const nowIso = new Date().toISOString();
-  const live = rows.filter((h) => isLive(h, nowIso));
-  const liveIds = new Set(live.map((h) => h.id));
-  const trendy = rows.filter((h) => !liveIds.has(h.id)).slice(0, TRENDY_LIMIT);
+  const nowMs = Date.now();
+  const trendy = ((data ?? []) as HuddleRow[])
+    .filter((h) => !liveIds.has(h.id) && !isLive(h, nowMs))
+    .slice(0, TRENDY_LIMIT);
 
-  if (category === "live") return { trendy: [], live };
   if (category === "trendy") return { trendy, live: [] };
   return { trendy, live };
 }
@@ -170,4 +177,29 @@ export async function joinHuddle(huddleId: string, userId: string): Promise<Join
     return { ok: false, reason: status, message: JOIN_FAILURE_MESSAGES[status] };
   }
   throw new HuddleStoreError("join", `unexpected join_huddle result: ${String(status)}`);
+}
+
+export type LeaveResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" | "not_participant"; message: string };
+
+const LEAVE_FAILURE_MESSAGES: Record<"not_found" | "not_participant", string> = {
+  not_found: "Huddle not found",
+  not_participant: "You are not in this huddle",
+};
+
+/** Leave a huddle, freeing the seat (sets left_at). Runs the leave_huddle SQL function. */
+export async function leaveHuddle(huddleId: string, userId: string): Promise<LeaveResult> {
+  if (!isUuid(huddleId) || !isUuid(userId)) {
+    return { ok: false, reason: "not_found", message: LEAVE_FAILURE_MESSAGES.not_found };
+  }
+  const client = requireClient();
+  const { data, error } = await client.rpc("leave_huddle", { p_huddle_id: huddleId, p_user_id: userId });
+  if (error) throw new HuddleStoreError("leave", error);
+  const status: unknown = data;
+  if (status === "ok") return { ok: true };
+  if (status === "not_found" || status === "not_participant") {
+    return { ok: false, reason: status, message: LEAVE_FAILURE_MESSAGES[status] };
+  }
+  throw new HuddleStoreError("leave", `unexpected leave_huddle result: ${String(status)}`);
 }
