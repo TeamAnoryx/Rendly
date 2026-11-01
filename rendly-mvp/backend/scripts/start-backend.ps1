@@ -45,7 +45,15 @@ function Resolve-Port($svc) {
 }
 
 function Test-PortInUse([int]$port) {
-    return [bool](Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
+    try {
+        return [bool](Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction Stop)
+    } catch {
+        # No listener on the port: Get-NetTCPConnection reports that as ObjectNotFound.
+        if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { return $false }
+        # Any other failure means we could not check. Say so, then try to start anyway.
+        Write-Host ("could not check whether port {0} is free: {1}" -f $port, $_.Exception.Message) -ForegroundColor Yellow
+        return $false
+    }
 }
 
 # Install root workspace dependencies if they are missing.
