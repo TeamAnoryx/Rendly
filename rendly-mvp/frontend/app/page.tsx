@@ -17,6 +17,8 @@ type IntroState = 'pending' | 'show' | 'leaving' | 'hidden';
 function shouldShowIntro(): boolean {
   try {
     if (new URLSearchParams(window.location.search).get('intro') === '1') return true;
+    // Deep links such as /#spark (from /about, the footer) go straight to the section.
+    if (window.location.hash) return false;
     return localStorage.getItem(INTRO_SEEN_KEY) !== '1';
   } catch {
     return true;
@@ -29,7 +31,8 @@ export default function Page() {
   useEffect(() => {
     const show = shouldShowIntro();
     setIntro(show ? 'show' : 'hidden');
-    if (show) void loadLanding();
+    // Warm the landing chunk during the intro; if it fails, `dynamic` retries when it mounts.
+    if (show) loadLanding().catch(() => undefined);
   }, []);
 
   return (

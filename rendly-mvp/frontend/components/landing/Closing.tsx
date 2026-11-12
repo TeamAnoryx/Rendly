@@ -29,29 +29,32 @@ export function FinalCta() {
   );
 }
 
-const COLUMNS: ReadonlyArray<{ title: string; links: ReadonlyArray<{ label: string; href: string }> }> = [
+interface FooterLink {
+  label: string;
+  /** Omit to render the item as "coming soon" text. */
+  href?: string;
+}
+
+const COLUMNS: ReadonlyArray<{ title: string; links: ReadonlyArray<FooterLink> }> = [
   {
     title: 'Product',
     links: [
-      { label: 'Spark', href: '#spark' },
-      { label: 'Whispers', href: '#whispers' },
-      { label: 'Huddles', href: '#huddles' },
+      { label: 'Spark', href: '/#spark' },
+      { label: 'Whispers', href: '/#whispers' },
+      { label: 'Huddles', href: '/#huddles' },
       { label: 'Sign up', href: '/auth/sign-up' },
+      { label: 'Log in', href: '/login' },
     ],
   },
   {
     title: 'Company',
-    links: [
-      { label: 'About', href: '#' },
-      { label: 'Careers', href: '#' },
-      { label: 'Contact', href: '#' },
-    ],
+    links: [{ label: 'About', href: '/about' }, { label: 'Careers' }, { label: 'Contact' }],
   },
   {
     title: 'Legal',
     links: [
-      { label: 'Terms', href: '#' },
-      { label: 'Privacy', href: '#' },
+      { label: 'Terms', href: '/terms' },
+      { label: 'Privacy', href: '/privacy' },
     ],
   },
 ];
@@ -72,14 +75,15 @@ export function Footer() {
                 <ul>
                   {c.links.map((l) => (
                     <li key={l.label}>
-                      {l.href.startsWith('/') ? (
+                      {l.href ? (
                         <Link href={l.href} className="ld-footer-link">
                           {l.label}
                         </Link>
                       ) : (
-                        <a href={l.href} className="ld-footer-link">
+                        <span className="ld-footer-link is-soon" aria-disabled="true">
                           {l.label}
-                        </a>
+                          <span className="ld-footer-soon">Soon</span>
+                        </span>
                       )}
                     </li>
                   ))}

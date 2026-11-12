@@ -3,6 +3,8 @@
 import React from 'react';
 import Reveal from './Reveal';
 import { IconHuddles, IconSpark, IconVideo, IconWhispers } from './icons';
+import { PersonAvatar, PersonPhoto } from './people';
+import { FEATURES_PHOTOS } from './photos';
 
 /** Tracks the pointer so `.rd-card--glow` can light its border where the cursor is. */
 function onGlowMove(e: React.PointerEvent<HTMLElement>) {
@@ -21,12 +23,9 @@ function SparkMini() {
         <span className="ld-chip">Hiring</span>
       </div>
       <div className="ld-mini-match">
-        <span className="ld-avatar ld-avatar--sm">
-          JT
-          <span className="ld-online" />
-        </span>
+        <PersonAvatar photo={FEATURES_PHOTOS.spark} size="md" online />
         <div className="ld-mini-match-id">
-          <span className="ld-mini-strong">Jonah T.</span>
+          <span className="ld-mini-strong">{FEATURES_PHOTOS.spark.name}</span>
           <span className="ld-mini-muted">Wants a co-founder</span>
         </div>
         <span className="ld-fake-btn ld-fake-btn--primary ld-fake-btn--sm">
@@ -53,7 +52,6 @@ function WhispersMini() {
 }
 
 function HuddlesMini() {
-  const people = ['AK', 'SL', 'DV', 'MR', 'PN', 'JT'];
   return (
     <div className="ld-mini" aria-hidden="true">
       <div className="ld-mini-head">
@@ -61,9 +59,10 @@ function HuddlesMini() {
         <span className="rd-badge rd-badge--live">Live</span>
       </div>
       <div className="ld-mini-grid">
-        {people.map((p, i) => (
-          <span key={p} className={`ld-mini-tile${i === 1 ? ' is-speaking' : ''}`}>
-            <span className="ld-avatar ld-avatar--xs">{p}</span>
+        {FEATURES_PHOTOS.circle.map((p, i) => (
+          <span key={p.initials} className={`ld-mini-tile ld-cam${i === 1 ? ' is-speaking' : ''}`}>
+            <PersonPhoto photo={p} className="ld-cam-img" decorative />
+            <span className="ld-mini-tile-name">{p.name.split(' ')[0]}</span>
           </span>
         ))}
       </div>

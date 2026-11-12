@@ -10,15 +10,15 @@ import {
   IconVideo,
   IconWhispers,
 } from './icons';
+import { PersonAvatar, PersonPhoto, type Photo } from './people';
+import { HUDDLE_PHOTOS, WHISPERS_PHOTOS } from './photos';
 
-const ROOM = [
-  { i: 'AK', name: 'Ana K.', speaking: false, muted: false },
-  { i: 'SL', name: 'Sam L.', speaking: true, muted: false },
-  { i: 'DV', name: 'Dev V.', speaking: false, muted: true },
-  { i: 'MR', name: 'Maya R.', speaking: false, muted: false },
-  { i: 'PN', name: 'Priya N.', speaking: false, muted: true },
-  { i: 'YO', name: 'You', speaking: false, muted: false },
-];
+/** Room tiles are 16 / 11 (see .ld-room-tile). */
+const ROOM_TILE_ASPECT = 16 / 11;
+const SPEAKING = 1;
+const MUTED = new Set([2, 4]);
+
+const ROOM = HUDDLE_PHOTOS.map((photo, i) => ({ photo, speaking: i === SPEAKING, muted: MUTED.has(i) }));
 
 function HuddleMock() {
   return (
@@ -26,18 +26,28 @@ function HuddleMock() {
       <div className="ld-room">
         <div className="ld-room-head">
           <div className="ld-room-title">
-            <span className="ld-app-h">Founders circle</span>
+            <span className="ld-app-h">Climate builders</span>
             <span className="rd-badge rd-badge--live">Live</span>
           </div>
           <span className="ld-room-meta rd-mono">6 in room · 24:18</span>
         </div>
         <div className="ld-room-grid">
           {ROOM.map((p) => (
-            <div key={p.i} className={`ld-room-tile${p.speaking ? ' is-speaking' : ''}`}>
-              <span className="ld-avatar ld-avatar--md">{p.i}</span>
+            <div
+              key={p.photo.src}
+              className={`ld-room-tile ld-cam${p.speaking ? ' is-speaking' : ''}`}
+            >
+              <PersonPhoto photo={p.photo} className="ld-cam-img" cropAspect={ROOM_TILE_ASPECT} decorative />
+              {p.speaking && (
+                <span className="ld-cam-eq" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              )}
               <span className="ld-room-name">
                 {p.muted && <IconMicOff size={11} />}
-                {p.name}
+                {p.photo.name}
               </span>
             </div>
           ))}
@@ -62,11 +72,19 @@ function HuddleMock() {
   );
 }
 
-const THREADS = [
-  { i: 'MR', name: 'Maya R.', preview: 'Thursday works for me', unread: 2, online: true, active: true },
-  { i: 'FC', name: 'Founders circle', preview: 'Sam: notes from today', unread: 0, online: false, active: false },
-  { i: 'JT', name: 'Jonah T.', preview: 'Great meeting you', unread: 0, online: true, active: false },
-  { i: 'PN', name: 'Priya N.', preview: 'Sent the intro', unread: 0, online: false, active: false },
+const THREADS: ReadonlyArray<{
+  i: string;
+  name: string;
+  photo?: Photo;
+  preview: string;
+  unread: number;
+  online: boolean;
+  active: boolean;
+}> = [
+  { i: 'LV', name: WHISPERS_PHOTOS.lena.name, photo: WHISPERS_PHOTOS.lena, preview: 'Thursday works for me', unread: 2, online: true, active: true },
+  { i: 'CB', name: 'Climate builders', preview: 'Notes from today', unread: 0, online: false, active: false },
+  { i: 'IJ', name: WHISPERS_PHOTOS.imani.name, photo: WHISPERS_PHOTOS.imani, preview: 'Great meeting you', unread: 0, online: true, active: false },
+  { i: 'PG', name: 'Product guild', preview: 'Sent the intro', unread: 0, online: false, active: false },
 ];
 
 function WhispersMock() {
@@ -77,10 +95,11 @@ function WhispersMock() {
           <div className="ld-dm-list-head">Whispers</div>
           {THREADS.map((t) => (
             <div key={t.i} className={`ld-dm-row${t.active ? ' is-active' : ''}`}>
-              <span className="ld-avatar ld-avatar--sm">
-                {t.i}
-                {t.online && <span className="ld-online" />}
-              </span>
+              {t.photo ? (
+                <PersonAvatar photo={t.photo} size="sm" online={t.online} />
+              ) : (
+                <span className="ld-avatar ld-avatar--sm">{t.i}</span>
+              )}
               <span className="ld-dm-row-text">
                 <span className="ld-mini-strong">{t.name}</span>
                 <span className="ld-mini-muted">{t.preview}</span>
@@ -91,12 +110,9 @@ function WhispersMock() {
         </aside>
         <div className="ld-dm-thread">
           <div className="ld-dm-thread-head">
-            <span className="ld-avatar ld-avatar--sm">
-              MR
-              <span className="ld-online" />
-            </span>
+            <PersonAvatar photo={WHISPERS_PHOTOS.lena} size="sm" online />
             <span className="ld-dm-thread-id">
-              <span className="ld-mini-strong">Maya R.</span>
+              <span className="ld-mini-strong">{WHISPERS_PHOTOS.lena.name}</span>
               <span className="ld-mini-muted">Matched on Co-founder</span>
             </span>
           </div>
@@ -112,7 +128,7 @@ function WhispersMock() {
             </div>
           </div>
           <div className="ld-dm-composer">
-            <span>Message Maya</span>
+            <span>Message Lena</span>
             <span className="ld-dm-send">
               <IconSend size={13} />
             </span>

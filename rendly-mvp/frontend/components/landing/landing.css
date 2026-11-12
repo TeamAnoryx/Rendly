@@ -1078,6 +1078,7 @@
   gap: 6px;
 }
 .ld-mini-tile {
+  position: relative;
   display: grid;
   place-items: center;
   aspect-ratio: 4 / 3;
@@ -1581,6 +1582,231 @@
   color: var(--rd-faint);
 }
 
+/* ---------- Real photos (people.tsx) ---------- */
+.ld-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+}
+/* Face crop: size and offset come from faceCrop() in photos.ts. */
+.ld-photo--crop {
+  inset: auto;
+  height: auto;
+  max-width: none;
+  object-fit: fill;
+}
+.ld-avatar--photo {
+  background: var(--rd-surface-solid);
+}
+.ld-avatar-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 50%;
+}
+.ld-avatar-clip .ld-photo {
+  filter: grayscale(0.25);
+}
+.ld-avatar-pair {
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+.ld-avatar-pair .ld-avatar {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--rd-bg-2);
+}
+.ld-avatar-pair .ld-avatar:first-child {
+  left: 0;
+  top: 0;
+}
+.ld-avatar-pair .ld-avatar:last-child {
+  right: 0;
+  bottom: 0;
+}
+
+/* Video-call tiles: photo + bottom shade for the name chip. */
+.ld-cam {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.ld-cam::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, transparent 52%, rgba(8, 9, 10, 0.7) 100%);
+  pointer-events: none;
+}
+.ld-cam-img {
+  filter: grayscale(0.55) brightness(0.82) contrast(1.04);
+  transition: filter 600ms var(--rd-ease);
+}
+.ld-cam.is-speaking .ld-cam-img {
+  filter: none;
+}
+.ld-cam.is-speaking {
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 0 28px -6px rgba(255, 255, 255, 0.28);
+}
+.ld-cam.is-self .ld-cam-img {
+  transform: scaleX(-1);
+}
+.ld-cam .ld-room-name {
+  z-index: 2;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  background: rgba(8, 9, 10, 0.55);
+  color: var(--rd-text);
+}
+.ld-mini-tile-name {
+  position: absolute;
+  z-index: 2;
+  left: 5px;
+  bottom: 4px;
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--rd-text);
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+.ld-cam-eq {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 18px;
+  padding: 3px 5px;
+  border-radius: 6px;
+  background: rgba(8, 9, 10, 0.55);
+}
+.ld-cam-eq i {
+  display: block;
+  width: 2px;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--rd-text);
+  transform-origin: bottom;
+  animation: ld-eq 900ms ease-in-out infinite;
+}
+.ld-cam-eq i:nth-child(2) {
+  animation-delay: -300ms;
+}
+.ld-cam-eq i:nth-child(3) {
+  animation-delay: -600ms;
+}
+@keyframes ld-eq {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+/* Footer items that are not live yet */
+.ld-footer-link.is-soon {
+  gap: 8px;
+  color: var(--rd-faint);
+  cursor: default;
+}
+.ld-footer-soon {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--rd-border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--rd-faint);
+}
+
+/* ---------- Sub pages (about, terms, privacy) ---------- */
+.ld-page {
+  display: block;
+}
+.ld-legal {
+  padding-block: clamp(56px, 8vw, 104px);
+}
+.ld-legal-head {
+  max-width: 760px;
+  margin-bottom: clamp(32px, 4vw, 48px);
+}
+.ld-legal-title {
+  margin-top: 14px;
+  font-size: clamp(36px, 5vw, 60px);
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+}
+.ld-legal-meta {
+  margin-top: 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--rd-faint);
+}
+.ld-legal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 32px;
+}
+@media (min-width: 1024px) {
+  .ld-legal-layout {
+    grid-template-columns: 220px minmax(0, 760px);
+    gap: 64px;
+  }
+}
+.ld-legal-aside {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-self: start;
+}
+@media (min-width: 1024px) {
+  .ld-legal-aside {
+    position: sticky;
+    top: 92px;
+    flex-direction: column;
+    gap: 2px;
+  }
+}
+.ld-legal-tab {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: var(--rd-radius-sm);
+  font-size: 13px;
+  color: var(--rd-muted);
+  transition: color var(--rd-fast), background var(--rd-fast);
+}
+.ld-legal-tab:hover {
+  color: var(--rd-text);
+  background: var(--rd-surface-2);
+}
+.ld-legal-tab[aria-current='page'] {
+  color: var(--rd-text);
+  background: var(--rd-surface-3);
+  box-shadow: inset 0 0 0 1px var(--rd-border);
+}
+.ld-legal-body {
+  min-width: 0;
+  padding: clamp(20px, 3vw, 36px);
+  border: 1px solid var(--rd-border-faint);
+  border-radius: var(--rd-radius-lg);
+  background: var(--rd-panel);
+  overflow-wrap: anywhere;
+}
+
 /* ---------- Reduced motion: no transforms, no loops ---------- */
 @media (prefers-reduced-motion: reduce) {
   .ld-enter,
@@ -1597,7 +1823,8 @@
     transform: none !important;
   }
   .ld-live-dot,
-  .ld-typing i {
+  .ld-typing i,
+  .ld-cam-eq i {
     animation: none !important;
   }
 }

@@ -1,0 +1,83 @@
+/*
+ * Hero: the POV orbit hugging the right edge, the product mock fading where the orbit overlaps,
+ * and real video-call frames inside the mock. Layout tokens live in landing.css; this file only adds.
+ */
+
+/* ---------- Orbit ---------- */
+.ho-orbit {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .ld-hero .ho-orbit {
+    display: block;
+    z-index: 1;
+    top: 0;
+    right: 0;
+    width: 50%;
+    /* a tall column: from under the nav to past the fold, running beneath the (fading) mock;
+       the middle card sits a little above mid-screen */
+    height: min(100%, max(820px, 100svh + 160px));
+    --po-cy: 0.48;
+    --po-gap: 0;
+  }
+}
+/* Below 1440 the headline runs close to the arc: keep the middle card clear of it */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .ld-hero .ho-orbit {
+    --po-w: 190px;
+  }
+}
+@media (min-width: 1280px) and (max-width: 1439px) {
+  .ld-hero .ho-orbit {
+    --po-w: 262px;
+  }
+}
+
+/* ---------- Mock fades out toward the orbit ---------- */
+@media (min-width: 1024px) {
+  .ld-hero-stage.ho-stage {
+    /* the right edge of the mock dissolves where the arc passes over it */
+    --ho-fade-start: calc(100% - (var(--ho-reach-mock, 300px)));
+    -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 98%),
+      linear-gradient(to right, #000 var(--ho-fade-start), transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-image: linear-gradient(to bottom, #000 62%, transparent 98%),
+      linear-gradient(to right, #000 var(--ho-fade-start), transparent 100%);
+    mask-composite: intersect;
+  }
+}
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .ld-hero-stage.ho-stage {
+    --ho-reach-mock: 240px;
+  }
+}
+
+/* ---------- Video-call frames in the mock ---------- */
+.ld-tile .ho-feed {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+.ld-tile .ho-feed-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(180deg, rgba(8, 9, 10, 0.35) 0%, rgba(8, 9, 10, 0) 26%, rgba(8, 9, 10, 0) 70%, rgba(8, 9, 10, 0.45) 100%);
+  pointer-events: none;
+}
+.ld-tile .ld-tile-badge,
+.ld-tile .ld-tile-timer,
+.ld-tile .ld-tile-name,
+.ld-tile .ld-tile--pip {
+  z-index: 1;
+}
+.ld-tile .ld-tile-timer {
+  color: var(--rd-text-2);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+}
+.ld-tile--pip .ho-feed {
+  border-radius: inherit;
+}

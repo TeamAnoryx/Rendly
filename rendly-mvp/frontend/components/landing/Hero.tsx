@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { RendlyMark } from '@/components/brand/Brand';
+import PovOrbit from '@/components/motion/PovOrbit';
 import {
   IconArrowRight,
   IconHome,
@@ -15,6 +16,8 @@ import {
   IconVideo,
   IconWhispers,
 } from './icons';
+import { HERO_PHOTOS } from './photos';
+import './hero-orbit.css';
 
 const RAIL = [
   { label: 'Home', Icon: IconHome },
@@ -156,10 +159,13 @@ function SparkMock() {
               <div className="ld-tile ld-tile--main">
                 <span className="rd-badge rd-badge--live ld-tile-badge">Live</span>
                 <span className="ld-tile-timer rd-mono">00:42</span>
-                <span className="ld-avatar ld-avatar--xl">MR</span>
-                <span className="ld-tile-name">Maya R.</span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="ho-feed" src={HERO_PHOTOS.live.src} alt="" decoding="async" style={{ objectPosition: HERO_PHOTOS.live.focus }} />
+                <span className="ho-feed-shade" />
+                <span className="ld-tile-name">{HERO_PHOTOS.live.name}</span>
                 <div className="ld-tile ld-tile--pip">
-                  <span className="ld-avatar ld-avatar--sm">YO</span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img className="ho-feed" src={HERO_PHOTOS.you.src} alt="" decoding="async" style={{ objectPosition: HERO_PHOTOS.you.focus }} />
                   <span className="ld-tile-name ld-tile-name--sm">You</span>
                 </div>
               </div>
@@ -191,6 +197,7 @@ export default function Hero() {
 
   return (
     <section className="ld-hero" aria-labelledby="ld-hero-title">
+      <PovOrbit className="ho-orbit" />
       <div className="ld-container ld-hero-copy">
         <a href="#product" className="ld-pill ld-enter" style={{ animationDelay: '60ms' }}>
           <span className="ld-pill-strong">Introducing Rendly</span>
@@ -223,7 +230,7 @@ export default function Hero() {
 
       <div className="ld-container ld-hero-visual ld-enter ld-enter--slow" style={{ animationDelay: '380ms' }}>
         <div className="ld-hero-light" aria-hidden="true" />
-        <div ref={stageRef} className="ld-hero-stage">
+        <div ref={stageRef} className="ld-hero-stage ho-stage">
           <div className="ld-frame">
             <SparkMock />
           </div>

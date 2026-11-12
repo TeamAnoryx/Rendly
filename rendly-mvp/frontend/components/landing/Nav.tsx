@@ -6,10 +6,11 @@ import { RendlyLockup } from '@/components/brand/Brand';
 import { IconClose, IconMenu } from './icons';
 
 export const NAV_LINKS: ReadonlyArray<{ href: string; label: string }> = [
-  { href: '#product', label: 'Product' },
-  { href: '#spark', label: 'Spark' },
-  { href: '#huddles', label: 'Huddles' },
-  { href: '#whispers', label: 'Whispers' },
+  { href: '/#product', label: 'Product' },
+  { href: '/#spark', label: 'Spark' },
+  { href: '/#huddles', label: 'Huddles' },
+  { href: '/#whispers', label: 'Whispers' },
+  { href: '/about', label: 'About' },
 ];
 
 export default function Nav() {
@@ -59,9 +60,9 @@ export default function Nav() {
 
         <nav className="ld-nav-links" aria-label="Primary">
           {NAV_LINKS.map((l) => (
-            <a key={l.href} href={l.href} className="ld-nav-link">
+            <Link key={l.href} href={l.href} className="ld-nav-link">
               {l.label}
-            </a>
+            </Link>
           ))}
         </nav>
 
@@ -97,9 +98,9 @@ export default function Nav() {
       >
         <nav className="ld-container ld-sheet-links" aria-label="Mobile">
           {NAV_LINKS.map((l) => (
-            <a key={l.href} href={l.href} className="ld-sheet-link" onClick={close}>
+            <Link key={l.href} href={l.href} className="ld-sheet-link" onClick={close}>
               {l.label}
-            </a>
+            </Link>
           ))}
         </nav>
         <div className="ld-container ld-sheet-actions">
