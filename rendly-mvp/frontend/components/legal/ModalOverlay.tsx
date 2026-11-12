@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const OVERLAY_STYLES = {
   overlay: 'fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6',
@@ -80,9 +81,11 @@ export default function ModalOverlay({
     }
   };
 
-  if (!show) return null;
+  // Render into <body>: an ancestor with a transform (e.g. the auth pages' entrance animation)
+  // would otherwise become the containing block for `position: fixed` and trap the dialog.
+  if (!show || typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
     <div className={OVERLAY_STYLES.overlay} onClick={handleBackdropClick} role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <div className={`${OVERLAY_STYLES.backdrop} ${exiting ? 'opacity-0' : 'opacity-100'}`} aria-hidden />
       <div
@@ -101,6 +104,7 @@ export default function ModalOverlay({
         <div className={OVERLAY_STYLES.body}>{children}</div>
         {footer != null && <footer className={OVERLAY_STYLES.footer}>{footer}</footer>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

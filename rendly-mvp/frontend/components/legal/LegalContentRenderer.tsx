@@ -14,7 +14,7 @@ function linkify(text: string): React.ReactNode {
         href={part}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-[#f7f8f8] underline decoration-white/30 underline-offset-2 hover:decoration-white transition-colors duration-100 break-all"
+        className="text-[#f7f8f8] underline decoration-white/30 underline-offset-2 hover:decoration-white transition-colors duration-100 [overflow-wrap:anywhere]"
       >
         {part}
       </a>
