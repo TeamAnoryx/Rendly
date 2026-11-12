@@ -38,32 +38,6 @@
   -webkit-mask-image: radial-gradient(ellipse 60% 40% at 50% 0%, #000 15%, transparent 75%);
 }
 
-.au-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 56px;
-  padding: 0 20px;
-}
-.au-topbar__home {
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--rd-radius-xs);
-  color: var(--rd-text);
-  text-decoration: none;
-}
-.au-topbar__link {
-  font-size: 0.8125rem;
-  color: var(--rd-muted);
-  text-decoration: none;
-  border-radius: var(--rd-radius-xs);
-  padding: 4px 6px;
-  transition: color var(--rd-fast);
-}
-.au-topbar__link:hover {
-  color: var(--rd-text);
-}
-
 .au-main {
   flex: 1;
   display: flex;
@@ -89,11 +63,17 @@
   text-align: center;
   margin-bottom: 28px;
 }
-.au-mark {
-  width: 28px;
-  height: auto;
-  color: var(--rd-text);
-  margin-bottom: 24px;
+/* Brand lockup leads the column (auth pages have no top bar) */
+.au-brand {
+  display: inline-flex;
+  margin-bottom: 32px;
+  border-radius: var(--rd-radius-sm);
+  text-decoration: none;
+}
+.au-lockup {
+  height: 36px;
+  width: auto;
+  filter: drop-shadow(0 0 24px rgba(255, 255, 255, 0.12));
 }
 .au-title {
   margin: 0;
@@ -493,7 +473,7 @@
 .au-signature {
   display: flex;
   justify-content: center;
-  padding: 0 20px 28px;
+  padding: 8px 20px max(32px, env(safe-area-inset-bottom));
 }
 
 /* Spinner inside buttons */
@@ -537,9 +517,11 @@
 }
 
 @media (min-width: 768px) {
-  .au-topbar {
-    height: 64px;
-    padding: 0 32px;
+  .au-lockup {
+    height: 46px;
+  }
+  .au-brand {
+    margin-bottom: 36px;
   }
   .au-main {
     padding: 40px 32px 64px;

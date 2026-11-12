@@ -60,34 +60,56 @@ export function RendlyWordmark({
   );
 }
 
+/**
+ * Full Rendly lockup (mark + wordtype) at the brand's own proportions, cut from the
+ * final frame of the logo film. Size it by height; width follows (about 4.45 : 1).
+ */
 export function RendlyLockup({
-  className = '',
-  markClassName = 'h-[18px] w-auto',
-  wordClassName = 'h-[16px] w-auto',
+  className = 'h-7 w-auto',
   tone = 'white',
 }: {
   className?: string;
-  markClassName?: string;
-  wordClassName?: string;
   tone?: 'white' | 'black';
 }) {
+  // eslint-disable-next-line @next/next/no-img-element
   return (
-    <span className={`inline-flex items-center gap-2 ${tone === 'white' ? 'text-white' : 'text-black'} ${className}`}>
-      <RendlyMark className={markClassName} />
-      <RendlyWordmark className={wordClassName} tone={tone} />
-    </span>
+    <img
+      src={`/brand/rendly-wordmark-${tone}.png`}
+      alt="Rendly"
+      className={`block select-none ${className}`}
+      draggable={false}
+      decoding="async"
+    />
   );
 }
 
-/** "A product of ANORYX" signature, used in footers. */
-export function AnoryxSignature({ className = '' }: { className?: string }) {
+/** "A product of ANORYX" signature for footers. `size="lg"` for standalone pages. */
+export function AnoryxSignature({ className = '', size = 'md' }: { className?: string; size?: 'md' | 'lg' }) {
+  const lg = size === 'lg';
   return (
-    <span className={`inline-flex items-center gap-2 text-[11px] font-medium tracking-[0.18em] uppercase text-[#62666d] ${className}`}>
-      A product of
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/images/anoryx-symbol-white.png" alt="" className="h-4 w-4 opacity-70" draggable={false} />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/images/anoryx-wordmark-white.png" alt="Anoryx" className="h-[10px] w-auto opacity-70" draggable={false} />
+    <span className={`inline-flex flex-col items-center gap-3 ${className}`}>
+      <span
+        className={`font-medium uppercase text-[#8a8f98] ${lg ? 'text-[12.5px] tracking-[0.32em] text-[#a1a6ae]' : 'text-[11px] tracking-[0.28em]'}`}
+      >
+        A product of
+      </span>
+      <span className={`inline-flex items-center ${lg ? 'gap-4' : 'gap-3'}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/anoryx-symbol-white.png"
+          alt=""
+          className={lg ? 'h-9 w-9' : 'h-6 w-6'}
+          draggable={false}
+        />
+        <span className={`w-px bg-white/20 ${lg ? 'h-6' : 'h-5'}`} aria-hidden />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/anoryx-wordmark-white.png"
+          alt="Anoryx"
+          className={lg ? 'h-5 w-auto' : 'h-[15px] w-auto'}
+          draggable={false}
+        />
+      </span>
     </span>
   );
 }

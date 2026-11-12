@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { auth } from '@/services/auth';
 import { getMyPoints } from '@/services/pointsApi';
-import { RendlyMark, RendlyWordmark } from '@/components/brand/Brand';
+import { RendlyLockup, RendlyMark } from '@/components/brand/Brand';
 import { Icon } from './Icon';
 import { NotificationBell } from './NotificationBell';
 import { Toasts } from './Toasts';
@@ -162,10 +162,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="rd-shell">
         <nav className="rd-rail" aria-label="Main navigation">
           <Link href="/dashboard" className="rd-rail-logo" aria-label="Rendly home">
-            <span className="rd-rail-logo-mark">
+            <RendlyLockup className="shell-lockup" />
+            <span className="rd-rail-logo-mark shell-collapsed-mark">
               <RendlyMark className="shell-mark" />
             </span>
-            <RendlyWordmark className="rd-rail-wordmark" />
           </Link>
 
           <div className="rd-rail-section">Workspace</div>

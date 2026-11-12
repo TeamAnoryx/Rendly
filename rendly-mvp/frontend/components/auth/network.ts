@@ -9,3 +9,11 @@ export function isNetworkError(err: unknown): boolean {
   }
   return false;
 }
+
+export const SERVER_UNREACHABLE_MESSAGE = "We couldn't reach Rendly right now. Please try again in a moment.";
+
+/** Message for a failed request: offline only when the browser says so, otherwise the server is unreachable. */
+export function networkErrorMessage(): string {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return NETWORK_ERROR_MESSAGE;
+  return SERVER_UNREACHABLE_MESSAGE;
+}

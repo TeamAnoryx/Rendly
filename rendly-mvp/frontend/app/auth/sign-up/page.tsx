@@ -9,7 +9,7 @@ import ContinueButton from '@/components/auth/ContinueButton';
 import AuthShell, { ButtonSpinner, Enter, FormError } from '@/components/auth/AuthShell';
 import PasswordInput from '@/components/auth/PasswordInput';
 import { CheckIcon, GitHubIcon, InfoIcon, LinkedInIcon } from '@/components/auth/AuthIcons';
-import { isNetworkError, NETWORK_ERROR_MESSAGE } from '@/components/auth/network';
+import { isNetworkError, networkErrorMessage, NETWORK_ERROR_MESSAGE } from '@/components/auth/network';
 import {
   getPasswordStrength,
   isEmailShaped,
@@ -216,7 +216,7 @@ function SignUpContent() {
         router.push(continueData?.redirectUrl || '/profile-setup');
       } catch (err) {
         const offline = typeof navigator !== 'undefined' && !navigator.onLine;
-        setErrors({ form: offline || isNetworkError(err) ? NETWORK_ERROR_MESSAGE : 'Something went wrong. Please try again.' });
+        setErrors({ form: offline || isNetworkError(err) ? networkErrorMessage() : 'Something went wrong. Please try again.' });
         setSubmitting(false);
       }
     },
@@ -238,7 +238,6 @@ function SignUpContent() {
     <AuthShell
       title="Create your Rendly account"
       subtitle="Use your work email, or continue with GitHub or LinkedIn."
-      topLink={{ href: '/login', label: 'Log in' }}
       footer={footer}
     >
       {verifiedProvider ? (

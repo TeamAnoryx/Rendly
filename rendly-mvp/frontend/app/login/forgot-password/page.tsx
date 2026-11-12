@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { getResolvedApiUrl } from '@/lib/resolvedApiUrl';
 import AuthShell, { ButtonSpinner, Enter, FormError } from '@/components/auth/AuthShell';
-import { isNetworkError, NETWORK_ERROR_MESSAGE } from '@/components/auth/network';
+import { isNetworkError, networkErrorMessage } from '@/components/auth/network';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -35,7 +35,7 @@ export default function ForgotPasswordPage() {
       }
       setSent(true);
     } catch (err) {
-      setError(isNetworkError(err) ? NETWORK_ERROR_MESSAGE : 'Something went wrong. Please try again.');
+      setError(isNetworkError(err) ? networkErrorMessage() : 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -49,7 +49,6 @@ export default function ForgotPasswordPage() {
           ? 'If an account exists for that email, we’ve sent a link to reset your password. It expires in one hour.'
           : 'Enter the email on your Rendly account and we’ll send you a reset link.'
       }
-      topLink={{ href: '/login', label: 'Log in' }}
       footer={
         <Enter index={3}>
           <p className="au-footer-link">

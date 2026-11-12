@@ -54,7 +54,7 @@ export default function Nav() {
     <header className={`ld-nav${scrolled || open ? ' is-scrolled' : ''}${open ? ' is-open' : ''}`}>
       <div className="ld-container ld-nav-inner">
         <Link href="/" className="ld-nav-brand" aria-label="Rendly home" onClick={close}>
-          <RendlyLockup markClassName="h-[18px] w-auto" wordClassName="h-[15px] w-auto" />
+          <RendlyLockup className="h-[26px] w-auto sm:h-[28px]" />
         </Link>
 
         <nav className="ld-nav-links" aria-label="Primary">

@@ -2,39 +2,28 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { RendlyLockup, RendlyMark, AnoryxSignature } from '@/components/brand/Brand';
+import { RendlyLockup, AnoryxSignature } from '@/components/brand/Brand';
 import { AlertIcon } from './AuthIcons';
 import '@/app/login/login.css';
-
-type TopLink = { href: string; label: string };
 
 interface AuthShellProps {
   title: string;
   subtitle?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  topLink?: TopLink;
   wide?: boolean;
 }
 
-/** Full-height black canvas with a centered Linear-style auth column. */
-export default function AuthShell({ title, subtitle, children, footer, topLink, wide = false }: AuthShellProps) {
+/** Full-height black canvas with a centered auth column; the brand lockup leads, no top bar. */
+export default function AuthShell({ title, subtitle, children, footer, wide = false }: AuthShellProps) {
   return (
     <div className="au-page">
-      <header className="au-topbar">
-        <Link href="/" className="au-topbar__home" aria-label="Rendly home">
-          <RendlyLockup />
-        </Link>
-        {topLink && (
-          <Link href={topLink.href} className="au-topbar__link">
-            {topLink.label}
-          </Link>
-        )}
-      </header>
       <main className="au-main">
         <div className={`au-column${wide ? ' au-column--wide' : ''}`}>
           <div className="au-header au-enter" style={{ '--au-i': 0 } as React.CSSProperties}>
-            <RendlyMark className="au-mark" />
+            <Link href="/" className="au-brand" aria-label="Rendly home">
+              <RendlyLockup className="au-lockup" />
+            </Link>
             <h1 className="au-title">{title}</h1>
             {subtitle && <p className="au-subtitle">{subtitle}</p>}
           </div>
@@ -43,7 +32,7 @@ export default function AuthShell({ title, subtitle, children, footer, topLink, 
         </div>
       </main>
       <footer className="au-signature">
-        <AnoryxSignature />
+        <AnoryxSignature size="lg" />
       </footer>
     </div>
   );

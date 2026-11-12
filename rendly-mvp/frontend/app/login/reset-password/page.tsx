@@ -7,7 +7,7 @@ import { getResolvedApiUrl } from '@/lib/resolvedApiUrl';
 import { validatePassword } from '@/hooks/useProfile';
 import AuthShell, { ButtonSpinner, Enter, FormError } from '@/components/auth/AuthShell';
 import PasswordInput from '@/components/auth/PasswordInput';
-import { isNetworkError, NETWORK_ERROR_MESSAGE } from '@/components/auth/network';
+import { isNetworkError, networkErrorMessage } from '@/components/auth/network';
 
 const REDIRECT_DELAY_MS = 1500;
 
@@ -52,7 +52,7 @@ export default function ResetPasswordPage() {
         setSuccess(true);
         setTimeout(() => router.push('/login?reset=1'), REDIRECT_DELAY_MS);
       } catch (err) {
-        setError(isNetworkError(err) ? NETWORK_ERROR_MESSAGE : 'Something went wrong. Please try again.');
+        setError(isNetworkError(err) ? networkErrorMessage() : 'Something went wrong. Please try again.');
       } finally {
         setLoading(false);
       }

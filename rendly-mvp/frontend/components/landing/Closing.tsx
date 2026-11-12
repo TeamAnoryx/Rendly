@@ -62,7 +62,7 @@ export function Footer() {
       <div className="ld-container">
         <div className="ld-footer-top">
           <div className="ld-footer-brand">
-            <RendlyLockup markClassName="h-[18px] w-auto" wordClassName="h-[15px] w-auto" />
+            <RendlyLockup className="h-8 w-auto" />
             <p className="ld-footer-tag">Know your why. Find your who.</p>
           </div>
           <nav className="ld-footer-cols" aria-label="Footer">

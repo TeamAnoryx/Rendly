@@ -9,7 +9,7 @@ import { useOAuth } from '@/hooks/useOAuth';
 import AuthShell, { ButtonSpinner, Enter, FormError } from '@/components/auth/AuthShell';
 import PasswordInput from '@/components/auth/PasswordInput';
 import { GitHubIcon, LinkedInIcon } from '@/components/auth/AuthIcons';
-import { isNetworkError, NETWORK_ERROR_MESSAGE } from '@/components/auth/network';
+import { isNetworkError, networkErrorMessage, NETWORK_ERROR_MESSAGE } from '@/components/auth/network';
 
 const ERROR_ID = 'login-error';
 
@@ -81,7 +81,7 @@ export default function LoginPage() {
         router.push(continueData?.redirectUrl || '/dashboard');
       } catch (err) {
         const offline = typeof navigator !== 'undefined' && !navigator.onLine;
-        setError(offline || isNetworkError(err) ? NETWORK_ERROR_MESSAGE : 'Something went wrong. Please try again.');
+        setError(offline || isNetworkError(err) ? networkErrorMessage() : 'Something went wrong. Please try again.');
         setLoading(false);
         return;
       }
@@ -99,7 +99,6 @@ export default function LoginPage() {
     <AuthShell
       title="Log in to Rendly"
       subtitle="Welcome back. Pick up where your conversations left off."
-      topLink={{ href: '/auth/sign-up', label: 'Sign up' }}
       footer={
         <Enter index={4}>
           <p className="au-footer-link">

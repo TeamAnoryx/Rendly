@@ -1,12 +1,35 @@
 /* App shell refinements layered on the shared .rd-* primitives (styles/rendly-theme.css). */
 
 .shell-mark {
-  width: 18px;
-  height: 20px;
+  width: 24px;
+  height: 26px;
 }
 
+/* Rail brand: full lockup when the rail is open, the mark alone when it collapses */
 .rd-shell .rd-rail-logo {
-  margin-bottom: 6px;
+  height: 48px;
+  margin-bottom: 10px;
+  padding: 0 10px;
+}
+.shell-lockup {
+  height: 26px;
+  width: auto;
+}
+.rd-shell .shell-collapsed-mark {
+  display: none;
+  width: 26px;
+  height: 28px;
+}
+@media (max-width: 1200px) {
+  .shell-lockup {
+    display: none;
+  }
+  .rd-shell .rd-rail-logo {
+    padding: 0;
+  }
+  .rd-shell .shell-collapsed-mark {
+    display: grid;
+  }
 }
 
 .rd-rail .rd-rail-section:first-of-type {
@@ -44,8 +67,8 @@
 }
 
 .shell-crumb-mark {
-  width: 15px;
-  height: 17px;
+  width: 20px;
+  height: 22px;
 }
 
 .rd-topbar-crumb.shell-crumb-sep {
