@@ -76,6 +76,7 @@ function Tile({
   badge,
   screen,
   camOff,
+  micOff,
 }: {
   stream: MediaStream | null;
   name: string;
@@ -85,6 +86,7 @@ function Tile({
   badge?: string;
   screen?: boolean;
   camOff?: boolean;
+  micOff?: boolean;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   const speaking = useSpeaking(stream, !screen);
@@ -101,7 +103,7 @@ function Tile({
   }, [stream]);
   const showVideo = hasVideo && !camOff;
   return (
-    <div className={`hr-tile ${speaking ? 'hr-tile--speaking' : ''} ${screen ? 'hr-tile--screen' : ''}`}>
+    <div className={`hr-tile ${speaking && !micOff ? 'hr-tile--speaking' : ''} ${screen ? 'hr-tile--screen' : ''}`}>
       <video ref={ref} autoPlay playsInline muted={muted} className={mirror ? 'hr-mirror' : ''} style={{ opacity: showVideo ? 1 : 0, objectFit: screen ? 'contain' : 'cover' }} />
       {!showVideo ? (
         <div className="hr-tile-avatar">
@@ -109,8 +111,13 @@ function Tile({
         </div>
       ) : null}
       <span className="hr-tile-name">
+        {micOff && !screen ? (
+          <span className="hr-tile-mic" aria-label="Muted" role="img">
+            <Icon name="mic-off" size={12} />
+          </span>
+        ) : null}
+        <span className="hr-tile-label">{name}</span>
         {badge ? <em>{badge}</em> : null}
-        {name}
       </span>
     </div>
   );
@@ -492,13 +499,15 @@ export default function HuddleRoom({
   const tileCount = peerIds.length + 1;
   const gridClass = tileCount <= 1 ? 'hr-grid--1' : tileCount <= 2 ? 'hr-grid--2' : tileCount <= 4 ? 'hr-grid--4' : tileCount <= 6 ? 'hr-grid--6' : 'hr-grid--9';
   const meName = members.find((m) => m.user_id === myId)?.display_name || 'You';
+  const micLive = micOn && canSpeak && !mutedByHost;
+  const panelTitle = panel === 'people' ? 'People' : panel === 'chat' ? `Chat · ${room}` : panel === 'rooms' ? 'Breakout rooms' : 'Host settings';
 
   const tiles = (
     <>
-      <Tile stream={local} name={`${meName} (you)`} avatarUrl={user?.avatar_url} muted mirror camOff={!camOn} badge={role !== 'participant' ? (role === 'host' ? 'Host' : 'Co-host') : undefined} />
+      <Tile stream={local} name={`${meName} (you)`} avatarUrl={user?.avatar_url} muted mirror camOff={!camOn} micOff={!micLive} badge={role !== 'participant' ? (role === 'host' ? 'Host' : 'Co-host') : undefined} />
       {peerIds.map((id) => {
         const m = members.find((x) => x.user_id === id);
-        return <Tile key={id} stream={peers[id].cam} name={nameOf(id)} avatarUrl={avatarOf(id)} badge={m?.role === 'host' ? 'Host' : m?.role === 'co_host' ? 'Co-host' : undefined} />;
+        return <Tile key={id} stream={peers[id].cam} name={nameOf(id)} avatarUrl={avatarOf(id)} micOff={m?.is_muted === true} badge={m?.role === 'host' ? 'Host' : m?.role === 'co_host' ? 'Co-host' : undefined} />;
       })}
     </>
   );
@@ -506,61 +515,70 @@ export default function HuddleRoom({
   return (
     <div className={`hr ${panel ? 'hr--panel' : ''}`}>
       <div className="hr-stage">
-        <div className="hr-topline">
+        <header className="hr-topline">
           <span className="rd-badge rd-badge--live">LIVE</span>
           <strong className="hr-title">{huddle.title}</strong>
-          {room !== MAIN_ROOM ? <span className="rd-chip rd-chip--on">Room: {room}</span> : null}
-          {status === 'connecting' ? <span className="rd-small rd-muted"><span className="rd-spinner" /> connecting…</span> : null}
+          <span className="hr-count rd-mono" aria-label={`${tileCount} in this room`}>
+            <Icon name="people" size={13} /> {tileCount}
+          </span>
+          {room !== MAIN_ROOM ? <span className="rd-chip rd-chip--on hr-room-chip">Room: {room}</span> : null}
+          {status === 'connecting' ? (
+            <span className="hr-connecting rd-small rd-muted" role="status">
+              <span className="rd-spinner" /> Connecting…
+            </span>
+          ) : null}
           {room !== MAIN_ROOM && (isManager || huddle.allow_self_exit !== false) ? (
-            <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" onClick={() => void moveTo(MAIN_ROOM)}>
+            <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm hr-back-main" onClick={() => void moveTo(MAIN_ROOM)}>
               <Icon name="door" size={14} /> Back to main room
             </button>
           ) : null}
-        </div>
+        </header>
         {notice ? <div className="hr-notice" role="status">{notice}</div> : null}
         {error ? <div className="hr-notice hr-notice--error" role="alert">{error}</div> : null}
 
-        {shareStream ? (
-          <div className="hr-share">
-            <Tile stream={shareStream} name={sharer === myId ? 'Your screen' : `${nameOf(sharer ?? '')}'s screen`} screen muted />
-            <div className="hr-filmstrip rd-scroll">{tiles}</div>
-          </div>
-        ) : (
-          <div className={`hr-grid ${gridClass}`}>{tiles}</div>
-        )}
+        <div className="hr-canvas">
+          {shareStream ? (
+            <div className="hr-share">
+              <Tile stream={shareStream} name={sharer === myId ? 'Your screen' : `${nameOf(sharer ?? '')}'s screen`} screen muted />
+              <div className="hr-filmstrip rd-scroll">{tiles}</div>
+            </div>
+          ) : (
+            <div className={`hr-grid ${gridClass}`}>{tiles}</div>
+          )}
+        </div>
 
-        <div className="hr-controls">
-          <button type="button" className={`call-ctl ${micOn && canSpeak && !mutedByHost ? '' : 'call-ctl--off'}`} disabled={!local || !canSpeak} onClick={() => { setMicOn((v) => !v); if (mutedByHost) setMutedByHost(false); }} title={canSpeak ? 'Microphone' : 'The host has not let you speak yet'} aria-label="Microphone">
-            <Icon name={micOn && canSpeak && !mutedByHost ? 'mic' : 'mic-off'} />
+        <div className="hr-controls" role="toolbar" aria-label="Huddle controls">
+          <button type="button" className={`rd-icon-btn hr-dock-btn ${micLive ? '' : 'hr-dock-btn--off'}`} disabled={!local || !canSpeak} onClick={() => { setMicOn((v) => !v); if (mutedByHost) setMutedByHost(false); }} title={canSpeak ? 'Microphone' : 'The host has not let you speak yet'} aria-label="Microphone" aria-pressed={micLive}>
+            <Icon name={micLive ? 'mic' : 'mic-off'} />
           </button>
-          <button type="button" className={`call-ctl ${camOn ? '' : 'call-ctl--off'}`} disabled={!local} onClick={() => setCamOn((v) => !v)} aria-label="Camera" title="Camera">
+          <button type="button" className={`rd-icon-btn hr-dock-btn ${camOn ? '' : 'hr-dock-btn--off'}`} disabled={!local} onClick={() => setCamOn((v) => !v)} aria-label="Camera" title="Camera" aria-pressed={camOn}>
             <Icon name={camOn ? 'video' : 'video-off'} />
           </button>
-          <button type="button" className={`call-ctl ${screen ? 'call-ctl--on' : ''}`} disabled={!canShare} onClick={() => void startShare()} aria-label="Share screen" title={canShare ? 'Share screen' : 'Ask the host for permission to share'}>
+          <button type="button" className={`rd-icon-btn hr-dock-btn ${screen ? 'rd-icon-btn--on hr-dock-btn--on' : ''}`} disabled={!canShare} onClick={() => void startShare()} aria-label="Share screen" title={canShare ? 'Share screen' : 'Ask the host for permission to share'} aria-pressed={!!screen}>
             <Icon name="screen" />
           </button>
-          <span className="hr-controls-sep" />
-          <button type="button" className={`call-ctl ${panel === 'people' ? 'call-ctl--on' : ''}`} onClick={() => setPanel(panel === 'people' ? null : 'people')} aria-label="People" title="People">
-            <Icon name="people" />
-          </button>
-          <button type="button" className={`call-ctl ${panel === 'chat' ? 'call-ctl--on' : ''}`} onClick={() => setPanel(panel === 'chat' ? null : 'chat')} aria-label="Chat" title="Chat">
+          <span className="hr-controls-sep" aria-hidden="true" />
+          <button type="button" className={`rd-icon-btn hr-dock-btn ${panel === 'chat' ? 'rd-icon-btn--on hr-dock-btn--on' : ''}`} onClick={() => setPanel(panel === 'chat' ? null : 'chat')} aria-label="Chat" title="Chat" aria-pressed={panel === 'chat'}>
             <Icon name="chat" />
-            {unreadChat > 0 ? <span className="rd-count">{unreadChat}</span> : null}
+            {unreadChat > 0 ? <span className="rd-count hr-dock-count">{unreadChat}</span> : null}
+          </button>
+          <button type="button" className={`rd-icon-btn hr-dock-btn ${panel === 'people' ? 'rd-icon-btn--on hr-dock-btn--on' : ''}`} onClick={() => setPanel(panel === 'people' ? null : 'people')} aria-label="People" title="People" aria-pressed={panel === 'people'}>
+            <Icon name="people" />
           </button>
           {isManager ? (
             <>
-              <button type="button" className={`call-ctl ${panel === 'rooms' ? 'call-ctl--on' : ''}`} onClick={() => setPanel(panel === 'rooms' ? null : 'rooms')} aria-label="Breakout rooms" title="Breakout rooms">
+              <button type="button" className={`rd-icon-btn hr-dock-btn ${panel === 'rooms' ? 'rd-icon-btn--on hr-dock-btn--on' : ''}`} onClick={() => setPanel(panel === 'rooms' ? null : 'rooms')} aria-label="Breakout rooms" title="Breakout rooms" aria-pressed={panel === 'rooms'}>
                 <Icon name="grid" />
               </button>
-              <button type="button" className={`call-ctl ${panel === 'host' ? 'call-ctl--on' : ''}`} onClick={() => setPanel(panel === 'host' ? null : 'host')} aria-label="Host settings" title="Host settings">
+              <button type="button" className={`rd-icon-btn hr-dock-btn ${panel === 'host' ? 'rd-icon-btn--on hr-dock-btn--on' : ''}`} onClick={() => setPanel(panel === 'host' ? null : 'host')} aria-label="Host settings" title="Host settings" aria-pressed={panel === 'host'}>
                 <Icon name="settings" />
               </button>
             </>
           ) : null}
-          <span className="hr-controls-sep" />
+          <span className="hr-controls-sep" aria-hidden="true" />
           <button
             type="button"
-            className="call-ctl call-ctl--end"
+            className="rd-icon-btn rd-icon-btn--danger hr-dock-btn hr-dock-leave"
             onClick={onLeave}
             disabled={!canLeave}
             aria-label="Leave huddle"
@@ -569,17 +587,19 @@ export default function HuddleRoom({
             <Icon name="phone-off" />
           </button>
           {role === 'host' && onEnd ? (
-            <button type="button" className="rd-btn rd-btn--danger rd-btn--sm" onClick={onEnd}>
+            <button type="button" className="rd-btn rd-btn--danger rd-btn--sm hr-end-all" onClick={onEnd}>
               End for all
             </button>
           ) : null}
         </div>
       </div>
 
+      {panel ? <div className="hr-scrim" aria-hidden="true" onClick={() => setPanel(null)} /> : null}
       {panel ? (
-        <aside className="hr-panel rd-card" aria-label="Side panel">
+        <aside className="hr-panel" aria-label={panelTitle}>
+          <span className="hr-panel-grip" aria-hidden="true" />
           <header className="hr-panel-head">
-            <strong>{panel === 'people' ? 'People' : panel === 'chat' ? `Chat · ${room}` : panel === 'rooms' ? 'Breakout rooms' : 'Host settings'}</strong>
+            <strong>{panelTitle}</strong>
             <button type="button" className="rd-icon-btn" onClick={() => setPanel(null)} aria-label="Close panel">
               <Icon name="close" size={16} />
             </button>
@@ -587,11 +607,11 @@ export default function HuddleRoom({
           {panel === 'people' ? <PeoplePanel huddle={huddle} members={members} myId={myId} isManager={isManager} isHost={role === 'host'} onChanged={loadMembers} peersInRoom={peerIds} /> : null}
           {panel === 'chat' ? (
             <div className="hr-chat">
-              <div className="hr-chat-list rd-scroll">
+              <div className="hr-chat-list rd-scroll" aria-live="polite">
                 {chat.length === 0 ? <p className="rd-small rd-muted">Messages go to everyone in this room.</p> : null}
                 {chat.map((c) => (
                   <div key={c.id} className={`hr-chat-line ${c.from === myId ? 'hr-chat-line--me' : ''}`}>
-                    <span className="rd-small rd-muted">{c.from === myId ? 'You' : nameOf(c.from)}</span>
+                    <span className="hr-chat-from">{c.from === myId ? 'You' : nameOf(c.from)}</span>
                     <p>{c.text}</p>
                   </div>
                 ))}

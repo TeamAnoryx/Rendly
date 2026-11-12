@@ -14,7 +14,7 @@ function linkify(text: string): React.ReactNode {
         href={part}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-space_indigo underline underline-offset-2 hover:text-glaucous hover:no-underline transition-colors duration-100"
+        className="text-[#f7f8f8] underline decoration-white/30 underline-offset-2 hover:decoration-white transition-colors duration-100 break-all"
       >
         {part}
       </a>
@@ -25,28 +25,28 @@ function linkify(text: string): React.ReactNode {
 }
 
 const headingClasses = {
-  2: 'font-chillax font-bold text-ink_black text-lg sm:text-xl mt-6 mb-3 first:mt-0',
-  3: 'font-chillax font-semibold text-ink_black text-base sm:text-lg mt-4 mb-2',
-  4: 'font-chillax font-semibold text-ink_black text-sm sm:text-base mt-3 mb-1',
+  2: 'font-semibold tracking-[-0.015em] text-[#f7f8f8] text-base sm:text-[17px] mt-7 mb-3 first:mt-0',
+  3: 'font-semibold tracking-[-0.01em] text-[#f7f8f8] text-[15px] mt-5 mb-2',
+  4: 'font-medium text-[#d0d6e0] text-sm mt-4 mb-1',
 };
 
 export function LegalContentRenderer({ sections }: { sections: LegalSection[] }) {
   return (
-    <div className="space-y-1 text-dusty_grape text-sm sm:text-base leading-relaxed">
+    <div className="space-y-1 text-[#8a8f98] text-[13px] sm:text-sm leading-relaxed">
       {sections.map((section, idx) => (
         <section key={`${section.title}-${idx}`}>
           {section.level === 2 && (
-            <h2 className={headingClasses[2]} style={{ fontFamily: 'var(--font-chillax)' }}>
+            <h2 className={headingClasses[2]}>
               {section.title}
             </h2>
           )}
           {section.level === 3 && (
-            <h3 className={headingClasses[3]} style={{ fontFamily: 'var(--font-chillax)' }}>
+            <h3 className={headingClasses[3]}>
               {section.title}
             </h3>
           )}
           {section.level === 4 && (
-            <h4 className={headingClasses[4]} style={{ fontFamily: 'var(--font-chillax)' }}>
+            <h4 className={headingClasses[4]}>
               {section.title}
             </h4>
           )}
@@ -56,14 +56,14 @@ export function LegalContentRenderer({ sections }: { sections: LegalSection[] })
             </p>
           ))}
           {section.list && section.list.length > 0 && (
-            <ul className="list-disc pl-6 mb-3 space-y-1">
+            <ul className="list-disc pl-5 marker:text-[#62666d] mb-3 space-y-1">
               {section.list.map((item, i) => (
                 <li key={i}>{linkify(item)}</li>
               ))}
             </ul>
           )}
           {section.numbered && section.numbered.length > 0 && (
-            <ol className="list-decimal pl-6 mb-3 space-y-1">
+            <ol className="list-decimal pl-5 marker:text-[#62666d] mb-3 space-y-1">
               {section.numbered.map((item, i) => (
                 <li key={i}>{linkify(item)}</li>
               ))}

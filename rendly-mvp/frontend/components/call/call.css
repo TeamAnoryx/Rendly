@@ -1,21 +1,35 @@
-/* Call UI: incoming card, outgoing card, full stage, minimised pill, tiles and controls. */
+/*
+ * 1:1 call UI: incoming / outgoing popover, full black stage, minimised pill, tiles and controls.
+ * Shares the huddle tile language: 12px radius, hairline border, dark translucent name pill.
+ * Shared with the Spark match room (CallControls / CallMedia), so keep class names stable.
+ */
 
+/* ---------- incoming / outgoing popover ---------- */
 .call-incoming,
 .call-outgoing {
   position: fixed;
   z-index: 500;
-  right: 20px;
+  right: 16px;
   top: calc(var(--rd-topbar) + 12px);
-  width: min(380px, calc(100vw - 32px));
+  width: min(360px, calc(100vw - 32px));
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 16px;
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(36, 32, 66, 0.97), rgba(18, 16, 34, 0.98));
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--rd-radius);
+  background: rgba(20, 21, 23, 0.94);
   border: 1px solid var(--rd-border-strong);
-  box-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.95), var(--rd-glow);
-  animation: rd-pop 0.35s var(--rd-ease) both;
+  box-shadow: var(--rd-shadow-lg);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  animation: call-pop-in 0.32s var(--rd-ease) both;
+}
+
+@keyframes call-pop-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -8px, 0) scale(0.98);
+  }
 }
 
 .call-incoming-text {
@@ -23,17 +37,24 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
 .call-incoming-text strong {
+  font-size: 0.875rem;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.call-incoming-text .rd-small {
+  font-size: 0.75rem;
+}
+
 .call-incoming-actions {
   display: flex;
-  gap: 10px;
+  gap: 6px;
 }
 
 .call-incoming-pulse {
@@ -45,27 +66,35 @@
 .call-incoming-pulse::after {
   content: '';
   position: absolute;
-  inset: -6px;
+  inset: -4px;
   border-radius: 50%;
-  border: 2px solid rgba(139, 108, 255, 0.6);
-  animation: call-ring 1.8s ease-out infinite;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  animation: call-ring 2s var(--rd-ease) infinite;
+  pointer-events: none;
 }
 
 .call-incoming-pulse::after {
-  animation-delay: 0.9s;
+  animation-delay: 1s;
 }
 
 .call-incoming-pulse .rd-avatar--lg {
-  width: 56px;
-  height: 56px;
-  font-size: 1.1rem;
+  width: 40px;
+  height: 40px;
+  font-size: 0.875rem;
 }
 
 @keyframes call-ring {
-  from { transform: scale(0.9); opacity: 0.9; }
-  to { transform: scale(1.5); opacity: 0; }
+  from {
+    transform: scale(0.95);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.45);
+    opacity: 0;
+  }
 }
 
+/* ---------- full stage ---------- */
 .call-stage {
   position: fixed;
   z-index: 450;
@@ -73,40 +102,68 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px;
-  background:
-    radial-gradient(60% 50% at 50% 0%, rgba(139, 108, 255, 0.18), transparent 70%),
-    rgba(5, 5, 10, 0.97);
-  animation: rd-page-in 0.35s var(--rd-ease) both;
+  padding: calc(12px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom))
+    calc(16px + env(safe-area-inset-left));
+  background: #000;
+  animation: rd-fade 0.3s ease-out both;
 }
 
 .call-stage-head {
+  flex: none;
+  min-height: 32px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .call-stage-head > div {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
+.call-stage-head strong {
+  font-size: 0.875rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.call-stage-head .rd-small {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.call-stage-head .rd-chip {
+  cursor: default;
+  height: 24px;
+}
+
+/* ---------- media ---------- */
 .call-media {
   position: relative;
   flex: 1;
   min-height: 0;
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
   display: grid;
 }
 
 .call-media--share {
-  grid-template-columns: 1fr 280px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 8px;
 }
 
 .call-strip {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-height: 0;
 }
 
@@ -118,9 +175,10 @@
 .call-tile {
   position: relative;
   overflow: hidden;
-  border-radius: 20px;
-  background: radial-gradient(circle at 50% 40%, #1d1a36, #0c0b16);
+  border-radius: var(--rd-radius);
+  background: #0b0c0d;
   border: 1px solid var(--rd-border);
+  min-width: 0;
   min-height: 0;
 }
 
@@ -129,7 +187,7 @@
   inset: 0;
   width: 100%;
   height: 100%;
-  transition: opacity 0.25s;
+  transition: opacity var(--rd-mid) ease-out;
 }
 
 .call-tile-video--mirror {
@@ -141,138 +199,239 @@
   inset: 0;
   display: grid;
   place-items: center;
+  background: radial-gradient(60% 60% at 50% 45%, #141516, #0b0c0d);
 }
 
 .call-tile-label {
   position: absolute;
-  left: 10px;
-  bottom: 10px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.55);
-  font-size: 0.78rem;
-  font-weight: 600;
-  backdrop-filter: blur(8px);
+  z-index: 2;
+  left: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 16px);
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .call-tile--main {
   height: 100%;
 }
 
+/* Picture-in-picture self view. */
 .call-tile--pip {
   position: absolute;
-  right: 16px;
-  bottom: 16px;
-  width: clamp(120px, 20vw, 240px);
+  right: 12px;
+  bottom: 12px;
+  width: clamp(132px, 18vw, 240px);
   aspect-ratio: 16 / 10;
-  box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.9);
+  z-index: 3;
   border-color: var(--rd-border-strong);
-  z-index: 2;
+  box-shadow: 0 16px 48px -12px rgba(0, 0, 0, 0.95);
+  animation: call-pip-in 0.4s var(--rd-ease) both;
+}
+
+.call-tile--pip .call-tile-label {
+  left: 6px;
+  bottom: 6px;
+  height: 20px;
+  font-size: 0.6875rem;
+}
+
+.call-tile--pip .rd-avatar--lg {
+  width: 40px;
+  height: 40px;
+  font-size: 0.875rem;
+}
+
+@keyframes call-pip-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.96);
+  }
 }
 
 .call-tile--screen {
   background: #000;
 }
 
+/* ---------- controls dock ---------- */
 .call-controls {
   flex: none;
+  align-self: center;
   display: flex;
   justify-content: center;
-  gap: 12px;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 14px;
+  background: rgba(20, 21, 23, 0.78);
+  border: 1px solid var(--rd-border-strong);
+  box-shadow: 0 16px 48px -16px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
 }
 
 .call-controls--compact {
-  gap: 6px;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .call-ctl {
-  width: 52px;
-  height: 52px;
+  position: relative;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  border: 1px solid var(--rd-border-strong);
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--rd-text);
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--rd-text-2);
   cursor: pointer;
-  transition: transform 0.2s var(--rd-ease), background 0.2s;
+  transition: background var(--rd-fast), color var(--rd-fast), transform var(--rd-fast) var(--rd-ease);
 }
 
 .call-ctl:hover {
-  transform: translateY(-2px);
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--rd-surface-3);
+  color: var(--rd-text);
+}
+
+.call-ctl:active {
+  transform: scale(0.94);
+}
+
+.call-ctl:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 1px;
 }
 
 .call-controls--compact .call-ctl {
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
 }
 
 .call-ctl--off {
-  background: rgba(251, 113, 133, 0.18);
-  border-color: rgba(251, 113, 133, 0.5);
-  color: #fecdd3;
+  background: var(--rd-surface-2);
+  border-color: var(--rd-border-strong);
+  color: var(--rd-text);
 }
 
-.call-ctl--on {
-  background: rgba(139, 108, 255, 0.3);
-  border-color: rgba(139, 108, 255, 0.7);
+.call-ctl--on,
+.call-ctl--on:hover {
+  background: var(--rd-primary);
+  border-color: transparent;
+  color: var(--rd-on-primary);
 }
 
 .call-ctl--end {
-  background: #e11d48;
-  border-color: #e11d48;
+  width: 52px;
+  background: var(--rd-danger);
   color: #fff;
 }
 
 .call-ctl--end:hover {
-  background: #f43f5e;
+  background: #f06565;
+  color: #fff;
+}
+
+.call-controls--compact .call-ctl--end {
+  width: 40px;
+}
+
+.call-incoming .call-ctl,
+.call-outgoing .call-ctl {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
 }
 
 .call-ctl--accept {
-  background: #16a34a;
-  border-color: #16a34a;
-  color: #fff;
-  animation: call-wiggle 1.2s ease-in-out infinite;
+  background: var(--rd-primary);
+  color: var(--rd-on-primary);
 }
 
-@keyframes call-wiggle {
-  0%, 100% { transform: rotate(0); }
-  20% { transform: rotate(-12deg); }
-  40% { transform: rotate(12deg); }
-  60% { transform: rotate(0); }
+.call-ctl--accept:hover {
+  background: #fff;
+  color: var(--rd-on-primary);
 }
 
+/* ---------- minimised pill ---------- */
 .call-mini {
   position: fixed;
   z-index: 450;
   left: calc(var(--rd-rail) + 16px);
-  bottom: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 8px 8px 14px;
-  border-radius: 999px;
-  background: rgba(20, 18, 38, 0.96);
+  gap: 8px;
+  max-width: calc(100vw - var(--rd-rail) - 32px);
+  padding: 4px 4px 4px 12px;
+  border-radius: var(--rd-radius);
+  background: rgba(20, 21, 23, 0.94);
   border: 1px solid var(--rd-border-strong);
-  box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.9);
+  box-shadow: var(--rd-shadow-lg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  animation: call-pop-in 0.3s var(--rd-ease) both;
 }
 
 .call-mini-open {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   background: none;
   border: 0;
   color: inherit;
   font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.call-mini-open > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.call-mini-open .rd-muted {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.call-mini-open:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---------- responsive ---------- */
+@media (min-width: 1920px) {
+  .call-media {
+    max-width: 1760px;
+  }
 }
 
 @media (max-width: 1024px) {
   .call-media--share {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr 160px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 140px;
   }
   .call-strip {
     flex-direction: row;
@@ -281,34 +440,43 @@
 
 @media (max-width: 767px) {
   .call-stage {
-    padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+    gap: 8px;
+    padding: calc(8px + env(safe-area-inset-top)) 8px calc(8px + env(safe-area-inset-bottom));
   }
   .call-incoming,
   .call-outgoing {
-    top: 12px;
+    top: calc(12px + env(safe-area-inset-top));
     right: 12px;
     left: 12px;
     width: auto;
   }
   .call-mini {
     left: 12px;
-    bottom: calc(var(--rd-tabbar) + 12px);
+    right: 12px;
+    max-width: none;
+    justify-content: space-between;
+    bottom: calc(var(--rd-tabbar) + 12px + env(safe-area-inset-bottom));
   }
   .call-tile--pip {
-    width: 34vw;
+    width: 30vw;
+    min-width: 96px;
     aspect-ratio: 3 / 4;
-    right: 10px;
-    bottom: 10px;
+    right: 8px;
+    bottom: 8px;
   }
   .call-media--share {
-    grid-template-rows: 1fr 120px;
+    grid-template-rows: minmax(0, 1fr) 112px;
+  }
+  .call-controls {
+    align-self: stretch;
+    justify-content: space-evenly;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .call-incoming-pulse::before,
-  .call-incoming-pulse::after,
-  .call-ctl--accept {
+  .call-incoming-pulse::after {
     animation: none;
+    opacity: 0;
   }
 }

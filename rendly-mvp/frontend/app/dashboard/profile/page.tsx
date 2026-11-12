@@ -5,6 +5,8 @@ import PointsCard from '@/components/points/PointsCard';
 import '../account.css';
 import Link from 'next/link';
 import { useCurrentUser } from '@/context/CurrentUserContext';
+import { Avatar } from '@/components/shell/AppShell';
+import { getMyPoints } from '@/services/pointsApi';
 import {
   getProfile,
   patchProfile,
@@ -31,123 +33,214 @@ import {
 import { groupsApi, type GroupListItem } from '@/services/groups';
 import { INTENTS } from '@/hooks/useProfileSetup';
 
-/* Inline section icons (premium UI) */
-const IconEdit = () => (
-  <svg className="dash-profile-section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+/* 16px stroke icons, inherit currentColor */
+function Svg({ children, className = 'acct-icon' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {children}
+    </svg>
+  );
+}
+
+const IconUser = () => (
+  <Svg>
     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
     <circle cx="12" cy="7" r="4" />
-  </svg>
+  </Svg>
 );
 const IconSearch = () => (
-  <svg className="dash-profile-section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <circle cx="11" cy="11" r="8" />
-    <path d="m21 21-4.35-4.35" />
-  </svg>
+  <Svg>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-3.5-3.5" />
+  </Svg>
 );
 const IconMail = () => (
-  <svg className="dash-profile-section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+  <Svg>
+    <rect width="20" height="16" x="2" y="4" rx="2" />
+    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+  </Svg>
+);
+const IconUsers = () => (
+  <Svg>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </Svg>
+);
+const IconUserX = () => (
+  <Svg>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="m17 8 5 5M22 8l-5 5" />
+  </Svg>
+);
+const IconHash = () => (
+  <Svg>
+    <path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18" />
+  </Svg>
+);
+const IconMessage = () => (
+  <Svg>
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+  </Svg>
+);
+const IconTarget = () => (
+  <Svg>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="5" />
+    <circle cx="12" cy="12" r="1" />
+  </Svg>
+);
+const IconLink = () => (
+  <Svg>
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+  </Svg>
+);
+const IconBriefcase = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <rect width="20" height="14" x="2" y="7" rx="2" />
+    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+  </Svg>
+);
+const IconCamera = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+    <circle cx="12" cy="13" r="3" />
+  </svg>
+);
+const IconChevron = () => (
+  <Svg className="acct-chevron">
+    <path d="m6 9 6 6 6-6" />
+  </Svg>
+);
+const IconGitHub = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+  </svg>
+);
+const IconLinkedIn = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+  </svg>
+);
+const IconMailGlyph = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     <rect width="20" height="16" x="2" y="4" rx="2" />
     <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
   </svg>
 );
-const IconUsers = () => (
-  <svg className="dash-profile-section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-    <circle cx="9" cy="7" r="4" />
-    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-  </svg>
-);
-const IconUserX = () => (
-  <svg className="dash-profile-section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-    <circle cx="9" cy="7" r="4" />
-    <line x1="17" x2="22" y1="8" y2="13" />
-    <line x1="22" x2="17" y1="8" y2="13" />
-  </svg>
-);
-const IconGroups = () => (
-  <svg className="dash-profile-section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <path d="M12 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-    <circle cx="7" cy="7" r="4" />
-    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    <path d="M16 21v-2a4 4 0 0 0-4-4h-1" />
-  </svg>
-);
-const IconMessageCircle = () => (
-  <svg className="dash-profile-section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-  </svg>
-);
 
-/* Field and intent icons (inside inputs / buttons) */
-const IconMailField = () => (
-  <span className="dash-profile-field-icon" aria-hidden>
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect width="20" height="16" x="2" y="4" rx="2" />
-      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-    </svg>
-  </span>
-);
-const IconBriefcase = () => (
-  <span className="dash-profile-field-icon" aria-hidden>
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-      <rect width="20" height="14" x="2" y="6" rx="2" />
-      <path d="M16 12h4" />
-    </svg>
-  </span>
-);
-const IconGitHub = () => (
-  <span className="dash-profile-field-icon" aria-hidden>
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-    </svg>
-  </span>
-);
-const IconLinkedIn = () => (
-  <span className="dash-profile-field-icon" aria-hidden>
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-    </svg>
-  </span>
+const intentPath = (d: React.ReactNode) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    {d}
+  </svg>
 );
 const IntentIcons: Record<string, React.ReactNode> = {
-  'Light chat': (
-    <svg className="dash-profile-intent-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    </svg>
-  ),
-  Brainstorm: (
-    <svg className="dash-profile-intent-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+  'Light chat': intentPath(<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />),
+  Brainstorm: intentPath(
+    <>
       <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
-      <path d="M9 18h6" />
-      <path d="M10 22h4" />
-    </svg>
+      <path d="M9 18h6M10 22h4" />
+    </>
   ),
-  Motivation: (
-    <svg className="dash-profile-intent-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-3.054 0-3 .732.731 1.5 1.5 2 2.5.5.9 1 2.5 1 4a2.5 2.5 0 0 1-4.5 2.5" />
-      <path d="M14.5 10.5c.5.5 1 1.5 1 3 0 1.38-.5 2-1 3-1.072 2.143-.224 3.054 0 3 .732-.731 1.5-1.5 2-2.5 .5-.9 1-2.5 1-4a2.5 2.5 0 0 0-4.5-2.5" />
-    </svg>
-  ),
-  Collaborate: (
-    <svg className="dash-profile-intent-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+  Motivation: intentPath(<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />),
+  Collaborate: intentPath(
+    <>
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
       <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </>
   ),
-  Networking: (
-    <svg className="dash-profile-intent-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+  Networking: intentPath(
+    <>
       <circle cx="12" cy="12" r="10" />
-      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-      <path d="M2 12h20" />
-    </svg>
+      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20" />
+    </>
   ),
 };
+
+const MAX_INTENTS = 5;
+const BIO_MAX = 500;
+
+/** Section header used by every panel on this page. */
+function SectionHead({
+  icon,
+  title,
+  desc,
+  aside,
+  id,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc?: React.ReactNode;
+  aside?: React.ReactNode;
+  id?: string;
+}) {
+  return (
+    <div className="acct-section-head">
+      <div>
+        <h2 className="acct-section-title" id={id}>
+          {icon}
+          {title}
+        </h2>
+        {desc ? <p className="acct-section-desc">{desc}</p> : null}
+      </div>
+      {aside}
+    </div>
+  );
+}
+
+/** Label/description left, control right. */
+function Row({
+  label,
+  desc,
+  htmlFor,
+  top,
+  children,
+}: {
+  label: React.ReactNode;
+  desc?: React.ReactNode;
+  htmlFor?: string;
+  top?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`acct-row${top ? ' acct-row--top' : ''}`}>
+      <div className="acct-row-text">
+        {htmlFor ? (
+          <label className="acct-row-label" htmlFor={htmlFor}>
+            {label}
+          </label>
+        ) : (
+          <span className="acct-row-label">{label}</span>
+        )}
+        {desc ? <p className="acct-row-desc">{desc}</p> : null}
+      </div>
+      <div className="acct-row-control">{children}</div>
+    </div>
+  );
+}
+
+function ListSkeleton({ rows = 2 }: { rows?: number }) {
+  return (
+    <div className="acct-skeleton-rows" aria-hidden>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="rd-skeleton" />
+      ))}
+    </div>
+  );
+}
 
 function formatConnectionDuration(connectedAt: string): string {
   try {
@@ -446,11 +539,34 @@ export default function DashboardProfilePage() {
   const sentPendingInvites = invites.filter((i) => i.direction === 'sent' && i.status === 'pending');
   const sentAcceptedInvites = invites.filter((i) => i.direction === 'sent' && i.status === 'accepted');
 
+
+  // Header stats: read-only points summary (the shell and PointsCard read the same endpoint).
+  const [pointsTotal, setPointsTotal] = useState<number | null>(null);
+  const [pointsRank, setPointsRank] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getMyPoints()
+      .then((p) => {
+        if (!alive) return;
+        setPointsTotal(p.total);
+        setPointsRank(p.rank);
+      })
+      .catch(() => {
+        /* stats stay as "—"; PointsCard shows its own error */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // Full-page loading only when we have no user data yet; otherwise show form with prefill
   if (profileLoading && !profile && !contextUser) {
     return (
-      <div className="dash-profile-root" aria-busy="true">
-        <div className="dash-profile-loading">Loading profile…</div>
+      <div className="pf-root" aria-busy="true">
+        <div className="pf-loading">
+          <span className="rd-spinner rd-spinner--lg" aria-hidden />
+          Loading profile…
+        </div>
       </div>
     );
   }
@@ -458,525 +574,592 @@ export default function DashboardProfilePage() {
   // Only show error-only view when we have no user data at all; otherwise show form with inline message
   if (profileError && !profile && !contextUser) {
     return (
-      <div className="dash-profile-root">
-        <div className="dash-profile-card">
-          <p className="dash-profile-error">{profileError}</p>
+      <div className="pf-root">
+        <div className="pf-wrap">
+          <div className="acct-section">
+            <SectionHead icon={<IconUser />} title="Profile" />
+            <div className="acct-empty">
+              <span className="acct-msg acct-msg--error" role="alert">
+                {profileError}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   const displayName = username.trim() || contextUser?.username || 'User';
-  const tagline = bio.trim() ? bio.split('\n')[0].slice(0, 80) : 'Update your profile below.';
+  const heroAvatar = avatarUrl || profile?.avatar_url || '';
+  const initials = displayName.replace(/^@/, '').slice(0, 2).toUpperCase();
+  const fmt = (n: number) => n.toLocaleString('en-IN');
 
   return (
-    <div className="dash-profile-root">
-      <div className="dash-profile-left">
-        <div className="dash-profile-hero">
-          <div className="dash-profile-hero-avatar-wrap">
-            {(avatarUrl || profile?.avatar_url) ? (
-              <img
-                src={avatarUrl || profile?.avatar_url || ''}
-                alt=""
-                className="dash-profile-hero-avatar"
-                onError={(e) => (e.currentTarget.style.display = 'none')}
-              />
-            ) : (
-              <div className="dash-profile-hero-avatar dash-profile-hero-avatar-placeholder" aria-hidden />
-            )}
-          </div>
-          <h1 className="dash-profile-hero-name">@{displayName}</h1>
-          <p className="dash-profile-hero-tagline">{tagline}</p>
-        </div>
-        <div className="dash-profile-card dash-profile-card-interactive">
-          <h2 className="dash-profile-title-with-icon">
-            <IconEdit />
-            Edit profile
-          </h2>
-          <p className="dash-profile-subtitle">Update your details. Changes are saved to your account.</p>
-          {profileError && (
-            <p className="dash-profile-error dash-profile-error-inline" role="alert">
-              {profileError}
-            </p>
-          )}
-
-          <div className="dash-profile-field">
-            <label className="dash-profile-label" htmlFor="profile-username">
-              Username
-            </label>
-            <input
-              id="profile-username"
-              type="text"
-              className="dash-profile-input"
-              placeholder="@username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              aria-describedby="profile-username-hint"
-            />
-          </div>
-
-          <div className="dash-profile-field dash-profile-avatar-wrap">
-            <div className="dash-profile-avatar-preview-wrap">
-              {(avatarUrl || profile?.avatar_url) && (
-                <img
-                  src={avatarUrl || profile?.avatar_url || ''}
-                  alt=""
-                  className="dash-profile-avatar-preview"
-                  onError={(e) => (e.currentTarget.style.display = 'none')}
-                />
-              )}
-              {!avatarUrl && !profile?.avatar_url && (
-                <div className="dash-profile-avatar-preview" style={{ background: '#e2e8f0' }} aria-hidden />
-              )}
-              <input
-                ref={avatarInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/*"
-                className="dash-profile-avatar-file-input"
-                aria-label="Upload avatar photo"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleAvatarFile(f);
-                }}
-                disabled={avatarUploading}
-              />
-              <button
-                type="button"
-                className="dash-profile-avatar-upload-btn"
-                onClick={() => avatarInputRef.current?.click()}
-                disabled={avatarUploading}
-              >
-                {avatarUploading ? 'Uploading…' : 'Upload photo'}
-              </button>
-            </div>
-            <div className="dash-profile-field" style={{ flex: 1 }}>
-              <label className="dash-profile-label" htmlFor="profile-avatar">
-                Or paste image URL
-              </label>
-              <input
-                id="profile-avatar"
-                type="url"
-                className="dash-profile-input"
-                placeholder="https://…"
-                value={avatarUrl}
-                onChange={(e) => setAvatarUrl(e.target.value)}
-              />
-              {avatarError && (
-                <p className="dash-profile-error dash-profile-avatar-error" role="alert">
-                  {avatarError}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="dash-profile-field">
-            <label className="dash-profile-label" htmlFor="profile-email">
-              Email
-            </label>
-            <div className="dash-profile-input-wrap">
-              <IconMailField />
-              <input
-                id="profile-email"
-                type="email"
-                className="dash-profile-input"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="dash-profile-field">
-            <label className="dash-profile-label" htmlFor="profile-bio">
-              Bio
-            </label>
-            <textarea
-              id="profile-bio"
-              className="dash-profile-input dash-profile-textarea"
-              placeholder="A short bio…"
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              maxLength={500}
-            />
-          </div>
-
-          <div className="dash-profile-field">
-            <label className="dash-profile-label" htmlFor="profile-profession">
-              Profession
-            </label>
-            <div className="dash-profile-input-wrap">
-              <IconBriefcase />
-              <input
-                id="profile-profession"
-                type="text"
-                className="dash-profile-input"
-                placeholder="e.g. Developer, Designer"
-                value={profession}
-                onChange={(e) => setProfession(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="dash-profile-field">
-            <label className="dash-profile-label" htmlFor="profile-github">
-              GitHub URL
-            </label>
-            <div className="dash-profile-input-wrap">
-              <IconGitHub />
-              <input
-                id="profile-github"
-                type="url"
-                className="dash-profile-input"
-                placeholder="https://github.com/…"
-                value={githubUrl}
-                onChange={(e) => setGithubUrl(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="dash-profile-field">
-            <label className="dash-profile-label" htmlFor="profile-linkedin">
-              LinkedIn URL
-            </label>
-            <div className="dash-profile-input-wrap">
-              <IconLinkedIn />
-              <input
-                id="profile-linkedin"
-                type="url"
-                className="dash-profile-input"
-                placeholder="https://linkedin.com/in/…"
-                value={linkedinUrl}
-                onChange={(e) => setLinkedinUrl(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="dash-profile-field">
-            <span className="dash-profile-label">Intents</span>
-            <p className="dash-profile-subtitle" style={{ marginBottom: '0.5rem' }}>
-              What you’re open to (select up to 5).
-            </p>
-            <div className="dash-profile-intents" role="group" aria-label="Intents">
-              {INTENTS.map((intent) => (
-                <button
-                  key={intent}
-                  type="button"
-                  className={`dash-profile-intent-btn ${selectedIntents.includes(intent) ? 'selected' : ''}`}
-                  onClick={() => toggleIntent(intent)}
-                >
-                  {IntentIcons[intent] ?? null}
-                  <span>{intent}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {saveMessage && (
-            <p
-              className={`dash-profile-save-message ${saveMessage.type === 'success' ? 'dash-profile-success' : 'dash-profile-error'}`}
-              role="status"
-              aria-live="polite"
-            >
-              {saveMessage.text}
-            </p>
-          )}
-          <button
-            type="button"
-            className="dash-profile-submit"
-            onClick={handleSaveProfile}
-            disabled={saveLoading}
-          >
-            {saveLoading ? 'Saving…' : 'Save profile'}
-          </button>
-        </div>
-      </div>
-
-      <div className="dash-profile-right">
-        <PointsCard />
-        <div className="dash-profile-card dash-profile-card-interactive">
-          <h2 className="dash-profile-title-with-icon">
-            <IconSearch />
-            Find people
-          </h2>
-          <p className="dash-profile-subtitle">Search by username and send a connection invite.</p>
-          <div className="dash-profile-search-wrap">
-            <input
-              type="text"
-              className="dash-profile-search-input"
-              placeholder="@username"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              aria-label="Search by username"
-            />
+    <div className="pf-root">
+      <div className="pf-wrap">
+        {/* ---------- Header band ---------- */}
+        <header className="pf-header rd-card">
+          <div className="pf-header-main">
             <button
               type="button"
-              className="dash-profile-search-btn"
-              onClick={handleSearch}
-              disabled={searchLoading || searchQuery.trim().length < 2}
+              className={`pf-avatar${avatarUploading ? ' pf-avatar--busy' : ''}`}
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={avatarUploading}
+              aria-label={avatarUploading ? 'Uploading photo' : 'Change profile photo'}
             >
-              {searchLoading ? '…' : 'Search'}
+              {heroAvatar ? (
+                <img src={heroAvatar} alt="" onError={(e) => (e.currentTarget.style.display = 'none')} />
+              ) : (
+                <span className="pf-avatar-initials" aria-hidden>
+                  {initials}
+                </span>
+              )}
+              <span className="pf-avatar-overlay" aria-hidden>
+                {avatarUploading ? <span className="rd-spinner" /> : <IconCamera />}
+                {!avatarUploading && <span>Change</span>}
+              </span>
             </button>
-          </div>
-          {inviteMessage && (
-            <p className="dash-profile-error" role="alert" aria-live="polite">
-              {inviteMessage}
-            </p>
-          )}
-          {searchResults.length > 0 && (
-            <ul className="dash-profile-search-list" aria-label="Search results">
-              {searchResults.map((u) => (
-                <li key={u.id} className="dash-profile-invite-item">
-                  <div className="dash-profile-invite-user">
-                    {u.avatar_url ? (
-                      <img src={u.avatar_url} alt="" className="dash-profile-connection-avatar" />
-                    ) : (
-                      <div className="dash-profile-connection-avatar" style={{ background: '#e2e8f0' }} />
-                    )}
-                    <span className="dash-profile-connection-name">@{u.username ?? u.id}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="dash-profile-invite-accept"
-                    onClick={() => handleSendInvite(u)}
-                    disabled={inviteSending === u.id}
-                  >
-                    {inviteSending === u.id ? 'Sending…' : 'Send invite'}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/*"
+              className="pf-file"
+              tabIndex={-1}
+              aria-label="Upload avatar photo"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleAvatarFile(f);
+              }}
+              disabled={avatarUploading}
+            />
 
-        <div className="dash-profile-card dash-profile-card-interactive">
-          <h2 className="dash-profile-title-with-icon">
-            <IconMail />
-            Connection invites
-          </h2>
-          {connectionsLoading ? (
-            <p className="dash-profile-stub-text">Loading…</p>
-          ) : (
-            <>
-              {receivedInvites.length > 0 && (
-                <ul aria-label="Pending invites to you">
-                  {receivedInvites.map((inv) => (
-                    <li key={inv.id} className="dash-profile-invite-item">
-                      <div className="dash-profile-invite-user">
-                        {inv.other_user.avatar_url ? (
-                          <img src={inv.other_user.avatar_url} alt="" className="dash-profile-connection-avatar" />
-                        ) : (
-                          <div className="dash-profile-connection-avatar" style={{ background: '#e2e8f0' }} />
-                        )}
-                        <span className="dash-profile-connection-name">@{inv.other_user.username ?? inv.other_user.id}</span>
-                      </div>
-                      <div className="dash-profile-invite-actions">
+            <div className="pf-identity">
+              <h1 className="rd-h1 pf-name">{displayName.replace(/^@/, '')}</h1>
+              <p className="pf-handle rd-mono">@{displayName.replace(/^@/, '')}</p>
+              {profession.trim() ? (
+                <p className="pf-profession">
+                  <IconBriefcase className="acct-icon" />
+                  {profession.trim()}
+                </p>
+              ) : null}
+              <p className={`pf-bio${bio.trim() ? '' : ' pf-bio--empty'}`}>
+                {bio.trim() || 'No bio yet. Add one below so people know what you are about.'}
+              </p>
+              {selectedIntents.length > 0 ? (
+                <ul className="pf-chips" aria-label="Your intents">
+                  {selectedIntents.map((intent) => (
+                    <li key={intent} className="pf-chip">
+                      {IntentIcons[intent] ?? null}
+                      {intent}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </div>
+
+          {avatarError ? (
+            <p className="acct-msg acct-msg--error pf-header-error" role="alert">
+              {avatarError}
+            </p>
+          ) : null}
+
+          <div className="pf-stats">
+            <a href="#rankings" className="pf-stat">
+              <span className="pf-stat-label">Points</span>
+              <span className="pf-stat-value">{pointsTotal === null ? '—' : fmt(pointsTotal)}</span>
+            </a>
+            <div className="pf-stat">
+              <span className="pf-stat-label">Connections</span>
+              <span className="pf-stat-value">{connectionsLoading ? '—' : fmt(connections.length)}</span>
+            </div>
+            <a href="#rankings" className="pf-stat">
+              <span className="pf-stat-label">Rank</span>
+              <span className="pf-stat-value">{pointsRank ? `#${fmt(pointsRank)}` : '—'}</span>
+            </a>
+            <div className="pf-stat">
+              <span className="pf-stat-label">Groups</span>
+              <span className="pf-stat-value">{profileGroupsLoading ? '—' : fmt(profileGroups.length)}</span>
+            </div>
+          </div>
+        </header>
+
+        <div className="pf-grid">
+          {/* ---------- Main column: editable profile + people ---------- */}
+          <div className="pf-col">
+            <section className="acct-section" aria-labelledby="pf-about">
+              <SectionHead
+                id="pf-about"
+                icon={<IconUser />}
+                title="About"
+                desc="How you appear to people you meet on Rendly."
+              />
+              {profileError ? (
+                <p className="acct-banner acct-msg acct-msg--error" role="alert">
+                  {profileError}
+                </p>
+              ) : null}
+
+              <Row label="Username" desc="Your unique handle." htmlFor="profile-username">
+                <span className="acct-affix">
+                  <span className="acct-affix-glyph" aria-hidden>
+                    @
+                  </span>
+                  <input
+                    id="profile-username"
+                    type="text"
+                    className="rd-input"
+                    placeholder="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    autoComplete="username"
+                  />
+                </span>
+              </Row>
+
+              <Row label="Email" desc="Used for sign-in and account notices." htmlFor="profile-email">
+                <span className="acct-affix">
+                  <span className="acct-affix-glyph" aria-hidden>
+                    <IconMailGlyph />
+                  </span>
+                  <input
+                    id="profile-email"
+                    type="email"
+                    className="rd-input"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
+                  />
+                </span>
+              </Row>
+
+              <Row label="Profession" desc="What you do, in a few words." htmlFor="profile-profession">
+                <input
+                  id="profile-profession"
+                  type="text"
+                  className="rd-input"
+                  placeholder="e.g. Developer, Designer"
+                  value={profession}
+                  onChange={(e) => setProfession(e.target.value)}
+                />
+              </Row>
+
+              <Row label="Bio" desc="A short introduction. The first lines show on your card." htmlFor="profile-bio" top>
+                <span className="acct-field">
+                  <textarea
+                    id="profile-bio"
+                    className="rd-textarea"
+                    placeholder="A short bio…"
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    maxLength={BIO_MAX}
+                  />
+                  <span className="acct-field-meta">
+                    {bio.length}/{BIO_MAX}
+                  </span>
+                </span>
+              </Row>
+
+              <Row label="Photo" desc="JPEG, PNG or WebP, up to 5 MB. Or paste an image URL." htmlFor="profile-avatar" top>
+                <span className="acct-field">
+                  <span className="pf-photo">
+                    <Avatar url={heroAvatar || null} name={displayName} />
+                    <button
+                      type="button"
+                      className="rd-btn rd-btn--sm"
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={avatarUploading}
+                    >
+                      {avatarUploading ? (
+                        <>
+                          <span className="rd-spinner acct-btn-spinner" aria-hidden />
+                          Uploading…
+                        </>
+                      ) : (
+                        'Upload photo'
+                      )}
+                    </button>
+                  </span>
+                  <input
+                    id="profile-avatar"
+                    type="url"
+                    className="rd-input"
+                    placeholder="https://…"
+                    value={avatarUrl}
+                    onChange={(e) => setAvatarUrl(e.target.value)}
+                  />
+                </span>
+              </Row>
+            </section>
+
+            <section className="acct-section" aria-labelledby="pf-intents">
+              <SectionHead
+                id="pf-intents"
+                icon={<IconTarget />}
+                title="Intents"
+                desc="What you are open to. Used to match you with the right people."
+                aside={
+                  <span className="acct-count">
+                    {selectedIntents.length}/{MAX_INTENTS}
+                  </span>
+                }
+              />
+              <div className="pf-intents" role="group" aria-labelledby="pf-intents">
+                {INTENTS.map((intent) => {
+                  const on = selectedIntents.includes(intent);
+                  return (
+                    <button
+                      key={intent}
+                      type="button"
+                      className={`rd-chip${on ? ' rd-chip--on' : ''}`}
+                      aria-pressed={on}
+                      onClick={() => toggleIntent(intent)}
+                      disabled={!on && selectedIntents.length >= MAX_INTENTS}
+                    >
+                      {IntentIcons[intent] ?? null}
+                      {intent}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="acct-section" aria-labelledby="pf-links">
+              <SectionHead id="pf-links" icon={<IconLink />} title="Links" desc="Shown on your profile card." />
+              <Row label="GitHub" htmlFor="profile-github">
+                <span className="acct-affix">
+                  <span className="acct-affix-glyph" aria-hidden>
+                    <IconGitHub />
+                  </span>
+                  <input
+                    id="profile-github"
+                    type="url"
+                    className="rd-input"
+                    placeholder="https://github.com/…"
+                    value={githubUrl}
+                    onChange={(e) => setGithubUrl(e.target.value)}
+                  />
+                </span>
+              </Row>
+              <Row label="LinkedIn" htmlFor="profile-linkedin">
+                <span className="acct-affix">
+                  <span className="acct-affix-glyph" aria-hidden>
+                    <IconLinkedIn />
+                  </span>
+                  <input
+                    id="profile-linkedin"
+                    type="url"
+                    className="rd-input"
+                    placeholder="https://linkedin.com/in/…"
+                    value={linkedinUrl}
+                    onChange={(e) => setLinkedinUrl(e.target.value)}
+                  />
+                </span>
+              </Row>
+            </section>
+
+            <div className="pf-savebar">
+              {saveMessage ? (
+                <span
+                  className={`acct-msg ${saveMessage.type === 'success' ? 'acct-msg--success' : 'acct-msg--error'}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {saveMessage.text}
+                </span>
+              ) : (
+                <span className="pf-savebar-hint">Changes to About, Intents and Links are saved together.</span>
+              )}
+              <button type="button" className="rd-btn rd-btn--primary" onClick={handleSaveProfile} disabled={saveLoading}>
+                {saveLoading ? (
+                  <>
+                    <span className="rd-spinner acct-btn-spinner" aria-hidden />
+                    Saving…
+                  </>
+                ) : (
+                  'Save profile'
+                )}
+              </button>
+            </div>
+
+            <section className="acct-section" aria-labelledby="pf-connections">
+              <SectionHead
+                id="pf-connections"
+                icon={<IconUsers />}
+                title="Connections"
+                aside={<span className="acct-count">{connectionsLoading ? '—' : connections.length}</span>}
+              />
+              {connectionsLoading ? (
+                <ListSkeleton rows={3} />
+              ) : connections.length === 0 ? (
+                <p className="acct-empty">No connections yet. Use Find people to invite someone.</p>
+              ) : (
+                <ul className="acct-list" aria-label="Your connections">
+                  {connections.map((c) => {
+                    const open = expandedId === c.id;
+                    return (
+                      <li key={c.id} className={`acct-list-item${open ? ' acct-list-item--open' : ''}`}>
                         <button
                           type="button"
-                          className="dash-profile-invite-accept"
-                          onClick={() => handleAcceptInvite(inv)}
-                          disabled={actingId === inv.id}
+                          className="acct-person"
+                          onClick={() => setExpandedId(open ? null : c.id)}
+                          aria-expanded={open}
                         >
-                          Accept
+                          <Avatar url={c.avatar_url} name={c.username ?? c.id} />
+                          <span className="acct-person-meta">
+                            <span className="acct-person-name">@{c.username ?? c.id}</span>
+                            <span className="acct-person-sub">Connected {formatDate(c.connected_at)}</span>
+                          </span>
+                          <IconChevron />
                         </button>
+                        {open && (
+                          <div className="acct-detail">
+                            <dl className="acct-kv">
+                              <dt>Connected for</dt>
+                              <dd>{formatConnectionDuration(c.connected_at)}</dd>
+                              <dt>Shared groups / huddles</dt>
+                              <dd>—</dd>
+                            </dl>
+                            <div className="acct-person-actions">
+                              <button
+                                type="button"
+                                className="rd-btn rd-btn--sm"
+                                onClick={() => handleDisconnect(c.id)}
+                                disabled={actingId === c.id}
+                              >
+                                Disconnect
+                              </button>
+                              <button
+                                type="button"
+                                className="rd-btn rd-btn--sm rd-btn--danger"
+                                onClick={() => handleBlock(c.id)}
+                                disabled={actingId === c.id}
+                              >
+                                Block
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+
+            <section className="acct-section" aria-labelledby="pf-invites">
+              <SectionHead id="pf-invites" icon={<IconMail />} title="Connection invites" />
+              {connectionsLoading ? (
+                <ListSkeleton rows={2} />
+              ) : (
+                <>
+                  {receivedInvites.length > 0 && (
+                    <ul className="acct-list" aria-label="Pending invites to you">
+                      {receivedInvites.map((inv) => (
+                        <li key={inv.id} className="acct-list-item">
+                          <div className="acct-person">
+                            <Avatar url={inv.other_user.avatar_url} name={inv.other_user.username ?? inv.other_user.id} />
+                            <span className="acct-person-meta">
+                              <span className="acct-person-name">@{inv.other_user.username ?? inv.other_user.id}</span>
+                              <span className="acct-person-sub">Wants to connect</span>
+                            </span>
+                            <span className="acct-person-actions">
+                              <button
+                                type="button"
+                                className="rd-btn rd-btn--sm rd-btn--ghost"
+                                onClick={() => handleRejectInvite(inv)}
+                                disabled={actingId === inv.id}
+                              >
+                                Decline
+                              </button>
+                              <button
+                                type="button"
+                                className="rd-btn rd-btn--sm rd-btn--primary"
+                                onClick={() => handleAcceptInvite(inv)}
+                                disabled={actingId === inv.id}
+                              >
+                                Accept
+                              </button>
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {sentPendingInvites.length > 0 && (
+                    <div aria-label="Sent invites waiting for response">
+                      {sentPendingInvites.map((inv) => (
+                        <div key={inv.id} className="acct-status">
+                          <span className="rd-dot" aria-hidden />
+                          <span className="acct-person-name">@{inv.other_user.username ?? inv.other_user.id}</span>
+                          <span className="rd-badge">Pending</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {sentAcceptedInvites.length > 0 && (
+                    <div aria-label="Invites accepted by others">
+                      {sentAcceptedInvites.map((inv) => (
+                        <div key={inv.id} className="acct-status">
+                          <span className="rd-dot" style={{ background: 'var(--rd-success)' }} aria-hidden />
+                          <span className="acct-person-name">@{inv.other_user.username ?? inv.other_user.id}</span>
+                          <span className="rd-badge rd-badge--success">Accepted</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {receivedInvites.length === 0 && sentPendingInvites.length === 0 && sentAcceptedInvites.length === 0 && (
+                    <p className="acct-empty">No pending invites.</p>
+                  )}
+                </>
+              )}
+            </section>
+          </div>
+
+          {/* ---------- Side column ---------- */}
+          <aside className="pf-col" aria-label="Rankings and people">
+            <PointsCard />
+
+            <section className="acct-section" aria-labelledby="pf-find">
+              <SectionHead
+                id="pf-find"
+                icon={<IconSearch />}
+                title="Find people"
+                desc="Search by username and send a connection invite."
+              />
+              <div className="pf-search">
+                <span className="acct-affix">
+                  <span className="acct-affix-glyph" aria-hidden>
+                    @
+                  </span>
+                  <input
+                    type="text"
+                    className="rd-input"
+                    placeholder="username"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                    aria-label="Search by username"
+                  />
+                </span>
+                <button
+                  type="button"
+                  className="rd-btn"
+                  onClick={handleSearch}
+                  disabled={searchLoading || searchQuery.trim().length < 2}
+                >
+                  {searchLoading ? <span className="rd-spinner acct-btn-spinner" aria-label="Searching" /> : 'Search'}
+                </button>
+              </div>
+              {inviteMessage && (
+                <p className="acct-banner acct-msg" role="alert" aria-live="polite">
+                  {inviteMessage}
+                </p>
+              )}
+              {searchResults.length > 0 && (
+                <ul className="acct-list" aria-label="Search results">
+                  {searchResults.map((u) => (
+                    <li key={u.id} className="acct-list-item">
+                      <div className="acct-person">
+                        <Avatar url={u.avatar_url} name={u.username ?? u.id} />
+                        <span className="acct-person-meta">
+                          <span className="acct-person-name">@{u.username ?? u.id}</span>
+                        </span>
                         <button
                           type="button"
-                          className="dash-profile-invite-reject"
-                          onClick={() => handleRejectInvite(inv)}
-                          disabled={actingId === inv.id}
+                          className="rd-btn rd-btn--sm"
+                          onClick={() => handleSendInvite(u)}
+                          disabled={inviteSending === u.id}
                         >
-                          Reject
+                          {inviteSending === u.id ? 'Sending…' : 'Invite'}
                         </button>
                       </div>
                     </li>
                   ))}
                 </ul>
               )}
-              {sentPendingInvites.length > 0 && (
-                <div className="dash-profile-invite-status-list" aria-label="Sent invites waiting for response">
-                  {sentPendingInvites.map((inv) => {
-                    const name = inv.other_user.username ?? inv.other_user.id;
-                    return (
-                      <div key={inv.id} className="dash-profile-invite-status-box dash-profile-invite-status-box--waiting">
-                        Waiting for @{name} to accept
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {sentAcceptedInvites.length > 0 && (
-                <div className="dash-profile-invite-status-list" aria-label="Invites accepted by others">
-                  {sentAcceptedInvites.map((inv) => {
-                    const name = inv.other_user.username ?? inv.other_user.id;
-                    return (
-                      <div key={inv.id} className="dash-profile-invite-status-box dash-profile-invite-status-box--accepted">
-                        Accepted by @{name}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {receivedInvites.length === 0 && sentPendingInvites.length === 0 && sentAcceptedInvites.length === 0 && (
-                <p className="dash-profile-empty">No pending invites.</p>
-              )}
-            </>
-          )}
-        </div>
+            </section>
 
-        <div className="dash-profile-card dash-profile-card-interactive">
-          <h2 className="dash-profile-title-with-icon">
-            <IconUsers />
-            Connections
-          </h2>
-          <p className="dash-profile-subtitle">
-            {connections.length} {connections.length === 1 ? 'connection' : 'connections'}
-          </p>
-          {connectionsLoading ? (
-            <p className="dash-profile-stub-text">Loading…</p>
-          ) : connections.length === 0 ? (
-            <p className="dash-profile-empty">No connections yet. Search above to invite someone.</p>
-          ) : (
-            <ul aria-label="Your connections">
-              {connections.map((c) => (
-                <li key={c.id} className={`dash-profile-connection-item${expandedId === c.id ? ' expanded' : ''}`}>
-                  <button
-                    type="button"
-                    className="dash-profile-connection-header"
-                    onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
-                    aria-expanded={expandedId === c.id}
-                  >
-                    {c.avatar_url ? (
-                      <img src={c.avatar_url} alt="" className="dash-profile-connection-avatar" />
-                    ) : (
-                      <div className="dash-profile-connection-avatar" style={{ background: '#e2e8f0' }} />
-                    )}
-                    <div className="dash-profile-connection-meta">
-                      <span className="dash-profile-connection-name">@{c.username ?? c.id}</span>
-                      <span className="dash-profile-connection-date">Connected since {formatDate(c.connected_at)}</span>
-                    </div>
-                    <span className="dash-profile-connection-chevron" aria-hidden>
-                      ▼
-                    </span>
-                  </button>
-                  {expandedId === c.id && (
-                    <div className="dash-profile-connection-detail">
-                      <p className="dash-profile-stub-text">
-                        Duration: {formatConnectionDuration(c.connected_at)}
-                      </p>
-                      <p className="dash-profile-stub-text">In your groups / huddles: —</p>
-                      <div className="dash-profile-connection-actions">
+            <section className="acct-section" aria-labelledby="pf-groups">
+              <SectionHead
+                id="pf-groups"
+                icon={<IconHash />}
+                title="Groups"
+                aside={<span className="acct-count">{profileGroupsLoading ? '—' : profileGroups.length}</span>}
+              />
+              {profileGroupsLoading ? (
+                <ListSkeleton rows={2} />
+              ) : profileGroups.length === 0 ? (
+                <p className="acct-empty">No groups yet. Create or join one from Whispers.</p>
+              ) : (
+                <ul className="acct-list" aria-label="Your groups">
+                  {profileGroups.map((g) => (
+                    <li key={g.id} className="acct-list-item">
+                      <div className="acct-person">
+                        <Avatar url={g.avatar_url} name={g.name || 'Group'} />
+                        <span className="acct-person-meta">
+                          <span className="acct-person-name">{g.name || 'Unnamed group'}</span>
+                        </span>
+                        <Link href="/dashboard/chat?tab=Group" className="rd-btn rd-btn--sm rd-btn--ghost">
+                          Open
+                        </Link>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section className="acct-section" aria-labelledby="pf-blocked">
+              <SectionHead
+                id="pf-blocked"
+                icon={<IconUserX />}
+                title="Blocked users"
+                aside={<span className="acct-count">{blockedLoading ? '—' : blockedUsers.length}</span>}
+              />
+              {blockedLoading ? (
+                <ListSkeleton rows={1} />
+              ) : blockedUsers.length === 0 ? (
+                <p className="acct-empty">No blocked users.</p>
+              ) : (
+                <ul className="acct-list" aria-label="Blocked users">
+                  {blockedUsers.map((b) => (
+                    <li key={b.id} className="acct-list-item">
+                      <div className="acct-person">
+                        <Avatar url={b.avatar_url} name={b.username ?? b.id} />
+                        <span className="acct-person-meta">
+                          <span className="acct-person-name">@{b.username ?? b.id}</span>
+                        </span>
                         <button
                           type="button"
-                          className="dash-profile-btn-disconnect"
-                          onClick={() => handleDisconnect(c.id)}
-                          disabled={actingId === c.id}
+                          className="rd-btn rd-btn--sm"
+                          onClick={() => handleUnblock(b.id)}
+                          disabled={actingId === b.id}
                         >
-                          Disconnect
-                        </button>
-                        <button
-                          type="button"
-                          className="dash-profile-btn-block"
-                          onClick={() => handleBlock(c.id)}
-                          disabled={actingId === c.id}
-                        >
-                          Block
+                          {actingId === b.id ? 'Unblocking…' : 'Unblock'}
                         </button>
                       </div>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
 
-        <div className="dash-profile-card dash-profile-card-interactive">
-          <h2 className="dash-profile-title-with-icon">
-            <IconUserX />
-            Blocked users
-          </h2>
-          <p className="dash-profile-subtitle">
-            {blockedUsers.length} {blockedUsers.length === 1 ? 'user' : 'users'} blocked
-          </p>
-          {blockedLoading ? (
-            <p className="dash-profile-stub-text">Loading…</p>
-          ) : blockedUsers.length === 0 ? (
-            <p className="dash-profile-empty">No blocked users.</p>
-          ) : (
-            <ul aria-label="Blocked users">
-              {blockedUsers.map((b) => (
-                <li key={b.id} className="dash-profile-connection-item">
-                  <div className="dash-profile-connection-header" style={{ cursor: 'default' }}>
-                    {b.avatar_url ? (
-                      <img src={b.avatar_url} alt="" className="dash-profile-connection-avatar" />
-                    ) : (
-                      <div className="dash-profile-connection-avatar" style={{ background: '#e2e8f0' }} />
-                    )}
-                    <div className="dash-profile-connection-meta">
-                      <span className="dash-profile-connection-name">@{b.username ?? b.id}</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="dash-profile-btn-disconnect"
-                      onClick={() => handleUnblock(b.id)}
-                      disabled={actingId === b.id}
-                      style={{ marginLeft: 'auto' }}
-                    >
-                      {actingId === b.id ? '…' : 'Unblock'}
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="dash-profile-card dash-profile-card-interactive">
-          <h2 className="dash-profile-title-with-icon">
-            <IconGroups />
-            Groups
-          </h2>
-          <p className="dash-profile-subtitle">
-            {profileGroups.length} {profileGroups.length === 1 ? 'active group' : 'active groups'}
-          </p>
-          {profileGroupsLoading ? (
-            <p className="dash-profile-stub-text">Loading…</p>
-          ) : profileGroups.length === 0 ? (
-            <p className="dash-profile-empty">No groups yet. Create or join a group from the Whisper tab.</p>
-          ) : (
-            <ul aria-label="Your groups">
-              {profileGroups.map((g) => (
-                <li key={g.id} className="dash-profile-connection-item">
-                  <div className="dash-profile-connection-header" style={{ cursor: 'default' }}>
-                    {g.avatar_url ? (
-                      <img src={g.avatar_url} alt="" className="dash-profile-connection-avatar" />
-                    ) : (
-                      <div className="dash-profile-connection-avatar" style={{ background: '#e2e8f0' }} aria-hidden />
-                    )}
-                    <div className="dash-profile-connection-meta">
-                      <span className="dash-profile-connection-name">{g.name || 'Unnamed group'}</span>
-                    </div>
-                    <Link
-                      href="/dashboard/chat?tab=Group"
-                      className="dash-profile-invite-accept"
-                      style={{ marginLeft: 'auto', textDecoration: 'none' }}
-                    >
-                      Open in Chat
-                    </Link>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="dash-profile-card dash-profile-card-interactive">
-          <h2 className="dash-profile-title-with-icon">
-            <IconMessageCircle />
-            Huddles
-          </h2>
-          <p className="dash-profile-stub-text">Huddles you hosted: 0</p>
-          <p className="dash-profile-stub-text">Public huddles you joined: 0</p>
+            <section className="acct-section" aria-labelledby="pf-huddles">
+              <SectionHead id="pf-huddles" icon={<IconMessage />} title="Huddles" />
+              <dl className="pf-mini-stats">
+                <div>
+                  <dt>Hosted</dt>
+                  <dd>0</dd>
+                </div>
+                <div>
+                  <dt>Public joined</dt>
+                  <dd>0</dd>
+                </div>
+              </dl>
+            </section>
+          </aside>
         </div>
       </div>
     </div>

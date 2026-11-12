@@ -244,7 +244,7 @@ function ConversationRow({
     <div
       role="button"
       tabIndex={0}
-      className={`chat-conv-row ${isActive ? 'chat-conv-row--active' : ''} ${item.isFavorite ? 'chat-conv-row--favorite' : ''} ${item.isBlocked ? 'chat-conv-row--blocked' : ''} ${selectionMode ? 'chat-conv-row--selection' : ''}`}
+      className={`chat-conv-row ${isActive ? 'chat-conv-row--active' : ''} ${item.isFavorite ? 'chat-conv-row--favorite' : ''} ${item.isBlocked ? 'chat-conv-row--blocked' : ''} ${selectionMode ? 'chat-conv-row--selection' : ''} ${!item.isBlocked && item.unreadCount > 0 ? 'chat-conv-row--unread' : ''}`}
       {...(selectionMode ? { 'data-keep-connection-selection-open': true } : {})}
       onClick={onClick}
       onDoubleClick={onRowDoubleClick}
@@ -509,7 +509,7 @@ function GroupRow({
     <div
       role="button"
       tabIndex={0}
-      className={`chat-group-row ${isActive ? 'chat-group-row--active' : ''} ${group.isFavorite ? 'chat-group-row--favorite' : ''}`}
+      className={`chat-group-row ${isActive ? 'chat-group-row--active' : ''} ${group.isFavorite ? 'chat-group-row--favorite' : ''} ${group.unreadCount > 0 ? 'chat-group-row--unread' : ''}`}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -779,7 +779,7 @@ function ChatCallLogEntry({ log }: { log: CallLogListItem }) {
     text = durationStr === '-' ? `${callLabel}  •  ${timeStr}` : `${callLabel}  •  ${durationStr}  •  ${timeStr}`;
   }
   return (
-    <div className="chat-call-log-entry" role="listitem">
+    <div className={`chat-call-log-entry${isMissed ? ' chat-call-log-entry--missed' : ''}`} role="listitem">
       <span className="chat-call-log-entry-text">{text}</span>
     </div>
   );
@@ -3024,7 +3024,7 @@ function ChatPageContent() {
                     ? (selectedConv.otherUserId ? presence.isOnline(selectedConv.otherUserId) : selectedConv.isOnline)
                     : false;
                   return (
-                    <div className="chat-mobile-back-bar" aria-hidden>
+                    <div className="chat-mobile-back-bar">
                       <button
                         type="button"
                         className="chat-mobile-back-btn"
@@ -3083,7 +3083,7 @@ function ChatPageContent() {
                           <div className="chat-mobile-call-actions">
                             <button
                               type="button"
-                              className="chat-mobile-call-btn"
+                              className="chat-mobile-call-btn rd-icon-btn"
                               onClick={() => startCall(selectedId!, 'video')}
                               disabled={callState !== 'idle'}
                               aria-label="Video call"
@@ -3093,7 +3093,7 @@ function ChatPageContent() {
                             </button>
                             <button
                               type="button"
-                              className="chat-mobile-call-btn"
+                              className="chat-mobile-call-btn rd-icon-btn"
                               onClick={() => startCall(selectedId!, 'audio')}
                               disabled={callState !== 'idle'}
                               aria-label="Voice call"

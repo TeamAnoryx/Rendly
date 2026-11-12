@@ -1,8 +1,9 @@
-import { PageSkeleton } from '@/components/common/SkeletonLoader';
+import { DashboardSkeleton } from '@/components/common/SkeletonLoader';
 
 /**
- * Shown while dashboard segment (including /dashboard and /dashboard/chat) is loading.
+ * Shown inside the app shell while a dashboard route segment loads: same layout as Home,
+ * so the swap to real content does not jump.
  */
 export default function DashboardLoading() {
-  return <PageSkeleton />;
+  return <DashboardSkeleton />;
 }

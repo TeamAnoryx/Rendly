@@ -1,44 +1,65 @@
 import React from 'react';
 
-/** Small line-icon set used across the shell. Stroke follows currentColor. */
+/**
+ * Line-icon set for the app (Lucide-style geometry on a 24px grid).
+ * Stroke follows currentColor; default 1.7 stroke reads crisply at 16-20px.
+ */
 const PATHS: Record<string, React.ReactNode> = {
-  home: <><path d="M3 11l9-7 9 7" /><path d="M5 10v10h14V10" /></>,
-  spark: <><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" /></>,
-  chat: <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></>,
-  huddle: <><circle cx="9" cy="8" r="3.2" /><circle cx="16.5" cy="9.5" r="2.5" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" /><path d="M14 20c.2-2.4 1.6-4.4 3.8-4.9" /></>,
-  user: <><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-6 8-6s8 2 8 6" /></>,
-  settings: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /></>,
-  bell: <><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></>,
-  phone: <><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z" /></>,
-  people: <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" /></>,
-  group: <><rect x="3" y="4" width="18" height="14" rx="3" /><path d="M8 21h8M12 18v3" /></>,
-  star: <><path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z" /></>,
-  logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>,
-  check: <><path d="M20 6L9 17l-5-5" /></>,
-  trash: <><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></>,
-  close: <><path d="M18 6L6 18M6 6l12 12" /></>,
-  back: <><path d="M15 18l-6-6 6-6" /></>,
+  home: <><path d="M3.5 10.2 12 3.5l8.5 6.7" /><path d="M5.5 8.7V19a1.5 1.5 0 0 0 1.5 1.5h3.5V15h3v5.5H17a1.5 1.5 0 0 0 1.5-1.5V8.7" /></>,
+  spark: <><path d="M12 3v3M12 18v3M3 12h3M18 12h3" /><path d="M12 8.2 13.2 10.8 15.8 12 13.2 13.2 12 15.8 10.8 13.2 8.2 12 10.8 10.8Z" /><path d="m5.6 5.6 1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" /></>,
+  chat: <><path d="M20.5 14.5a2 2 0 0 1-2 2H8l-4.5 4V5.5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2Z" /></>,
+  huddle: <><circle cx="12" cy="7.5" r="3" /><path d="M6.5 20c0-3 2.5-5.5 5.5-5.5s5.5 2.5 5.5 5.5" /><circle cx="4.8" cy="10" r="2.1" /><path d="M1.5 18.5c0-2 1.2-3.7 3-4.3" /><circle cx="19.2" cy="10" r="2.1" /><path d="M22.5 18.5c0-2-1.2-3.7-3-4.3" /></>,
+  user: <><circle cx="12" cy="8" r="4" /><path d="M4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5" /></>,
+  settings: <><path d="M12.2 2.5h-.4a1.8 1.8 0 0 0-1.8 1.8v.2a1.8 1.8 0 0 1-.9 1.5l-.4.2a1.8 1.8 0 0 1-1.8 0l-.1-.1a1.8 1.8 0 0 0-2.4.7l-.2.4a1.8 1.8 0 0 0 .6 2.4l.2.1a1.8 1.8 0 0 1 .9 1.5v.6a1.8 1.8 0 0 1-.9 1.5l-.2.1a1.8 1.8 0 0 0-.6 2.4l.2.4a1.8 1.8 0 0 0 2.4.7l.1-.1a1.8 1.8 0 0 1 1.8 0l.4.2a1.8 1.8 0 0 1 .9 1.5v.2a1.8 1.8 0 0 0 1.8 1.8h.4a1.8 1.8 0 0 0 1.8-1.8v-.2a1.8 1.8 0 0 1 .9-1.5l.4-.2a1.8 1.8 0 0 1 1.8 0l.1.1a1.8 1.8 0 0 0 2.4-.7l.2-.4a1.8 1.8 0 0 0-.6-2.4l-.2-.1a1.8 1.8 0 0 1-.9-1.5v-.6a1.8 1.8 0 0 1 .9-1.5l.2-.1a1.8 1.8 0 0 0 .6-2.4l-.2-.4a1.8 1.8 0 0 0-2.4-.7l-.1.1a1.8 1.8 0 0 1-1.8 0l-.4-.2a1.8 1.8 0 0 1-.9-1.5v-.2a1.8 1.8 0 0 0-1.8-1.8Z" /><circle cx="12" cy="12" r="3" /></>,
+  bell: <><path d="M6 8.5a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 14.5 6 8.5Z" /><path d="M10.3 20a1.9 1.9 0 0 0 3.4 0" /></>,
+  phone: <><path d="M21.5 16.4v2.9a1.9 1.9 0 0 1-2.1 1.9 18.8 18.8 0 0 1-8.2-2.9 18.5 18.5 0 0 1-5.7-5.7A18.8 18.8 0 0 1 2.6 4.4a1.9 1.9 0 0 1 1.9-2h2.9a1.9 1.9 0 0 1 1.9 1.6c.1.9.4 1.8.7 2.7a1.9 1.9 0 0 1-.4 2L8.3 10a15.2 15.2 0 0 0 5.7 5.7l1.2-1.2a1.9 1.9 0 0 1 2-.4c.9.3 1.8.6 2.7.7a1.9 1.9 0 0 1 1.6 1.6Z" /></>,
+  'phone-incoming': <><path d="M16 2.5v6h6M22 2.5l-6 6" /><path d="M21.5 16.4v2.9a1.9 1.9 0 0 1-2.1 1.9 18.8 18.8 0 0 1-8.2-2.9 18.5 18.5 0 0 1-5.7-5.7A18.8 18.8 0 0 1 2.6 4.4a1.9 1.9 0 0 1 1.9-2h2.9a1.9 1.9 0 0 1 1.9 1.6c.1.9.4 1.8.7 2.7a1.9 1.9 0 0 1-.4 2L8.3 10a15.2 15.2 0 0 0 5.7 5.7l1.2-1.2a1.9 1.9 0 0 1 2-.4c.9.3 1.8.6 2.7.7a1.9 1.9 0 0 1 1.6 1.6Z" /></>,
+  'phone-missed': <><path d="m22 2.5-6 6M16 2.5l6 6" /><path d="M21.5 16.4v2.9a1.9 1.9 0 0 1-2.1 1.9 18.8 18.8 0 0 1-8.2-2.9 18.5 18.5 0 0 1-5.7-5.7A18.8 18.8 0 0 1 2.6 4.4a1.9 1.9 0 0 1 1.9-2h2.9a1.9 1.9 0 0 1 1.9 1.6c.1.9.4 1.8.7 2.7a1.9 1.9 0 0 1-.4 2L8.3 10a15.2 15.2 0 0 0 5.7 5.7l1.2-1.2a1.9 1.9 0 0 1 2-.4c.9.3 1.8.6 2.7.7a1.9 1.9 0 0 1 1.6 1.6Z" /></>,
+  people: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20.5c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.3c2.1.8 3.5 3 3.5 6.2" /></>,
+  group: <><rect x="3" y="4" width="18" height="13" rx="2.5" /><path d="M8 20.5h8M12 17v3.5" /></>,
+  star: <><path d="m12 2.8 2.8 5.7 6.3.9-4.6 4.5 1.1 6.3L12 17.2l-5.6 3 1.1-6.3-4.6-4.5 6.3-.9Z" /></>,
+  logout: <><path d="M9.5 20.5h-4a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2h4" /><path d="m16 16.5 4.5-4.5L16 7.5M20.5 12H9.5" /></>,
+  check: <><path d="M20 6.5 9.5 17 4 11.5" /></>,
+  trash: <><path d="M3.5 6h17M8.5 6V4.5a1.5 1.5 0 0 1 1.5-1.5h4a1.5 1.5 0 0 1 1.5 1.5V6" /><path d="M18.5 6 17.7 19a2 2 0 0 1-2 1.9H8.3a2 2 0 0 1-2-1.9L5.5 6" /></>,
+  close: <><path d="M18 6 6 18M6 6l12 12" /></>,
+  back: <><path d="m15 18-6-6 6-6" /></>,
+  'chevron-right': <><path d="m9 18 6-6-6-6" /></>,
+  'arrow-right': <><path d="M5 12h14M13 6l6 6-6 6" /></>,
   plus: <><path d="M12 5v14M5 12h14" /></>,
-  video: <><rect x="2" y="6" width="14" height="12" rx="2" /><path d="M16 10l6-3v10l-6-3z" /></>,
-  'video-off': <><path d="M16 16v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m4 0h4a2 2 0 0 1 2 2v3.3l1 1 5-3v8" /><path d="M2 2l20 20" /></>,
-  mic: <><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M19 10a7 7 0 0 1-14 0M12 17v5" /></>,
-  'mic-off': <><path d="M2 2l20 20M9 9v2a3 3 0 0 0 5.1 2.1M15 9.3V5a3 3 0 0 0-5.9-.6" /><path d="M19 10a7 7 0 0 1-.6 2.9M5 10a7 7 0 0 0 11.3 5.5M12 17v5" /></>,
-  screen: <><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></>,
-  'phone-off': <><path d="M10.7 13.3a16 16 0 0 0 3.4 2.6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 3.1 4.2 2 2 0 0 1 5.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L9 9.9" /><path d="M22 2L2 22" /></>,
-  send: <><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></>,
-  skip: <><path d="M5 4l10 8-10 8V4zM19 5v14" /></>,
-  'user-plus': <><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><path d="M20 8v6M23 11h-6" /></>,
-  trophy: <><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z" /><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3" /></>,
-  calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>,
-  upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></>,
-  grid: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
-  door: <><path d="M13 4h5a2 2 0 0 1 2 2v14H4V6a2 2 0 0 1 2-2h3" /><path d="M13 4v16M9 12h.01" /></>,
-  eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></>,
-  globe: <><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20" /></>,
-  lock: <><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>,
+  search: <><circle cx="11" cy="11" r="7" /><path d="m20.5 20.5-4.5-4.5" /></>,
+  inbox: <><path d="M21.5 12.5H16l-2 3h-4l-2-3H2.5" /><path d="M5.5 5.6 2.5 12.5v5.5a2 2 0 0 0 2 2h15a2 2 0 0 0 2-2v-5.5l-3-6.9A2 2 0 0 0 16.7 4.4H7.3a2 2 0 0 0-1.8 1.2Z" /></>,
+  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  activity: <><path d="M21.5 12h-3.8l-2.9 8.5L9.2 3.5 6.3 12H2.5" /></>,
+  video: <><rect x="2.5" y="6" width="13" height="12" rx="2" /><path d="m15.5 10.5 6-3.5v10l-6-3.5" /></>,
+  'video-off': <><path d="M15.5 15.5V16a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h1.5m4 0h3.5a2 2 0 0 1 2 2v2.5l6-3.5v10" /><path d="m2.5 2.5 19 19" /></>,
+  mic: <><rect x="9" y="2.5" width="6" height="11.5" rx="3" /><path d="M18.5 10.5a6.5 6.5 0 0 1-13 0M12 17v4.5" /></>,
+  'mic-off': <><path d="m2.5 2.5 19 19M9 9v2a3 3 0 0 0 5.1 2.1M15 9.3V5.5a3 3 0 0 0-5.9-.7" /><path d="M18.5 10.5a6.5 6.5 0 0 1-.6 2.8M5.5 10.5a6.5 6.5 0 0 0 10.6 5.1M12 17v4.5" /></>,
+  screen: <><rect x="2.5" y="3.5" width="19" height="13" rx="2" /><path d="M8 20.5h8M12 16.5v4" /></>,
+  'phone-off': <><path d="M10.7 13.3a15.2 15.2 0 0 0 3.3 2.4l1.2-1.2a1.9 1.9 0 0 1 2-.4c.9.3 1.8.6 2.7.7a1.9 1.9 0 0 1 1.6 1.6v2.9a1.9 1.9 0 0 1-2.1 1.9A18.8 18.8 0 0 1 2.6 4.4a1.9 1.9 0 0 1 1.9-2h2.9a1.9 1.9 0 0 1 1.9 1.6c.1.9.4 1.8.7 2.7a1.9 1.9 0 0 1-.4 2L8.3 10" /><path d="M21.5 2.5 2.5 21.5" /></>,
+  send: <><path d="M21.5 2.5 11 13" /><path d="m21.5 2.5-6.5 19-4-8.5-8.5-4Z" /></>,
+  skip: <><path d="M5.5 4.5 15 12l-9.5 7.5Z" /><path d="M19 5v14" /></>,
+  'user-plus': <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20.5c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5" /><path d="M19 8v6M22 11h-6" /></>,
+  trophy: <><path d="M8 20.5h8M12 16.5v4" /><path d="M7 3.5h10v5.5a5 5 0 0 1-10 0Z" /><path d="M17 5h2.5a1 1 0 0 1 1 1v.8A3.5 3.5 0 0 1 17 10.3M7 5H4.5a1 1 0 0 0-1 1v.8A3.5 3.5 0 0 0 7 10.3" /></>,
+  calendar: <><rect x="3" y="4.5" width="18" height="16.5" rx="2" /><path d="M16 2.5v4M8 2.5v4M3 10h18" /></>,
+  upload: <><path d="M20.5 15v3.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V15" /><path d="m16.5 8-4.5-4.5L7.5 8M12 3.5V15" /></>,
+  grid: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" /></>,
+  door: <><path d="M13 4h5a2 2 0 0 1 2 2v14.5H4V6a2 2 0 0 1 2-2h3" /><path d="M13 4v16.5M9.5 12h.01" /></>,
+  eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
+  globe: <><circle cx="12" cy="12" r="9.5" /><path d="M2.5 12h19M12 2.5a14.5 14.5 0 0 1 0 19M12 2.5a14.5 14.5 0 0 0 0 19" /></>,
+  lock: <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11" /></>,
 };
 
-export function Icon({ name, size = 20, className }: { name: string; size?: number; className?: string }) {
+export function Icon({
+  name,
+  size = 18,
+  className,
+  strokeWidth = 1.7,
+}: {
+  name: string;
+  size?: number;
+  className?: string;
+  strokeWidth?: number;
+}) {
   return (
     <svg
       width={size}
@@ -46,10 +67,11 @@ export function Icon({ name, size = 20, className }: { name: string; size?: numb
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.9}
+      strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden
+      focusable="false"
       className={className}
     >
       {PATHS[name] ?? PATHS.bell}

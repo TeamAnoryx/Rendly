@@ -10,8 +10,9 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import multer from "multer";
 import sharp from "sharp";
-import { upsertUserByGitHub, upsertUserByLinkedIn, getUserByProviderId, getUserById, getUserByEmailOrUsername, getUserByEmail, updateUserById, checkUsernameAvailable, getUsersWithActiveResetToken, getUserByUsername, getUsersByUsernameSearch, supabase } from "./supabase-users";
+import { upsertUserByGitHub, upsertUserByLinkedIn, getUserByProviderId, getUserById, getUserByEmailOrUsername, getUserByEmail, insertUserWithPassword, updateUserById, checkUsernameAvailable, getUsersWithActiveResetToken, getUserByUsername, getUsersByUsernameSearch, supabase } from "./supabase-users";
 import { sendPasswordResetEmail } from "./send-reset-email";
+import { isCompanyEmail, normalizeEmail } from "./company-email";
 import {
   listInvitesForUser,
   createInvite,
@@ -237,7 +238,7 @@ const credentialLimiter = rateLimit({
   handler: tooMany,
 });
 app.use(
-  ["/api/auth/login", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/github/callback", "/api/auth/linkedin/callback"],
+  ["/api/auth/login", "/api/auth/register", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/github/callback", "/api/auth/linkedin/callback"],
   credentialLimiter
 );
 
@@ -323,6 +324,67 @@ app.post("/api/auth/login", async (req, res) => {
   } catch (err) {
     console.error("POST /api/auth/login error:", err);
     res.status(500).json({ message: "Login failed" });
+  }
+});
+
+/** Sign up with a company email + password. Body { email, password }. Returns the same shape as /api/auth/login. */
+const MIN_PASSWORD_LENGTH = 8;
+const MAX_PASSWORD_LENGTH = 128;
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { email, password } = req.body ?? {};
+    if (typeof email !== "string" || typeof password !== "string") {
+      res.status(400).json({ message: "Email and password are required" });
+      return;
+    }
+    const emailCheck = isCompanyEmail(email);
+    if (!emailCheck.ok) {
+      res.status(400).json({ message: emailCheck.message ?? "Enter a valid email address.", field: "email" });
+      return;
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      res.status(400).json({ message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`, field: "password" });
+      return;
+    }
+    if (password.length > MAX_PASSWORD_LENGTH) {
+      res.status(400).json({ message: `Password must be at most ${MAX_PASSWORD_LENGTH} characters`, field: "password" });
+      return;
+    }
+    if (!supabase) {
+      console.error("[auth-service] Register: Supabase not configured (missing SUPABASE_URL or keys).");
+      res.status(503).json({ message: "Auth service temporarily unavailable" });
+      return;
+    }
+    const normalized = normalizeEmail(email);
+    const existing = await getUserByEmail(normalized);
+    if (existing) {
+      res.status(409).json({ message: "An account with this email already exists. Log in instead.", field: "email" });
+      return;
+    }
+    const password_hash = await bcrypt.hash(password, 10);
+    let created: { id: string } | null;
+    try {
+      created = await insertUserWithPassword({ email: normalized, password_hash });
+    } catch (insertErr) {
+      const code = (insertErr as { code?: string })?.code;
+      if (code === "23505") {
+        res.status(409).json({ message: "An account with this email already exists. Log in instead.", field: "email" });
+        return;
+      }
+      throw insertErr;
+    }
+    if (!created?.id) {
+      res.status(500).json({ message: "Could not create account" });
+      return;
+    }
+    const jwtToken = jwt.sign({ sub: created.id, provider: "password" }, JWT_SECRET, { expiresIn: "7d" });
+    res.status(201).json({
+      user: { id: created.id, email: normalized, username: null, avatar_url: null },
+      accessToken: jwtToken,
+    });
+  } catch (err) {
+    console.error("POST /api/auth/register error:", err);
+    res.status(500).json({ message: "Sign up failed" });
   }
 });
 
@@ -725,6 +787,7 @@ app.get("/api/users/me", async (req, res) => {
       selected_intents: user.selected_intents ?? null,
       bio: user.bio ?? null,
       profession: user.profession ?? null,
+      has_password: !!(user as { password_hash?: string | null }).password_hash,
     });
   } catch (err) {
     console.error("GET /api/users/me error:", err);
@@ -1255,7 +1318,17 @@ app.post("/api/auth/profile-setup", async (req, res) => {
       return;
     }
     const { username: rawUsername, password } = req.body ?? {};
-    if (typeof rawUsername !== "string" || typeof password !== "string") {
+    const fullUser = await getUserById(current.userId);
+    const hasPassword = !!(fullUser as { password_hash?: string | null } | null)?.password_hash;
+    if (typeof rawUsername !== "string") {
+      res.status(400).json({ message: "Missing username" });
+      return;
+    }
+    if (password !== undefined && typeof password !== "string") {
+      res.status(400).json({ message: "Invalid password" });
+      return;
+    }
+    if (!hasPassword && typeof password !== "string") {
       res.status(400).json({ message: "Missing username or password" });
       return;
     }
@@ -1270,12 +1343,15 @@ app.post("/api/auth/profile-setup", async (req, res) => {
       res.status(400).json({ message: "Username is already taken" });
       return;
     }
-    if (password.length < 8) {
-      res.status(400).json({ message: "Password must be at least 8 characters" });
-      return;
+    const updates: { username: string; password_hash?: string } = { username };
+    if (typeof password === "string") {
+      if (password.length < 8) {
+        res.status(400).json({ message: "Password must be at least 8 characters" });
+        return;
+      }
+      updates.password_hash = await bcrypt.hash(password, 10);
     }
-    const password_hash = await bcrypt.hash(password, 10);
-    const updated = await updateUserById(current.userId, { username, password_hash });
+    const updated = await updateUserById(current.userId, updates);
     if (!updated) {
       res.status(500).json({ message: "Failed to save profile" });
       return;
