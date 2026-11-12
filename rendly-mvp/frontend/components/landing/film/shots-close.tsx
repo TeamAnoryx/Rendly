@@ -7,6 +7,15 @@ import { Fx, Shot, type Animator } from './engine';
 import { Face, Icon, SparkMark, Words, enter } from './primitives';
 import { ease, lerp, seg } from './timeline';
 
+/**
+ * Elena's source photo has a second person whose hair reaches ~43% across it.
+ * The call tile frames a tighter, right-shifted crop (visible x ~45-98%) so no
+ * part of her shows.
+ */
+const ELENA_CALL: CastMember = { ...ELENA, face: { x: 0.715, y: 0.3, w: 0.54 } };
+/** Marco's photo has a colleague on its left third; the picture-in-picture tile starts right of her. */
+const MARCO_CALL: CastMember = { ...MARCO, face: { x: 0.64, y: 0.28, w: 0.45 } };
+
 /* ---------------- 4. Two profiles meet ---------------- */
 
 interface ProfileProps {
@@ -129,8 +138,8 @@ export function ShotCall() {
   return (
     <Shot range={[22, 29.6]} fx={scene}>
       <Fx className="fl-call" fx={stage}>
-        <Face who={ELENA} aspect={1.62} loosen={1.45} className="fl-call-main fl-call-main--land" />
-        <Face who={ELENA} aspect={0.82} loosen={1.7} className="fl-call-main fl-call-main--port" />
+        <Face who={ELENA_CALL} aspect={1.62} className="fl-call-main fl-call-main--land" />
+        <Face who={ELENA_CALL} aspect={0.82} className="fl-call-main fl-call-main--port" />
         <span className="fl-call-shade" />
         <Fx as="span" anchor={false} className="fl-call-ring" fx={mainRing} />
         <span className="fl-live">
@@ -143,7 +152,7 @@ export function ShotCall() {
           {ELENA.name}
         </span>
         <span className="fl-pip">
-          <Face who={MARCO} aspect={1.5} loosen={1.6} />
+          <Face who={MARCO_CALL} aspect={1.5} />
           <Fx as="span" anchor={false} className="fl-pip-ring" fx={pipRing} />
           <span className="fl-pip-name">
             <Bars who="m" />

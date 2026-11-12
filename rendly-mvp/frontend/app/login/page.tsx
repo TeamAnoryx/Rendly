@@ -190,7 +190,7 @@ export default function LoginPage() {
             disabled={loading}
           >
             <GitHubIcon />
-            Continue with GitHub
+            <span className="au-provider__pre">Continue with </span>GitHub
           </button>
           <button
             type="button"
@@ -199,7 +199,7 @@ export default function LoginPage() {
             disabled={loading}
           >
             <LinkedInIcon />
-            Continue with LinkedIn
+            <span className="au-provider__pre">Continue with </span>LinkedIn
           </button>
         </div>
       </Enter>

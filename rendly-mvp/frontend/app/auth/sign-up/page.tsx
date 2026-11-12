@@ -376,11 +376,11 @@ function SignUpContent() {
             <div className="au-providers">
               <button type="button" className="rd-btn rd-btn--block au-provider" onClick={() => startOAuth('github')} disabled={submitting}>
                 <GitHubIcon />
-                Continue with GitHub
+                <span className="au-provider__pre">Continue with </span>GitHub
               </button>
               <button type="button" className="rd-btn rd-btn--block au-provider" onClick={() => startOAuth('linkedin')} disabled={submitting}>
                 <LinkedInIcon />
-                Continue with LinkedIn
+                <span className="au-provider__pre">Continue with </span>LinkedIn
               </button>
             </div>
             <FormError message={errorMessage} />
