@@ -6,7 +6,7 @@ import './intro.css';
 export const INTRO_SEEN_KEY = 'rendly:intro-seen';
 
 /** Delays (ms) after the film ends, for each reveal step. */
-const STEP_DELAYS = { label: 700, symbol: 1250, word: 1900, proceed: 3000 } as const;
+const STEP_DELAYS = { label: 800, symbol: 1700, word: 2700, proceed: 4400 } as const;
 /** The film is 5s; if it stalls (slow network, decoding), finish anyway. */
 const FILM_TIMEOUT_MS = 8000;
 const LEAVE_MS = 700;
