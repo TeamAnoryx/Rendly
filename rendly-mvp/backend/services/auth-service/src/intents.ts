@@ -315,3 +315,34 @@ export async function syncPresetIntents(userId: string, names: string[]): Promis
     );
   if (upsertError) throw new IntentsStoreError("preset sync", upsertError);
 }
+
+export type LocationScope = "city" | "country";
+export type LocationIntentCard = IntentCard & { country: string | null };
+export type CreateLocationIntentOutcome =
+  | { status: "ok"; intent: LocationIntentCard }
+  | { status: "bad_name" | "limit_reached" | "unavailable" };
+
+/**
+ * Find or create a public city / country intent and hold it free for 28 days
+ * (create_location_intent RPC; at most 10 calls per user per 24 hours).
+ * "unavailable" means the Spark v2 migration has not been applied yet.
+ */
+export async function createLocationIntent(userId: string, scope: LocationScope, name: string): Promise<CreateLocationIntentOutcome> {
+  const client = requireClient();
+  const { data, error } = await client.rpc("create_location_intent", { p_user_id: userId, p_scope: scope, p_name: name });
+  if (error) {
+    const code = (error as { code?: string }).code;
+    if (code === "PGRST202" || code === "42883" || code === "42P01") {
+      console.error("[intents] create location: schema missing", code);
+      return { status: "unavailable" };
+    }
+    throw new IntentsStoreError("create location", error);
+  }
+  const result = (data ?? {}) as { status?: string; intent?: IntentRow & { country?: string | null } };
+  if (result.status === "ok" && result.intent) {
+    return { status: "ok", intent: { ...toCard(result.intent, userId, "location", true), country: result.intent.country ?? null } };
+  }
+  if (result.status === "bad_name" || result.status === "bad_input") return { status: "bad_name" };
+  if (result.status === "limit_reached") return { status: "limit_reached" };
+  throw new IntentsStoreError("create location", `unexpected result: ${JSON.stringify(data)}`);
+}

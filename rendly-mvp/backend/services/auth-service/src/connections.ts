@@ -4,6 +4,7 @@
  */
 
 import { supabase } from "./supabase-users";
+import { notifyUser } from "./notifications";
 
 export type ConnectionInviteRow = {
   id: string;
@@ -173,4 +174,34 @@ export async function isBlocked(blockerId: string, blockedId: string): Promise<b
     .eq("blocked_id", blockedId)
     .maybeSingle();
   return !!data;
+}
+
+export type SendInviteOutcome =
+  | { ok: true; id: string }
+  | { ok: false; reason: "self" | "blocked_by_me" | "blocked_by_them" | "connected" | "pending" | "failed" };
+
+/**
+ * Send a connection invite from one user to another and notify the recipient. Shared by
+ * POST /api/users/me/connection-invites and POST /api/match/invite; callers map the failure
+ * reasons to their own HTTP answers.
+ */
+export async function sendConnectionInvite(
+  from: { id: string; username: string | null | undefined },
+  toUserId: string
+): Promise<SendInviteOutcome> {
+  if (!from.id || !toUserId) return { ok: false, reason: "failed" };
+  if (from.id === toUserId) return { ok: false, reason: "self" };
+  if (await isBlocked(from.id, toUserId)) return { ok: false, reason: "blocked_by_me" };
+  if (await isBlocked(toUserId, from.id)) return { ok: false, reason: "blocked_by_them" };
+  if (await areConnected(from.id, toUserId)) return { ok: false, reason: "connected" };
+  if (await hasPendingInvite(from.id, toUserId)) return { ok: false, reason: "pending" };
+  const created = await createInvite(from.id, toUserId);
+  if (!created) return { ok: false, reason: "failed" };
+  await notifyUser(toUserId, {
+    type: "connection_request",
+    title: `${from.username ? `@${from.username}` : "Someone"} wants to connect`,
+    body: "Open your profile to accept or decline.",
+    payload: { invite_id: created.id, from_user_id: from.id },
+  });
+  return { ok: true, id: created.id };
 }

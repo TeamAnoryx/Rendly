@@ -1,0 +1,27 @@
+-- Spark v2: at most one waiting queue row per user, so a user can never be matched (and
+-- charged) twice from duplicate waiting rows. Run alone, after 20250625_spark_v2_index_2.sql
+-- (CREATE INDEX CONCURRENTLY cannot run inside a transaction or next to other statements).
+--
+-- The index build fails while any user still has more than one waiting row. Check first:
+--
+--   SELECT user_id, count(*) AS waiting_rows
+--   FROM match_queue
+--   WHERE status = 'waiting'
+--   GROUP BY user_id
+--   HAVING count(*) > 1;
+--
+-- If that returns rows, run this UPDATE on its own first; it cancels all but the newest
+-- waiting row per user (nothing is charged while a row is waiting):
+--
+--   UPDATE match_queue q SET status = 'cancelled'
+--   WHERE q.status = 'waiting'
+--     AND EXISTS (
+--       SELECT 1 FROM match_queue n
+--       WHERE n.user_id = q.user_id AND n.status = 'waiting'
+--         AND (n.enqueued_at, n.id) > (q.enqueued_at, q.id)
+--     );
+--
+-- If a failed build left an INVALID index behind, DROP INDEX CONCURRENTLY
+-- uq_match_queue_one_waiting; and run this file again.
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS uq_match_queue_one_waiting
+  ON match_queue (user_id) WHERE status = 'waiting';

@@ -16,10 +16,8 @@ import { isCompanyEmail, normalizeEmail } from "./company-email";
 import { pickVerifiedGitHubEmail, pickVerifiedLinkedInEmail, resolvePasswordSignup, SIGNUP_EMAIL_TAKEN_MESSAGE } from "./account-linking";
 import {
   listInvitesForUser,
-  createInvite,
   getInviteById,
   updateInviteStatus,
-  hasPendingInvite,
   createConnection,
   listConnectionsForUser,
   areConnected,
@@ -27,7 +25,7 @@ import {
   createBlock,
   deleteBlock,
   listBlockedIds,
-  isBlocked,
+  sendConnectionInvite,
 } from "./connections";
 import {
   addInvites,
@@ -66,13 +64,23 @@ import {
 } from "./huddles";
 import {
   cancelWaitingEntries,
+  endLatestPairing,
   enqueueForMatch,
   getDashboardStats,
+  findInvitablePartner,
   getMatchStatus,
+  hasActivePairing,
   ONLINE_WINDOW_SECONDS,
   recordHeartbeat,
+  SparkAlreadySearchingError,
+  SparkInsufficientError,
+  SparkIntentNotHeldError,
+  SparkUnavailableError,
 } from "./spark";
-import { validateMatchRequest, whisperConversationId } from "./spark-rules";
+import { parseQuoteIntents, sparkIntentPrice, sparkMatchCost, validateMatchRequest, whisperConversationId } from "./spark-rules";
+import { GeoUnavailableError, geoReverse, geoSearch } from "./geo";
+import { buildIceConfig } from "./turn-rules";
+import { normaliseGeoQuery, parseCoords, sanitiseAcceptLanguage } from "./geo-rules";
 import {
   buildInviteUrl,
   canAccessHuddle,
@@ -111,6 +119,7 @@ import { isPaidIntentSource, validateCreateIntentBody, validateLocationBody, typ
 import {
   clearUserLocation,
   createIntent,
+  createLocationIntent,
   getHotIntents,
   getLocationIntents,
   getMyIntents,
@@ -289,6 +298,39 @@ const tokenLimiter = rateLimit({
   legacyHeaders: false,
   handler: tooMany,
 });
+
+/**
+ * Per-user rate-limit key. Auth is resolved inside each route, so the bearer token stands in
+ * for the user: a hash of the Authorization header (never the token itself), else the IP.
+ * Requests without a valid token are answered 401 by the route anyway.
+ */
+function perUserKey(req: express.Request): string {
+  const auth = req.headers.authorization;
+  if (typeof auth === "string" && auth.length > 0) {
+    return "u:" + crypto.createHash("sha256").update(auth).digest("hex").slice(0, 32);
+  }
+  return "ip:" + (req.ip ?? "unknown");
+}
+
+/** A per-user budget of `max` requests a minute. */
+function perUserLimiter(max: number) {
+  return rateLimit({
+    windowMs: 60 * 1000,
+    max,
+    keyGenerator: perUserKey,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: tooMany,
+  });
+}
+
+/** Spark polling and pricing: a session's worth per user, not unlimited. */
+const matchStatusLimiter = perUserLimiter(90);
+const matchQuoteLimiter = perUserLimiter(60);
+const matchLeaveLimiter = perUserLimiter(30);
+const matchIceLimiter = perUserLimiter(30);
+/** Geocoding per user, on top of the per-IP geoLimiter. */
+const geoUserLimiter = perUserLimiter(10);
 
 /** Near By lookups: a slow per-IP budget so the distance buckets cannot be sampled rapidly. */
 const nearbyLimiter = rateLimit({
@@ -1165,31 +1207,26 @@ app.post("/api/users/me/connection-invites", async (req, res) => {
     if (!target || !target.id) {
       return res.status(404).json({ message: "User not found" });
     }
-    if (target.id === current.userId) {
-      return res.status(400).json({ message: "Cannot invite yourself" });
+    const outcome = await sendConnectionInvite({ id: current.userId, username: current.user.username }, target.id);
+    if (!outcome.ok) {
+      switch (outcome.reason) {
+        case "self":
+          return res.status(400).json({ message: "Cannot invite yourself" });
+        case "blocked_by_me":
+          return res.status(400).json({ message: "Cannot invite this user" });
+        case "blocked_by_them": {
+          const name = target.username ? `@${target.username}` : "This user";
+          return res.status(403).json({ message: `${name} has blocked your account` });
+        }
+        case "connected":
+          return res.status(400).json({ message: "Already connected" });
+        case "pending":
+          return res.status(400).json({ message: "Invite already sent" });
+        default:
+          return res.status(500).json({ message: "Failed to send invite" });
+      }
     }
-    if (await isBlocked(current.userId, target.id)) {
-      return res.status(400).json({ message: "Cannot invite this user" });
-    }
-    if (await isBlocked(target.id, current.userId)) {
-      const name = target.username ? `@${target.username}` : "This user";
-      return res.status(403).json({ message: `${name} has blocked your account` });
-    }
-    if (await areConnected(current.userId, target.id)) {
-      return res.status(400).json({ message: "Already connected" });
-    }
-    if (await hasPendingInvite(current.userId, target.id)) {
-      return res.status(400).json({ message: "Invite already sent" });
-    }
-    const created = await createInvite(current.userId, target.id);
-    if (!created) return res.status(500).json({ message: "Failed to send invite" });
-    await notifyUser(target.id, {
-      type: "connection_request",
-      title: `${current.user.username ? `@${current.user.username}` : "Someone"} wants to connect`,
-      body: "Open your profile to accept or decline.",
-      payload: { invite_id: created.id, from_user_id: current.userId },
-    });
-    res.status(201).json({ id: created.id, to_user_id: target.id, username: target.username ?? null });
+    res.status(201).json({ id: outcome.id, to_user_id: target.id, username: target.username ?? null });
   } catch (err) {
     console.error("POST /api/users/me/connection-invites error:", err);
     res.status(500).json({ message: "Failed to send invite" });
@@ -2913,8 +2950,34 @@ app.get("/api/dashboard/stats", async (_req, res) => {
   }
 });
 
-/** POST /api/match/queue – join the Spark queue for a mode and intent. Body: { mode, intent }. */
-app.post("/api/match/queue", async (req, res) => {
+/** Map a Spark service error to an HTTP answer; false when it is not a Spark error. */
+function sendSparkError(res: express.Response, err: unknown): boolean {
+  if (err instanceof SparkUnavailableError) {
+    res.status(503).json({ message: "Spark is updating, try again shortly" });
+    return true;
+  }
+  if (err instanceof SparkIntentNotHeldError) {
+    res.status(400).json({ message: err.message });
+    return true;
+  }
+  if (err instanceof SparkAlreadySearchingError) {
+    res.status(409).json({ message: "You are already searching" });
+    return true;
+  }
+  if (err instanceof SparkInsufficientError) {
+    res.status(402).json({ message: "Not enough Rendly Tokens", cost: err.cost, balance: err.balance });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * POST /api/match/queue – join the Spark queue.
+ * Body: { mode: 'text'|'video', intents: string[1..5], note?: string<=200, anonymous?: boolean (default true) }
+ * (legacy { mode, intent } accepted). 200 MatchView; 400 invalid / intent not held; 402 { message, cost, balance };
+ * 503 when the Spark v2 migration is missing.
+ */
+app.post("/api/match/queue", tokenLimiter, async (req, res) => {
   try {
     const current = await getCurrentUserFromRequest(req);
     if (!current) {
@@ -2926,16 +2989,16 @@ app.post("/api/match/queue", async (req, res) => {
       res.status(400).json({ message: validation.message });
       return;
     }
-    const view = await enqueueForMatch(current.userId, validation.value.mode, validation.value.intent);
-    res.json(view);
+    res.json(await enqueueForMatch(current.userId, validation.value));
   } catch (err) {
+    if (sendSparkError(res, err)) return;
     console.error("POST /api/match/queue error:", err);
     res.status(500).json({ message: "Failed to join the match queue" });
   }
 });
 
-/** GET /api/match/status – the caller's current match state. Poll this while waiting. */
-app.get("/api/match/status", async (req, res) => {
+/** GET /api/match/status – the caller's current match state (MatchView). Poll this while waiting. */
+app.get("/api/match/status", matchStatusLimiter, async (req, res) => {
   try {
     const current = await getCurrentUserFromRequest(req);
     if (!current) {
@@ -2944,13 +3007,17 @@ app.get("/api/match/status", async (req, res) => {
     }
     res.json(await getMatchStatus(current.userId));
   } catch (err) {
+    if (sendSparkError(res, err)) return;
     console.error("GET /api/match/status error:", err);
     res.status(500).json({ message: "Failed to read match status" });
   }
 });
 
-/** DELETE /api/match/queue – leave the queue. */
-app.delete("/api/match/queue", async (req, res) => {
+/**
+ * DELETE /api/match/queue – leave the queue, and end the caller's latest matched pairing (Skip /
+ * Leave) so neither side can rejoin its room. 200 { status: 'idle', cancelled, ended }.
+ */
+app.delete("/api/match/queue", matchLeaveLimiter, async (req, res) => {
   try {
     const current = await getCurrentUserFromRequest(req);
     if (!current) {
@@ -2958,10 +3025,219 @@ app.delete("/api/match/queue", async (req, res) => {
       return;
     }
     const cancelled = await cancelWaitingEntries(current.userId);
-    res.json({ cancelled });
+    const ended = await endLatestPairing(current.userId);
+    res.json({ status: "idle", cancelled, ended });
   } catch (err) {
+    if (sendSparkError(res, err)) return;
     console.error("DELETE /api/match/queue error:", err);
     res.status(500).json({ message: "Failed to leave the match queue" });
+  }
+});
+
+/** GET /api/match/quote?intents=a,b – price of a Spark: { cost, breakdown: [{ intent, price }], balance }. */
+app.get("/api/match/quote", matchQuoteLimiter, async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const parsed = parseQuoteIntents(req.query.intents);
+    if (!parsed.ok) {
+      res.status(400).json({ message: parsed.message });
+      return;
+    }
+    const breakdown = parsed.value.map((intent) => ({ intent, price: sparkIntentPrice(intent) }));
+    res.json({ cost: sparkMatchCost(parsed.value), breakdown, balance: await getBalance(current.userId) });
+  } catch (err) {
+    console.error("GET /api/match/quote error:", err);
+    res.status(500).json({ message: "Failed to price the match" });
+  }
+});
+
+/**
+ * GET /api/match/ice – ICE servers for the caller's active Spark call. Needs a matched pairing
+ * from the last 3 hours that has not been ended (403 otherwise). With TURN_URLS and
+ * TURN_SHARED_SECRET set: { relay: true, iceServers: [{ urls, username, credential }] } with a
+ * 10-minute coturn REST credential; otherwise { relay: false, iceServers: [public STUN] }.
+ * The secret and the credential are never logged.
+ */
+app.get("/api/match/ice", matchIceLimiter, async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    if (!(await hasActivePairing(current.userId))) {
+      res.status(403).json({ message: "You have no active match" });
+      return;
+    }
+    res.set("Cache-Control", "no-store");
+    res.json(
+      buildIceConfig({
+        turnUrls: process.env.TURN_URLS,
+        sharedSecret: process.env.TURN_SHARED_SECRET,
+        nowMs: Date.now(),
+        randomHex8: crypto.randomBytes(4).toString("hex"),
+      })
+    );
+  } catch (err) {
+    if (sendSparkError(res, err)) return;
+    console.error("GET /api/match/ice error:", err instanceof Error ? err.name : "unknown");
+    res.status(500).json({ message: "Failed to load call servers" });
+  }
+});
+
+/**
+ * POST /api/match/invite – send a connection invite to the partner of the caller's latest
+ * match (last 3 hours). No body: the server resolves the partner, who must have matched publicly.
+ * 201 { ok: true }; 403 anonymous / blocked; 404 no recent match; 409 already connected / invited.
+ */
+app.post("/api/match/invite", tokenLimiter, async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const found = await findInvitablePartner(current.userId);
+    if (found.status === "anonymous") {
+      res.status(403).json({ message: "This match is anonymous" });
+      return;
+    }
+    if (found.status !== "ok") {
+      res.status(404).json({ message: "No recent match to invite" });
+      return;
+    }
+    const outcome = await sendConnectionInvite({ id: current.userId, username: current.user.username }, found.partnerId);
+    if (outcome.ok) {
+      res.status(201).json({ ok: true });
+      return;
+    }
+    switch (outcome.reason) {
+      case "connected":
+        res.status(409).json({ message: "Already connected" });
+        return;
+      case "pending":
+        res.status(409).json({ message: "Invite already sent" });
+        return;
+      case "blocked_by_me":
+      case "blocked_by_them":
+        res.status(403).json({ message: "Cannot invite this user" });
+        return;
+      case "self":
+        res.status(404).json({ message: "No recent match to invite" });
+        return;
+      default:
+        res.status(500).json({ message: "Failed to send invite" });
+    }
+  } catch (err) {
+    if (sendSparkError(res, err)) return;
+    console.error("POST /api/match/invite error:", err);
+    res.status(500).json({ message: "Failed to send invite" });
+  }
+});
+
+/**
+ * POST /api/intents/location – create (or reuse) a public city / country intent and hold it free
+ * for 28 days. Body { scope: 'city'|'country', name }. 201 { intent }; 400 bad name; 429 daily limit.
+ */
+app.post("/api/intents/location", tokenLimiter, async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const scope: unknown = req.body?.scope;
+    const name: unknown = req.body?.name;
+    if ((scope !== "city" && scope !== "country") || typeof name !== "string" || name.length > 200) {
+      res.status(400).json({ message: "Choose city or country and type a place name", code: "bad_name" });
+      return;
+    }
+    const outcome = await createLocationIntent(current.userId, scope, name);
+    if (outcome.status === "ok") {
+      res.status(201).json({ intent: outcome.intent });
+      return;
+    }
+    if (outcome.status === "limit_reached") {
+      res.status(429).json({ message: "You can add 10 places a day. Try again tomorrow.", code: "limit_reached" });
+      return;
+    }
+    if (outcome.status === "unavailable") {
+      res.status(503).json({ message: "Spark is updating, try again shortly" });
+      return;
+    }
+    res.status(400).json({ message: "Use 2 to 40 letters, spaces, dots, hyphens or apostrophes", code: "bad_name" });
+  } catch (err) {
+    console.error("POST /api/intents/location error:", err);
+    res.status(500).json({ message: "Failed to add this place" });
+  }
+});
+
+/** Geocoding proxy budget per IP; the upstream allows ~1 request a second for the whole service. */
+const geoLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: tooMany,
+});
+
+/** GET /api/geo/search?q= (2..120 chars) – { results: [{ label, lat, lng, city, country }] } (max 5). 502 upstream down. */
+app.get("/api/geo/search", geoLimiter, geoUserLimiter, async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const q = normaliseGeoQuery(req.query.q);
+    if (!q) {
+      res.status(400).json({ message: "Type 2 to 120 characters" });
+      return;
+    }
+    const results = await geoSearch(q, sanitiseAcceptLanguage(req.headers["accept-language"]));
+    res.json({ results });
+  } catch (err) {
+    if (err instanceof GeoUnavailableError) {
+      console.error("GET /api/geo/search upstream:", err.message);
+      res.status(502).json({ message: "Address search is unavailable right now" });
+      return;
+    }
+    console.error("GET /api/geo/search error:", err instanceof Error ? err.name : "unknown");
+    res.status(500).json({ message: "Address search failed" });
+  }
+});
+
+/** GET /api/geo/reverse?lat=&lng= – { label, city, country } for the rounded point; 404 nothing there; 502 upstream down. */
+app.get("/api/geo/reverse", geoLimiter, geoUserLimiter, async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const coords = parseCoords(req.query.lat, req.query.lng);
+    if (!coords) {
+      res.status(400).json({ message: "lat and lng must be valid coordinates" });
+      return;
+    }
+    const result = await geoReverse(coords.lat, coords.lng, sanitiseAcceptLanguage(req.headers["accept-language"]));
+    if (!result) {
+      res.status(404).json({ message: "No address found here" });
+      return;
+    }
+    res.json(result);
+  } catch (err) {
+    if (err instanceof GeoUnavailableError) {
+      console.error("GET /api/geo/reverse upstream:", err.message);
+      res.status(502).json({ message: "Address search is unavailable right now" });
+      return;
+    }
+    console.error("GET /api/geo/reverse error:", err instanceof Error ? err.name : "unknown");
+    res.status(500).json({ message: "Address lookup failed" });
   }
 });
 
