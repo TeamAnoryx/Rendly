@@ -30,3 +30,10 @@ Thumbs.db
 
 # Local service runner state and logs
 rendly-mvp/backend/.run/
+
+# Build dirs incl. accidental trailing-space variants (e.g. ".next ", from untrimmed NEXT_DIST_DIR)
+.next*/
+*.tsbuildinfo
+
+# Claude local overrides
+.claude/settings.local.json
