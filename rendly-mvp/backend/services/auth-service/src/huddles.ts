@@ -220,6 +220,99 @@ export async function listActiveHuddles(viewerId: string): Promise<HuddleRow[]> 
   return live;
 }
 
+export type ViewerSeat = { admitted: boolean };
+
+/** The viewer's open seats (admitted or waiting) in the given huddles, keyed by huddle id. */
+export async function getViewerSeats(huddleIds: string[], viewerId: string): Promise<Map<string, ViewerSeat>> {
+  const seats = new Map<string, ViewerSeat>();
+  const ids = huddleIds.filter(isUuid);
+  if (ids.length === 0 || !isUuid(viewerId)) return seats;
+  const client = requireClient();
+  const { data, error } = await client
+    .from("huddle_participants")
+    .select("huddle_id, admitted")
+    .in("huddle_id", ids)
+    .eq("user_id", viewerId)
+    .is("left_at", null);
+  if (error) throw new HuddleStoreError("viewer seats", error);
+  for (const row of (data ?? []) as { huddle_id: string; admitted: boolean }[]) {
+    seats.set(row.huddle_id, { admitted: row.admitted === true });
+  }
+  return seats;
+}
+
+export const HOT_HUDDLES_DEFAULT_LIMIT = 5;
+const HOT_HUDDLES_MAX_LIMIT = 20;
+
+/** One row of the hot_huddles RPC. */
+export type HotHuddleStats = {
+  score: number;
+  is_live: boolean;
+  participants_count: number;
+  invites_count: number;
+  visits_24h: number;
+  joins_24h: number;
+  starts_in_seconds: number | null;
+};
+
+export type HostProfile = { username: string | null; avatar_url: string | null };
+
+export type HotHuddle = HotHuddleStats & { huddle: HuddleRow; host: HostProfile };
+
+/**
+ * The hottest huddles for the viewer (hot_huddles RPC): live first, then upcoming ones ranked
+ * by seats, invites and recent activity. Rows come back in the RPC's order.
+ */
+export async function listHotHuddles(viewerId: string, limit = HOT_HUDDLES_DEFAULT_LIMIT): Promise<HotHuddle[]> {
+  if (!isUuid(viewerId)) return [];
+  const client = requireClient();
+  const size = Math.min(Math.max(Math.floor(limit) || HOT_HUDDLES_DEFAULT_LIMIT, 1), HOT_HUDDLES_MAX_LIMIT);
+  const { data, error } = await client.rpc("hot_huddles", { p_viewer_id: viewerId, p_limit: size });
+  if (error) throw new HuddleStoreError("hot", error);
+  const stats = ((data ?? []) as (HotHuddleStats & { id: string })[]).filter((r) => isUuid(r.id));
+  if (stats.length === 0) return [];
+
+  const { data: rows, error: rowsError } = await client.from("huddles").select("*").in("id", stats.map((r) => r.id));
+  if (rowsError) throw new HuddleStoreError("hot rows", rowsError);
+  const byId = new Map(((rows ?? []) as HuddleRow[]).map((h) => [h.id, h]));
+  const hosts = await fetchHostProfiles(Array.from(byId.values()).map((h) => h.created_by));
+
+  return stats.flatMap((r) => {
+    const huddle = byId.get(r.id);
+    if (!huddle) return [];
+    const { id: _id, ...rest } = r;
+    return [
+      {
+        ...rest,
+        score: Number(r.score),
+        is_live: r.is_live === true,
+        participants_count: Number(r.participants_count ?? 0),
+        invites_count: Number(r.invites_count ?? 0),
+        visits_24h: Number(r.visits_24h ?? 0),
+        joins_24h: Number(r.joins_24h ?? 0),
+        starts_in_seconds: r.starts_in_seconds == null ? null : Number(r.starts_in_seconds),
+        huddle,
+        host: hosts.get(huddle.created_by) ?? { username: null, avatar_url: null },
+      },
+    ];
+  });
+}
+
+/** Username and avatar for each host id, in one query. */
+async function fetchHostProfiles(userIds: string[]): Promise<Map<string, HostProfile>> {
+  const ids = Array.from(new Set(userIds.filter(isUuid)));
+  if (ids.length === 0) return new Map();
+  const client = requireClient();
+  const { data, error } = await client.from("users").select("id, username, avatar_url").in("id", ids);
+  if (error) throw new HuddleStoreError("host profiles", error);
+  return new Map(
+    ((data ?? []) as { id: string; username: string | null; avatar_url: string | null }[]).map((u) => [
+      u.id,
+      { username: u.username ?? null, avatar_url: u.avatar_url ?? null },
+    ])
+  );
+}
+
 /**
  * Create a huddle from already-validated input, with its intent tags and invitees.
  * The huddle row, tags and invites are written in order; if a later write fails the
@@ -244,6 +337,7 @@ export async function createHuddle(createdBy: string, input: CreateHuddleInput):
     waiting_room: input.waiting_room,
     allow_self_exit: input.allow_self_exit,
     rewards_enabled: input.rewards_enabled,
+    rewards_receive_enabled: input.rewards_receive_enabled,
   };
   const { data, error } = await client.from("huddles").insert(row).select("*").single();
   if (error || !data) throw new HuddleStoreError("create", error ?? "no row returned");
@@ -593,10 +687,17 @@ export async function leaveHuddle(huddleId: string, userId: string): Promise<Lea
   throw new HuddleStoreError("leave", `unexpected leave_huddle result: ${String(status)}`);
 }
 
+export type HuddleSettingsPatch = Partial<{
+  waiting_room: boolean;
+  allow_self_exit: boolean;
+  rewards_enabled: boolean;
+  rewards_receive_enabled: boolean;
+}>;
+
 /** Host settings that can change after creation. Only the fields given are changed. */
 export async function setHuddleSettings(
   huddleId: string,
-  patch: Partial<{ waiting_room: boolean; allow_self_exit: boolean; rewards_enabled: boolean }>
+  patch: HuddleSettingsPatch
 ): Promise<void> {
   const client = requireClient();
   const { error } = await client.from("huddles").update(patch).eq("id", huddleId);

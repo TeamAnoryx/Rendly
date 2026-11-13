@@ -39,7 +39,10 @@ import {
   getIntentTags,
   getMembership,
   getParticipantCounts,
+  getViewerSeats,
   huddleMediaUrl,
+  listHotHuddles,
+  type HuddleSettingsPatch,
   isInvitedTo,
   joinHuddle,
   leaveHuddle,
@@ -68,10 +71,11 @@ import {
   ONLINE_WINDOW_SECONDS,
   recordHeartbeat,
 } from "./spark";
-import { validateMatchRequest } from "./spark-rules";
+import { validateMatchRequest, whisperConversationId } from "./spark-rules";
 import {
   buildInviteUrl,
   canAccessHuddle,
+  hotReason,
   INTENT_TAG_PATTERN,
   isUuid,
   parseCategory,
@@ -89,7 +93,31 @@ import {
   notifyUser,
   notifyUsers,
 } from "./notifications";
-import { awardHuddlePoints, getLeaderboard, getPointsSummary } from "./points";
+import {
+  awardHuddlePoints,
+  getLeaderboard,
+  getPointsHistory,
+  getPointsSummary,
+  huddleSendTokens,
+  transferTokens,
+  type HuddleSendOutcome,
+} from "./points";
+import { validateHuddleSendBody, validateTransferBody } from "./points-rules";
+import { isPaidIntentSource, validateCreateIntentBody, validateLocationBody, type IntentSource } from "./intents-rules";
+import {
+  clearUserLocation,
+  createIntent,
+  getHotIntents,
+  getLocationIntents,
+  getMyIntents,
+  getNearbyIntents,
+  getProfileHuddleStats,
+  purchaseIntent,
+  removeUserIntent,
+  searchIntents,
+  setUserLocation,
+  syncPresetIntents,
+} from "./intents";
 
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config();
@@ -247,6 +275,15 @@ app.use(
   ["/api/auth/login", "/api/auth/register", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/github/callback", "/api/auth/linkedin/callback"],
   credentialLimiter
 );
+
+/** Routes that move Rendly Tokens get a tight per-IP budget: a minute of sends, not a session's worth. */
+const tokenLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.TOKEN_RATE_LIMIT_MAX) || 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: tooMany,
+});
 
 const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_AVATAR_MIMES = ["image/jpeg", "image/png", "image/webp"];
@@ -869,6 +906,14 @@ app.patch("/api/users/me", async (req, res) => {
     const updated = await updateUserById(current.userId, payload);
     if (!updated) {
       return res.status(500).json({ message: "Failed to update profile" });
+    }
+    if (payload.selected_intents !== undefined) {
+      // users.selected_intents is the source of truth; the mirror is retried on the next save.
+      try {
+        await syncPresetIntents(current.userId, payload.selected_intents ?? []);
+      } catch (err) {
+        console.error("PATCH /api/users/me preset intents sync error:", err);
+      }
     }
     await notifyUser(current.userId, {
       type: "profile_updated",
@@ -1538,17 +1583,57 @@ app.get("/api/huddles/active", async (req, res) => {
       return;
     }
     const rows = await listActiveHuddles(current.userId);
-    const huddles = await toPublicHuddles(rows, current.userId);
+    const [huddles, seats] = await Promise.all([
+      toPublicHuddles(rows, current.userId),
+      getViewerSeats(rows.map((h) => h.id), current.userId),
+    ]);
     res.json(
       huddles.map((h) => ({
         ...h,
         topic: h.title,
         canJoin: h.participants_count < h.max_participants,
+        waiting_room: h.waiting_room === true,
+        is_participant: seats.get(h.id)?.admitted === true,
+        is_waiting: seats.has(h.id) && seats.get(h.id)?.admitted !== true,
       }))
     );
   } catch (err) {
     console.error("GET /api/huddles/active error:", err);
     res.status(500).json({ message: "Failed to list huddles" });
+  }
+});
+
+/**
+ * GET /api/huddles/hot?limit=5 – the hottest huddles for the dashboard: live first, then
+ * upcoming ones by seats, invites and recent activity (hot_huddles RPC).
+ */
+app.get("/api/huddles/hot", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const limit = clampInt(req.query.limit, 1, 20, 5);
+    const hot = await listHotHuddles(current.userId, limit);
+    const tags = await fetchIntentTags(hot.map((h) => h.huddle.id));
+    res.json(
+      hot.map((h) => ({
+        ...toPublicHuddle(h.huddle, current.userId, h.participants_count),
+        intents: tags.get(h.huddle.id) ?? [],
+        media_url: h.huddle.media_path ? huddleMediaUrl(h.huddle.media_path) : null,
+        thumbnail_url: h.huddle.thumbnail_path ? huddleMediaUrl(h.huddle.thumbnail_path) : null,
+        hot_score: h.score,
+        hot_reason: hotReason(h),
+        is_live: h.is_live,
+        invites_count: h.invites_count,
+        starts_in_seconds: h.starts_in_seconds,
+        host: h.host,
+      }))
+    );
+  } catch (err) {
+    console.error("GET /api/huddles/hot error:", err);
+    res.status(500).json({ message: "Failed to list hot huddles" });
   }
 });
 
@@ -1962,8 +2047,8 @@ app.patch("/api/huddles/:id/settings", async (req, res) => {
       return;
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const patch: Partial<{ waiting_room: boolean; allow_self_exit: boolean; rewards_enabled: boolean }> = {};
-    for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled"] as const) {
+    const patch: HuddleSettingsPatch = {};
+    for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled", "rewards_receive_enabled"] as const) {
       if (body[key] === undefined) continue;
       if (typeof body[key] !== "boolean") {
         res.status(400).json({ message: `${key} must be true or false` });
@@ -2253,7 +2338,7 @@ app.post("/api/huddles/:id/award", async (req, res) => {
     }
     await notifyUser(body.user_id, {
       type: "points_awarded",
-      title: `You earned ${amount} points`,
+      title: `You earned ${amount} Rendly Tokens`,
       body: note || "Awarded by the host of a huddle",
       payload: { huddle_id: req.params.id, amount },
     });
@@ -2291,6 +2376,346 @@ app.get("/api/points/leaderboard", async (req, res) => {
   } catch (err) {
     console.error("GET /api/points/leaderboard error:", err);
     res.status(500).json({ message: "Failed to load the leaderboard" });
+  }
+});
+
+/** Integer query parameter clamped to [min, max]; anything unparsable gives the fallback. */
+function clampInt(raw: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
+
+/** Authenticate or answer 401. Returns null after responding so handlers can bail out. */
+async function requireUser(req: express.Request, res: express.Response) {
+  const current = await getCurrentUserFromRequest(req);
+  if (!current) res.status(401).json({ message: "Missing or invalid authorization" });
+  return current;
+}
+
+/** GET /api/points/history?before=<ISO>&limit=50 – a cursor page of the caller's ledger, newest first. */
+app.get("/api/points/history", async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    const rawBefore = typeof req.query.before === "string" ? req.query.before.trim() : "";
+    if (rawBefore && Number.isNaN(Date.parse(rawBefore))) {
+      res.status(400).json({ message: "before must be an ISO date" });
+      return;
+    }
+    const before = rawBefore ? new Date(Date.parse(rawBefore)).toISOString() : null;
+    res.json(await getPointsHistory(current.userId, before, clampInt(req.query.limit, 1, 100, 50)));
+  } catch (err) {
+    console.error("GET /api/points/history error:", err);
+    res.status(500).json({ message: "Failed to load token history" });
+  }
+});
+
+const TRANSFER_FAILURE_RESPONSES: Record<string, [number, string]> = {
+  bad_amount: [400, "Send at least 1 Rendly Token"],
+  self: [400, "You cannot send tokens to yourself"],
+  bad_input: [400, "Invalid transfer"],
+  no_user: [404, "That person does not exist"],
+  insufficient: [409, "You do not have enough Rendly Tokens"],
+  duplicate: [409, "This transfer was already made"],
+};
+
+/**
+ * POST /api/tokens/transfer – send Rendly Tokens to a whisper partner.
+ * Body: { to_user_id, amount, note?, conversation_id }. conversation_id must be the whisper
+ * thread between the two users. 201 { transfer_id, amount, balance }.
+ */
+app.post("/api/tokens/transfer", tokenLimiter, async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    const validation = validateTransferBody(req.body);
+    if (!validation.ok) {
+      res.status(400).json({ message: validation.error });
+      return;
+    }
+    const body = validation.value;
+    if (body.to_user_id === current.userId) {
+      res.status(400).json({ message: "You cannot send tokens to yourself" });
+      return;
+    }
+    if (body.conversation_id !== whisperConversationId(current.userId, body.to_user_id)) {
+      res.status(400).json({ message: "conversation_id does not match this whisper" });
+      return;
+    }
+    const outcome = await transferTokens({
+      fromUserId: current.userId,
+      toUserId: body.to_user_id,
+      amount: body.amount,
+      note: body.note,
+      conversationId: body.conversation_id,
+      transferId: crypto.randomUUID(),
+    });
+    if (outcome.status !== "ok") {
+      const [status, message] = TRANSFER_FAILURE_RESPONSES[outcome.status];
+      res.status(status).json({ message });
+      return;
+    }
+    const senderName = current.user.username ? `@${current.user.username}` : "Someone";
+    await notifyUser(body.to_user_id, {
+      type: "tokens_received",
+      title: `${senderName} sent you ${body.amount} Rendly Tokens`,
+      body: body.note,
+      payload: { amount: body.amount, transfer_id: outcome.transfer_id, conversation_id: body.conversation_id },
+    });
+    res.status(201).json({ transfer_id: outcome.transfer_id, amount: body.amount, balance: outcome.balance });
+  } catch (err) {
+    console.error("POST /api/tokens/transfer error:", err);
+    res.status(500).json({ message: "Failed to send tokens" });
+  }
+});
+
+const HUDDLE_SEND_RESPONSES: Record<Exclude<HuddleSendOutcome, "ok">, [number, string]> = {
+  not_found: [404, "Huddle not found"],
+  not_host: [403, "Only the host can send tokens"],
+  rewards_off: [403, "Token rewards are turned off for this huddle"],
+  not_in_room: [409, "That person is not in the room"],
+  bad_amount: [400, "Send between 1 and 1000 Rendly Tokens"],
+  bad_purpose: [400, "Choose a purpose for the tokens"],
+  note_required: [400, "Add a note when the purpose is Other"],
+  bad_note: [400, "The note must be at most 140 characters"],
+  bad_input: [400, "Invalid request"],
+  insufficient: [409, "You do not have enough Rendly Tokens"],
+  duplicate: [409, "This send was already made"],
+};
+
+/**
+ * POST /api/huddles/:id/send-tokens – the host pays a participant from their own balance.
+ * Body: { user_id, amount, purpose, note? }. 201 { sent, transfer_id }.
+ */
+app.post("/api/huddles/:id/send-tokens", tokenLimiter, async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    if (!isUuid(req.params.id)) {
+      res.status(404).json({ message: "Huddle not found" });
+      return;
+    }
+    const validation = validateHuddleSendBody(req.body);
+    if (!validation.ok) {
+      res.status(400).json({ message: validation.error });
+      return;
+    }
+    const body = validation.value;
+    const transferId = crypto.randomUUID();
+    const outcome = await huddleSendTokens({
+      huddleId: req.params.id,
+      hostId: current.userId,
+      userId: body.user_id,
+      amount: body.amount,
+      purpose: body.purpose,
+      note: body.note,
+      transferId,
+    });
+    if (outcome !== "ok") {
+      const [status, message] = HUDDLE_SEND_RESPONSES[outcome];
+      res.status(status).json({ message });
+      return;
+    }
+    const hostName = current.user.username ? `@${current.user.username}` : "The host";
+    await notifyUser(body.user_id, {
+      type: "tokens_received",
+      title: `${hostName} sent you ${body.amount} Rendly Tokens`,
+      body: body.note || "Sent by the host of a huddle",
+      payload: { huddle_id: req.params.id, amount: body.amount, transfer_id: transferId, purpose: body.purpose },
+    });
+    res.status(201).json({ sent: body.amount, transfer_id: transferId });
+  } catch (err) {
+    console.error("POST /api/huddles/:id/send-tokens error:", err);
+    res.status(500).json({ message: "Failed to send tokens" });
+  }
+});
+
+/** GET /api/intents/mine – the caller's active intents. */
+app.get("/api/intents/mine", async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    res.json(await getMyIntents(current.userId));
+  } catch (err) {
+    console.error("GET /api/intents/mine error:", err);
+    res.status(500).json({ message: "Failed to load your intents" });
+  }
+});
+
+/** GET /api/intents/hot – the ten most used public intents. */
+app.get("/api/intents/hot", async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    res.json(await getHotIntents(current.userId));
+  } catch (err) {
+    console.error("GET /api/intents/hot error:", err);
+    res.status(500).json({ message: "Failed to load hot intents" });
+  }
+});
+
+/** GET /api/intents/location – city intents. */
+app.get("/api/intents/location", async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    res.json(await getLocationIntents(current.userId));
+  } catch (err) {
+    console.error("GET /api/intents/location error:", err);
+    res.status(500).json({ message: "Failed to load location intents" });
+  }
+});
+
+/** GET /api/intents/nearby – the nearest online user's intents. Needs the caller's location. */
+app.get("/api/intents/nearby", async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    res.json(await getNearbyIntents(current.userId));
+  } catch (err) {
+    console.error("GET /api/intents/nearby error:", err);
+    res.status(500).json({ message: "Failed to load nearby intents" });
+  }
+});
+
+const INTENT_SEARCH_QUERY_MAX = 40;
+
+/** GET /api/intents/search?q=&limit= – public intents whose name starts with q (1..40 chars). */
+app.get("/api/intents/search", async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    const q = typeof req.query.q === "string" ? req.query.q.replace(/\s+/g, " ").trim() : "";
+    if (q.length < 1 || q.length > INTENT_SEARCH_QUERY_MAX) {
+      res.status(400).json({ message: `q must be between 1 and ${INTENT_SEARCH_QUERY_MAX} characters` });
+      return;
+    }
+    res.json(await searchIntents(current.userId, q, clampInt(req.query.limit, 1, 50, 5)));
+  } catch (err) {
+    console.error("GET /api/intents/search error:", err);
+    res.status(500).json({ message: "Failed to search intents" });
+  }
+});
+
+const PURCHASE_FAILURE_RESPONSES: Record<string, [number, string]> = {
+  not_found: [404, "Intent not found"],
+  private: [403, "That intent is private"],
+  bad_source: [400, "Invalid source"],
+  insufficient: [409, "You do not have enough Rendly Tokens"],
+  duplicate: [409, "This purchase was already made"],
+};
+
+/** POST /api/intents/purchase – add an intent. Body: { intent_id, source: hot|location|nearby|search|preset }. */
+app.post("/api/intents/purchase", tokenLimiter, async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    const body = (req.body ?? {}) as { intent_id?: unknown; source?: unknown };
+    if (!isUuid(body.intent_id)) {
+      res.status(400).json({ message: "intent_id must be an intent id" });
+      return;
+    }
+    if (!isPaidIntentSource(body.source) && body.source !== "preset") {
+      res.status(400).json({ message: "source must be hot, location, nearby, search or preset" });
+      return;
+    }
+    const outcome = await purchaseIntent(current.userId, body.intent_id, body.source as IntentSource, crypto.randomUUID());
+    if (outcome.status !== "ok") {
+      const [status, message] = PURCHASE_FAILURE_RESPONSES[outcome.status];
+      res.status(status).json({ message });
+      return;
+    }
+    res.status(201).json({ price: outcome.price, expires_at: outcome.expires_at, balance: outcome.balance });
+  } catch (err) {
+    console.error("POST /api/intents/purchase error:", err);
+    res.status(500).json({ message: "Failed to add the intent" });
+  }
+});
+
+/** POST /api/intents – create a custom intent. Body: { name, visibility: public|private }. */
+app.post("/api/intents", tokenLimiter, async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    const validation = validateCreateIntentBody(req.body);
+    if (!validation.ok) {
+      res.status(400).json({ message: validation.error });
+      return;
+    }
+    const outcome = await createIntent(current.userId, validation.value.name, validation.value.visibility);
+    if (outcome.status !== "ok") {
+      const [status, message] =
+        outcome.status === "taken" ? [409, "An intent with that name already exists"] : [400, "That name cannot be used"];
+      res.status(status).json({ message });
+      return;
+    }
+    res.status(201).json(outcome.intent);
+  } catch (err) {
+    console.error("POST /api/intents error:", err);
+    res.status(500).json({ message: "Failed to create the intent" });
+  }
+});
+
+/** DELETE /api/intents/mine/:intentId – drop an intent from your list. */
+app.delete("/api/intents/mine/:intentId", async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    if (!isUuid(req.params.intentId)) {
+      res.status(400).json({ message: "Invalid intent id" });
+      return;
+    }
+    const removed = await removeUserIntent(current.userId, req.params.intentId);
+    if (!removed) {
+      res.status(404).json({ message: "You do not have that intent" });
+      return;
+    }
+    res.json({ removed: true });
+  } catch (err) {
+    console.error("DELETE /api/intents/mine/:intentId error:", err);
+    res.status(500).json({ message: "Failed to remove the intent" });
+  }
+});
+
+/** PUT /api/users/me/location – opt in to Near By. Body: { lat, lng, city? }. Echoes only city and time. */
+app.put("/api/users/me/location", async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    const validation = validateLocationBody(req.body);
+    if (!validation.ok) {
+      res.status(400).json({ message: validation.error });
+      return;
+    }
+    res.json(await setUserLocation(current.userId, validation.value));
+  } catch (err) {
+    console.error("PUT /api/users/me/location error:", err);
+    res.status(500).json({ message: "Failed to save your location" });
+  }
+});
+
+/** DELETE /api/users/me/location – forget the caller's location. */
+app.delete("/api/users/me/location", async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    res.json(await clearUserLocation(current.userId));
+  } catch (err) {
+    console.error("DELETE /api/users/me/location error:", err);
+    res.status(500).json({ message: "Failed to clear your location" });
+  }
+});
+
+/** GET /api/users/me/huddle-stats – { hosted, public_joined } for the profile card. */
+app.get("/api/users/me/huddle-stats", async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    res.json(await getProfileHuddleStats(current.userId));
+  } catch (err) {
+    console.error("GET /api/users/me/huddle-stats error:", err);
+    res.status(500).json({ message: "Failed to load huddle stats" });
   }
 });
 

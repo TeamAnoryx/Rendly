@@ -1,13 +1,17 @@
 /**
- * Points: a ledger (points_ledger) where every change is a row, and a balance that is
- * the sum (user_points_totals). Points come from the signup bonus and host awards in
- * huddles with rewards on. There are no transfers between users.
+ * Rendly Tokens: a ledger (points_ledger) where every change is a row, and a balance that is
+ * the sum (user_points_totals). Tokens come from the signup bonus, minted host awards, peer
+ * transfers (whispers), host-paid huddle sends and intent purchases / royalties.
+ * Every debit runs inside one SQL RPC (see 20250619_tokens_ledger_v2.sql) that locks the payer.
  */
 
 import { supabase } from "./supabase-users";
+import type { HuddleSendPurpose } from "./points-rules";
 
-const LEADERBOARD_SIZE = 20;
-const HISTORY_SIZE = 20;
+const LEADERBOARD_SIZE = 10;
+const SUMMARY_HISTORY_SIZE = 20;
+const HISTORY_DEFAULT_LIMIT = 50;
+const HISTORY_MAX_LIMIT = 100;
 
 export class PointsStoreError extends Error {
   constructor(operation: string, cause: unknown) {
@@ -22,73 +26,132 @@ function requireClient() {
   return supabase;
 }
 
-export type PointsEntry = { amount: number; reason: string; note: string | null; huddle_id: string | null; created_at: string };
+export type PointsCategory = "signup" | "huddle_award" | "huddle_send" | "transfer" | "intent_purchase" | "intent_royalty";
+
+export type PointsEntry = {
+  id: string;
+  amount: number;
+  reason: string;
+  category: PointsCategory | string;
+  note: string | null;
+  huddle_id: string | null;
+  counterparty_id: string | null;
+  counterparty_username: string | null;
+  counterparty_avatar_url: string | null;
+  intent_id: string | null;
+  intent_name: string | null;
+  conversation_id: string | null;
+  transfer_id: string | null;
+  purpose: string | null;
+  created_at: string;
+};
 
 export type PointsSummary = { total: number; rank: number | null; history: PointsEntry[] };
 
-/** Balance, rank (1 = most points) and recent history for one user. */
-export async function getPointsSummary(userId: string): Promise<PointsSummary> {
+type LedgerRow = Omit<PointsEntry, "counterparty_username" | "counterparty_avatar_url" | "intent_name">;
+
+const LEDGER_COLUMNS =
+  "id, amount, reason, category, note, huddle_id, counterparty_id, intent_id, conversation_id, transfer_id, purpose, created_at";
+
+type UserName = { id: string; username: string | null; avatar_url: string | null };
+
+/** Usernames and avatars for a set of user ids, in one query. */
+async function fetchUserNames(userIds: string[]): Promise<Map<string, UserName>> {
+  const ids = Array.from(new Set(userIds.filter(Boolean)));
+  if (ids.length === 0) return new Map();
   const client = requireClient();
-  const { data: mine, error: mineError } = await client
-    .from("user_points_totals")
-    .select("total")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (mineError) throw new PointsStoreError("balance", mineError);
-  const total = Number((mine as { total?: number } | null)?.total ?? 0);
+  const { data, error } = await client.from("users").select("id, username, avatar_url").in("id", ids);
+  if (error) throw new PointsStoreError("user names", error);
+  return new Map(((data ?? []) as UserName[]).map((u) => [u.id, u]));
+}
 
-  let rank: number | null = null;
-  if (mine) {
-    const { count, error: rankError } = await client
-      .from("user_points_totals")
-      .select("user_id", { count: "exact", head: true })
-      .gt("total", total);
-    if (rankError) throw new PointsStoreError("rank", rankError);
-    rank = (count ?? 0) + 1;
-  }
+/** Intent names for a set of intent ids, in one query. */
+async function fetchIntentNames(intentIds: string[]): Promise<Map<string, string>> {
+  const ids = Array.from(new Set(intentIds.filter(Boolean)));
+  if (ids.length === 0) return new Map();
+  const client = requireClient();
+  const { data, error } = await client.from("intents").select("id, name").in("id", ids);
+  if (error) throw new PointsStoreError("intent names", error);
+  return new Map(((data ?? []) as { id: string; name: string }[]).map((i) => [i.id, i.name]));
+}
 
-  const { data: history, error: historyError } = await client
-    .from("points_ledger")
-    .select("amount, reason, note, huddle_id, created_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(HISTORY_SIZE);
-  if (historyError) throw new PointsStoreError("history", historyError);
+/** Attach counterparty and intent names to raw ledger rows. */
+async function decorateEntries(rows: LedgerRow[]): Promise<PointsEntry[]> {
+  const [users, intents] = await Promise.all([
+    fetchUserNames(rows.map((r) => r.counterparty_id).filter((id): id is string => id != null)),
+    fetchIntentNames(rows.map((r) => r.intent_id).filter((id): id is string => id != null)),
+  ]);
+  return rows.map((r) => ({
+    ...r,
+    amount: Number(r.amount),
+    counterparty_username: r.counterparty_id ? (users.get(r.counterparty_id)?.username ?? null) : null,
+    counterparty_avatar_url: r.counterparty_id ? (users.get(r.counterparty_id)?.avatar_url ?? null) : null,
+    intent_name: r.intent_id ? (intents.get(r.intent_id) ?? null) : null,
+  }));
+}
 
-  return { total, rank, history: (history ?? []) as PointsEntry[] };
+/** Current balance for one user (0 when they have no ledger rows). */
+export async function getBalance(userId: string): Promise<number> {
+  const client = requireClient();
+  const { data, error } = await client.from("user_points_totals").select("total").eq("user_id", userId).maybeSingle();
+  if (error) throw new PointsStoreError("balance", error);
+  return Number((data as { total?: number } | null)?.total ?? 0);
+}
+
+/** 1-based rank with ties sharing a rank (points_rank_of), or null without ledger rows. */
+export async function getRank(userId: string): Promise<number | null> {
+  const client = requireClient();
+  const { data, error } = await client.rpc("points_rank_of", { p_user_id: userId });
+  if (error) throw new PointsStoreError("rank", error);
+  return data == null ? null : Number(data);
+}
+
+export type PointsHistoryPage = { entries: PointsEntry[]; next_before: string | null };
+
+/**
+ * Ledger rows for one user, newest first, as a cursor page on created_at.
+ * `before` (ISO) returns rows created strictly before it; next_before is the cursor for the
+ * following page, or null when this page was the last one.
+ */
+export async function getPointsHistory(userId: string, before?: string | null, limit = HISTORY_DEFAULT_LIMIT): Promise<PointsHistoryPage> {
+  const client = requireClient();
+  const size = Math.min(Math.max(Math.floor(limit) || HISTORY_DEFAULT_LIMIT, 1), HISTORY_MAX_LIMIT);
+  let query = client.from("points_ledger").select(LEDGER_COLUMNS).eq("user_id", userId);
+  if (before) query = query.lt("created_at", before);
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(size);
+  if (error) throw new PointsStoreError("history", error);
+  const rows = (data ?? []) as LedgerRow[];
+  const entries = await decorateEntries(rows);
+  const last = entries[entries.length - 1];
+  return { entries, next_before: entries.length === size && last ? last.created_at : null };
+}
+
+/** Balance, rank and recent history for one user. */
+export async function getPointsSummary(userId: string): Promise<PointsSummary> {
+  const [total, rank, page] = await Promise.all([getBalance(userId), getRank(userId), getPointsHistory(userId, null, SUMMARY_HISTORY_SIZE)]);
+  return { total, rank, history: page.entries };
 }
 
 export type LeaderboardRow = { rank: number; user_id: string; username: string | null; avatar_url: string | null; total: number };
 
-/** The top users by points. */
-export async function getLeaderboard(): Promise<LeaderboardRow[]> {
+/** The top users by tokens, with tie-aware ranks (points_leaderboard). */
+export async function getLeaderboard(limit = LEADERBOARD_SIZE): Promise<LeaderboardRow[]> {
   const client = requireClient();
-  const { data, error } = await client
-    .from("user_points_totals")
-    .select("user_id, total")
-    .order("total", { ascending: false })
-    .limit(LEADERBOARD_SIZE);
+  const { data, error } = await client.rpc("points_leaderboard", { p_limit: limit });
   if (error) throw new PointsStoreError("leaderboard", error);
-  const rows = (data ?? []) as { user_id: string; total: number }[];
-  if (rows.length === 0) return [];
-  const { data: users, error: userError } = await client
-    .from("users")
-    .select("id, username, avatar_url")
-    .in("id", rows.map((r) => r.user_id));
-  if (userError) throw new PointsStoreError("leaderboard names", userError);
-  const byId = new Map(((users ?? []) as { id: string; username: string | null; avatar_url: string | null }[]).map((u) => [u.id, u]));
-  return rows.map((r, i) => ({
-    rank: i + 1,
+  return ((data ?? []) as LeaderboardRow[]).map((r) => ({
+    rank: Number(r.rank),
     user_id: r.user_id,
-    username: byId.get(r.user_id)?.username ?? null,
-    avatar_url: byId.get(r.user_id)?.avatar_url ?? null,
+    username: r.username ?? null,
+    avatar_url: r.avatar_url ?? null,
     total: Number(r.total),
   }));
 }
 
 export type AwardOutcome = "ok" | "not_found" | "not_host" | "rewards_off" | "not_in_room" | "bad_amount";
+const AWARD_OUTCOMES: readonly AwardOutcome[] = ["ok", "not_found", "not_host", "rewards_off", "not_in_room", "bad_amount"];
 
-/** The host awards points to someone in the room. Rules are enforced in award_huddle_points. */
+/** The host awards minted tokens to someone in the room. Rules are enforced in award_huddle_points. */
 export async function awardHuddlePoints(
   huddleId: string,
   hostId: string,
@@ -105,9 +168,94 @@ export async function awardHuddlePoints(
     p_note: note,
   });
   if (error) throw new PointsStoreError("award", error);
-  const outcome = data as AwardOutcome;
-  if (!["ok", "not_found", "not_host", "rewards_off", "not_in_room", "bad_amount"].includes(outcome)) {
+  if (!AWARD_OUTCOMES.includes(data as AwardOutcome)) {
     throw new PointsStoreError("award", `unexpected result: ${String(data)}`);
   }
-  return outcome;
+  return data as AwardOutcome;
+}
+
+export type TransferFailure = "bad_amount" | "self" | "bad_input" | "no_user" | "insufficient" | "duplicate";
+export type TransferOutcome = { status: "ok"; transfer_id: string; balance: number } | { status: TransferFailure };
+const TRANSFER_FAILURES: readonly TransferFailure[] = ["bad_amount", "self", "bad_input", "no_user", "insufficient", "duplicate"];
+
+/** Peer-to-peer send (transfer_tokens). transferId is the caller-generated idempotency key. */
+export async function transferTokens(input: {
+  fromUserId: string;
+  toUserId: string;
+  amount: number;
+  note: string | null;
+  conversationId: string;
+  transferId: string;
+}): Promise<TransferOutcome> {
+  const client = requireClient();
+  const { data, error } = await client.rpc("transfer_tokens", {
+    p_from: input.fromUserId,
+    p_to: input.toUserId,
+    p_amount: input.amount,
+    p_note: input.note,
+    p_conversation_id: input.conversationId,
+    p_transfer_id: input.transferId,
+  });
+  if (error) throw new PointsStoreError("transfer", error);
+  const result = (data ?? {}) as { status?: string; transfer_id?: string; balance?: number };
+  if (result.status === "ok" && typeof result.transfer_id === "string") {
+    return { status: "ok", transfer_id: result.transfer_id, balance: Number(result.balance ?? 0) };
+  }
+  if (TRANSFER_FAILURES.includes(result.status as TransferFailure)) return { status: result.status as TransferFailure };
+  throw new PointsStoreError("transfer", `unexpected result: ${JSON.stringify(data)}`);
+}
+
+export type HuddleSendOutcome =
+  | "ok"
+  | "not_found"
+  | "not_host"
+  | "rewards_off"
+  | "not_in_room"
+  | "bad_amount"
+  | "bad_purpose"
+  | "note_required"
+  | "bad_note"
+  | "bad_input"
+  | "insufficient"
+  | "duplicate";
+const HUDDLE_SEND_OUTCOMES: readonly HuddleSendOutcome[] = [
+  "ok",
+  "not_found",
+  "not_host",
+  "rewards_off",
+  "not_in_room",
+  "bad_amount",
+  "bad_purpose",
+  "note_required",
+  "bad_note",
+  "bad_input",
+  "insufficient",
+  "duplicate",
+];
+
+/** The host pays a participant from their own balance (huddle_send_tokens). */
+export async function huddleSendTokens(input: {
+  huddleId: string;
+  hostId: string;
+  userId: string;
+  amount: number;
+  purpose: HuddleSendPurpose;
+  note: string | null;
+  transferId: string;
+}): Promise<HuddleSendOutcome> {
+  const client = requireClient();
+  const { data, error } = await client.rpc("huddle_send_tokens", {
+    p_huddle_id: input.huddleId,
+    p_host_id: input.hostId,
+    p_user_id: input.userId,
+    p_amount: input.amount,
+    p_purpose: input.purpose,
+    p_note: input.note,
+    p_transfer_id: input.transferId,
+  });
+  if (error) throw new PointsStoreError("huddle send", error);
+  if (!HUDDLE_SEND_OUTCOMES.includes(data as HuddleSendOutcome)) {
+    throw new PointsStoreError("huddle send", `unexpected result: ${String(data)}`);
+  }
+  return data as HuddleSendOutcome;
 }
