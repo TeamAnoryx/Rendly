@@ -1,0 +1,324 @@
+/* App shell refinements layered on the shared .rd-* primitives (styles/rendly-theme.css). */
+
+.shell-mark {
+  width: 24px;
+  height: 26px;
+}
+
+/* Rail brand: full lockup when the rail is open, the mark alone when it collapses */
+.rd-shell .rd-rail-logo {
+  height: 48px;
+  margin-bottom: 10px;
+  padding: 0 10px;
+}
+.shell-lockup {
+  height: 26px;
+  width: auto;
+}
+.rd-shell .shell-collapsed-mark {
+  display: none;
+  width: 26px;
+  height: 28px;
+}
+@media (max-width: 1200px) {
+  .shell-lockup {
+    display: none;
+  }
+  .rd-shell .rd-rail-logo {
+    padding: 0;
+  }
+  .rd-shell .shell-collapsed-mark {
+    display: grid;
+  }
+}
+
+.rd-rail .rd-rail-section:first-of-type {
+  padding-top: 8px;
+}
+
+.rd-rail-item:focus-visible,
+.rd-tabbar a:focus-visible,
+.shell-avatar-link:focus-visible,
+.shell-crumb-home:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 1px;
+}
+
+.rd-rail-item:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.shell-rail-spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+/* Breadcrumb */
+.shell-crumb-home {
+  display: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: -4px;
+  border-radius: var(--rd-radius-xs);
+  color: var(--rd-text);
+}
+
+.shell-crumb-mark {
+  width: 20px;
+  height: 22px;
+}
+
+.rd-topbar-crumb.shell-crumb-sep {
+  color: var(--rd-border-bright);
+}
+
+.shell-crumb-current {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rd-points svg {
+  flex: none;
+}
+
+.shell-avatar-link {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  transition: background var(--rd-fast);
+}
+
+.shell-avatar-link:hover {
+  background: var(--rd-surface-2);
+}
+
+/* Phones: rail is gone, so the mark lives in the top bar; touch targets grow to 40px. */
+@media (max-width: 767px) {
+  .rd-shell .rd-topbar {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+  .shell-crumb-home {
+    display: grid;
+  }
+  .rd-shell .rd-topbar-actions {
+    gap: 2px;
+  }
+  .rd-topbar-actions .rd-icon-btn,
+  .shell-avatar-link {
+    width: 40px;
+    height: 40px;
+  }
+  .rd-topbar .rd-points {
+    height: 30px;
+    margin-right: 2px;
+  }
+  .rd-shell .rd-tabbar {
+    padding-left: max(6px, env(safe-area-inset-left));
+    padding-right: max(6px, env(safe-area-inset-right));
+  }
+  .rd-shell .rd-tabbar a {
+    min-width: 0;
+  }
+  .rd-tabbar a span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 359px) {
+  .rd-topbar .rd-points {
+    display: none;
+  }
+}
+
+/* ---------- Notifications popover ---------- */
+.rd-notif-panel.shell-notif {
+  width: min(380px, calc(100vw - 24px));
+  transform-origin: top right;
+}
+.shell-notif .rd-notif-head {
+  padding: 8px 8px 8px 14px;
+}
+.shell-notif-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.shell-notif-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--rd-surface-3);
+  color: var(--rd-text-2);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.shell-notif-actions {
+  display: flex;
+  gap: 2px;
+}
+.rd-notif-item.shell-notif-item {
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 10px;
+  cursor: pointer;
+  outline: none;
+}
+.shell-notif-item:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--rd-border-bright);
+}
+.shell-notif-item.rd-notif-item--unread {
+  background: transparent;
+}
+.shell-notif-item.rd-notif-item--unread:hover {
+  background: var(--rd-surface-2);
+}
+.shell-notif-icon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--rd-radius-sm);
+  border: 1px solid var(--rd-border);
+  background: var(--rd-surface-2);
+  color: var(--rd-text-2);
+}
+.shell-notif-body {
+  flex: 1;
+  min-width: 0;
+}
+.shell-notif-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.shell-notif-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--rd-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rd-notif-item:not(.rd-notif-item--unread) .shell-notif-name {
+  color: var(--rd-text-2);
+  font-weight: 450;
+}
+.shell-notif-time {
+  flex: none;
+  font-size: 0.6875rem;
+  color: var(--rd-faint);
+  font-variant-numeric: tabular-nums;
+}
+.shell-notif-text {
+  margin-top: 2px;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--rd-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.rd-notif-dot.shell-notif-dot {
+  margin-top: 11px;
+  background: var(--rd-text);
+}
+.shell-notif-skel {
+  height: 48px;
+  margin: 4px;
+}
+.shell-error {
+  color: var(--rd-danger);
+  padding: 8px 12px;
+}
+
+/* Shared empty state (icon + one line + optional action); used by Home, Connections, Calls. */
+.shell-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 36px 16px;
+  text-align: center;
+  color: var(--rd-muted);
+  font-size: 0.8125rem;
+}
+.shell-empty-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--rd-radius-sm);
+  border: 1px solid var(--rd-border);
+  background: var(--rd-surface);
+  color: var(--rd-text-2);
+}
+
+/* ---------- Toasts ---------- */
+.rd-toasts .rd-toast {
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px 10px 12px;
+}
+.rd-toast-icon.shell-toast-icon {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--rd-border);
+  background: var(--rd-surface-2);
+  color: var(--rd-text-2);
+}
+.shell-toast-content {
+  flex: 1;
+  min-width: 0;
+  padding-top: 1px;
+}
+.shell-toast-content .rd-toast-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.rd-icon-btn.shell-toast-close {
+  width: 26px;
+  height: 26px;
+  margin-top: 1px;
+}
+
+@media (max-width: 767px) {
+  .shell-notif-action-label {
+    display: none;
+  }
+  .rd-notif-item.shell-notif-item {
+    padding: 11px 10px;
+  }
+  .rd-icon-btn.shell-toast-close {
+    width: 36px;
+    height: 36px;
+    margin: -4px -2px 0 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .rd-notif-panel.shell-notif {
+    width: auto;
+  }
+}

@@ -3,9 +3,9 @@
 import React, { useEffect, useState } from 'react';
 
 const DELAY_MS = 300;
-const SPACE_INDIGO = '#3b3355';
-const GLAUCOUS = '#507dbc';
-const CYAN = '#00cfcf';
+const SPACE_INDIGO = '#f7f8f8';
+const GLAUCOUS = '#62666d';
+const CYAN = '#f7f8f8';
 
 export type DelayedLoaderProps = {
   delay?: number;
@@ -53,7 +53,7 @@ export default function DelayedLoader({
       aria-label="Loading"
     >
       {showOverlay && (
-        <div className="absolute inset-0 bg-black/20 loader-overlay" aria-hidden />
+        <div className="absolute inset-0 bg-black/50 loader-overlay" aria-hidden />
       )}
       <div
         className="relative flex flex-col items-center gap-4"
@@ -86,7 +86,7 @@ export default function DelayedLoader({
             left: '50%',
             marginTop: -dims.dot / 2,
             marginLeft: -dims.dot / 2,
-            background: `linear-gradient(135deg, ${CYAN}, #35ffff)`,
+            background: `linear-gradient(135deg, ${CYAN}, #8a8f98)`,
           }}
         />
       </div>

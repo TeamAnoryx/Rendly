@@ -6,28 +6,58 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { auth } from '@/services/auth';
 import { getMyPoints } from '@/services/pointsApi';
+import { RendlyLockup, RendlyMark } from '@/components/brand/Brand';
 import { Icon } from './Icon';
 import { NotificationBell } from './NotificationBell';
 import { Toasts } from './Toasts';
+import './shell.css';
 
 const POINTS_REFRESH_MS = 60_000;
 
-type NavItem = { href: string; label: string; icon: string; match: (p: string) => boolean };
+type NavItem = { href: string; label: string; short?: string; icon: string; match: (p: string) => boolean };
 
-const NAV: NavItem[] = [
+const WORKSPACE: NavItem[] = [
   { href: '/dashboard', label: 'Home', icon: 'home', match: (p) => p === '/dashboard' },
   { href: '/dashboard/match', label: 'Spark', icon: 'spark', match: (p) => p.startsWith('/dashboard/match') },
   { href: '/dashboard/chat', label: 'Whispers', icon: 'chat', match: (p) => p.startsWith('/dashboard/chat') },
   { href: '/dashboard/huddles', label: 'Huddles', icon: 'huddle', match: (p) => p.startsWith('/dashboard/huddles') },
-  { href: '/dashboard/profile', label: 'Profile', icon: 'user', match: (p) => p.startsWith('/dashboard/profile') },
-  { href: '/dashboard/settings', label: 'Settings', icon: 'settings', match: (p) => p.startsWith('/dashboard/settings') },
 ];
 
+const PEOPLE: NavItem[] = [
+  { href: '/dashboard/connections', label: 'Connections', icon: 'people', match: (p) => p.startsWith('/dashboard/connections') },
+  { href: '/dashboard/calls', label: 'Calls', icon: 'phone', match: (p) => p.startsWith('/dashboard/calls') },
+  { href: '/dashboard/profile', label: 'Profile', icon: 'user', match: (p) => p.startsWith('/dashboard/profile') },
+];
+
+const SETTINGS: NavItem = {
+  href: '/dashboard/settings',
+  label: 'Settings',
+  icon: 'settings',
+  match: (p) => p.startsWith('/dashboard/settings'),
+};
+
+/** Bottom tab bar on phones: the five most used destinations. */
+const TABS: NavItem[] = [...WORKSPACE, PEOPLE[2]];
+
+const ALL_NAV: NavItem[] = [...WORKSPACE, ...PEOPLE, SETTINGS];
+
 function titleFor(pathname: string): string {
-  const item = [...NAV].reverse().find((n) => n.match(pathname));
-  if (pathname.startsWith('/dashboard/connections')) return 'Connections';
-  if (pathname.startsWith('/dashboard/calls')) return 'Calls';
-  return item?.label ?? 'Rendly';
+  return ALL_NAV.find((n) => n.match(pathname))?.label ?? 'Rendly';
+}
+
+function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const active = item.match(pathname);
+  return (
+    <Link
+      href={item.href}
+      className={`rd-rail-item ${active ? 'rd-rail-item--active' : ''}`}
+      aria-current={active ? 'page' : undefined}
+      title={item.label}
+    >
+      <Icon name={item.icon} size={16} />
+      <span className="rd-rail-label">{item.label}</span>
+    </Link>
+  );
 }
 
 export function Avatar({
@@ -129,44 +159,57 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       <div className="rd-aurora" aria-hidden />
-      <div className="rd-grid-overlay" aria-hidden />
       <div className="rd-shell">
         <nav className="rd-rail" aria-label="Main navigation">
           <Link href="/dashboard" className="rd-rail-logo" aria-label="Rendly home">
-            <span className="rd-rail-logo-mark">R</span>
-            <span className="rd-rail-label rd-gradient-text">Rendly</span>
+            <RendlyLockup className="shell-lockup" />
+            <span className="rd-rail-logo-mark shell-collapsed-mark">
+              <RendlyMark className="shell-mark" />
+            </span>
           </Link>
-          {NAV.map((n) => (
-            <Link
-              key={n.href}
-              href={n.href}
-              className={`rd-rail-item ${n.match(pathname) ? 'rd-rail-item--active' : ''}`}
-              aria-current={n.match(pathname) ? 'page' : undefined}
-              title={n.label}
-            >
-              <Icon name={n.icon} size={21} />
-              <span className="rd-rail-label">{n.label}</span>
-            </Link>
+
+          <div className="rd-rail-section">Workspace</div>
+          {WORKSPACE.map((n) => (
+            <RailLink key={n.href} item={n} pathname={pathname} />
           ))}
+
+          <div className="rd-rail-section">People</div>
+          {PEOPLE.map((n) => (
+            <RailLink key={n.href} item={n} pathname={pathname} />
+          ))}
+
           <div className="rd-rail-spacer" />
-          <button type="button" className="rd-rail-item" onClick={logout} disabled={loggingOut} title="Log out">
-            {loggingOut ? <span className="rd-spinner" /> : <Icon name="logout" size={21} />}
-            <span className="rd-rail-label">{loggingOut ? 'Logging out…' : 'Log out'}</span>
-          </button>
+
+          <div className="rd-rail-foot">
+            <RailLink item={SETTINGS} pathname={pathname} />
+            <button type="button" className="rd-rail-item" onClick={logout} disabled={loggingOut} title="Log out">
+              {loggingOut ? <span className="rd-spinner shell-rail-spinner" /> : <Icon name="logout" size={16} />}
+              <span className="rd-rail-label">{loggingOut ? 'Logging out…' : 'Log out'}</span>
+            </button>
+          </div>
         </nav>
 
         <header className="rd-topbar">
-          <div className="rd-topbar-title">{titleFor(pathname)}</div>
+          <div className="rd-topbar-title">
+            <Link href="/dashboard" className="shell-crumb-home" aria-label="Rendly home">
+              <RendlyMark className="shell-crumb-mark" />
+            </Link>
+            <span className="rd-topbar-crumb rd-hide-mobile">Rendly</span>
+            <span className="rd-topbar-crumb shell-crumb-sep rd-hide-mobile" aria-hidden>
+              /
+            </span>
+            <span className="shell-crumb-current">{titleFor(pathname)}</span>
+          </div>
           <div className="rd-topbar-actions">
             <Link href="/dashboard/profile#rankings" className="rd-points" title="Your points">
-              <Icon name="star" size={15} />
-              {points === null ? '—' : points.toLocaleString('en-IN')}
+              <Icon name="star" size={13} />
+              <span>{points === null ? '—' : points.toLocaleString('en-IN')}</span>
             </Link>
             <NotificationBell />
-            <Link href="/dashboard/profile" aria-label="Your profile">
-              <Avatar url={user?.avatar_url} name={user?.username} />
+            <Link href="/dashboard/profile" aria-label="Your profile" className="shell-avatar-link">
+              <Avatar url={user?.avatar_url} name={user?.username} size="sm" />
             </Link>
-            <button type="button" className="rd-icon-btn rd-only-mobile" onClick={logout} aria-label="Log out">
+            <button type="button" className="rd-icon-btn rd-only-mobile shell-touch" onClick={logout} aria-label="Log out">
               <Icon name="logout" size={18} />
             </button>
           </div>
@@ -175,11 +218,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="rd-main">{children}</main>
 
         <nav className="rd-tabbar" aria-label="Main navigation">
-          {NAV.filter((n) => n.href !== '/dashboard/settings').map((n) => (
-            <Link key={n.href} href={n.href} className={n.match(pathname) ? 'rd-tab--active' : ''} aria-label={n.label}>
-              <Icon name={n.icon} size={22} />
-            </Link>
-          ))}
+          {TABS.map((n) => {
+            const active = n.match(pathname);
+            return (
+              <Link
+                key={n.href}
+                href={n.href}
+                className={active ? 'rd-tab--active' : ''}
+                aria-current={active ? 'page' : undefined}
+              >
+                <Icon name={n.icon} size={20} />
+                <span>{n.short ?? n.label}</span>
+              </Link>
+            );
+          })}
         </nav>
       </div>
       <Toasts />

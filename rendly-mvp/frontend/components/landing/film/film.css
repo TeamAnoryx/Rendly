@@ -1,0 +1,343 @@
+/*
+ * The launch film's virtual canvas (1600 x 900, or 900 x 1200 portrait),
+ * scaled to the stage. Prefix: .fl-*. Elements animated by the engine have
+ * transform / opacity / filter written inline every frame, so decorative
+ * transforms live on children, never on an Fx element.
+ *
+ * Google launch-film language on Rendly's monochrome: black, white and greys,
+ * real footage graded toward black and white, glassy UI cards with soft
+ * shadows, 16-28px corners. Accents (blue, violet, teal) only as thin light.
+ */
+
+.fl-root {
+  --blue: #8ab4f8;
+  --violet: #c58af9;
+  --teal: #78d9ec;
+  --coral: #f28b82;
+  --ink: #f1f1f2;
+  --ink-2: rgba(241, 241, 242, 0.78);
+  --ink-3: rgba(241, 241, 242, 0.5);
+  --line: rgba(255, 255, 255, 0.09);
+  --line-2: rgba(255, 255, 255, 0.16);
+  --glass: rgba(14, 14, 16, 0.55);
+  --grad: linear-gradient(100deg, var(--blue) 0%, var(--violet) 70%, #e1b2ff 100%);
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #0a0a0b;
+  color: var(--ink);
+  font-family: var(--font-sans), 'Inter', ui-sans-serif, system-ui, sans-serif;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+  user-select: none;
+}
+.fl-shot {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+}
+.fl-a {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max-content;
+}
+.fl-full {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  transform-origin: 50% 50%;
+}
+.fl-icon {
+  display: block;
+  flex: none;
+}
+
+/* ---------------- Footage ---------------- */
+.fl-clip {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #121214;
+}
+.fl-grade {
+  filter: grayscale(0.6) contrast(1.06) brightness(0.66);
+}
+.fl-grade--soft {
+  filter: grayscale(0.5) contrast(1.04) brightness(0.8);
+}
+.fl-grade--call {
+  filter: grayscale(0.3) contrast(1.05) brightness(0.92);
+}
+.fl-grade--warm {
+  filter: grayscale(0.4) contrast(1.05) brightness(0.84);
+}
+.fl-veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.fl-veil--bottom {
+  background: linear-gradient(to top, rgba(6, 6, 7, 0.86) 0%, rgba(6, 6, 7, 0.35) 45%, transparent 70%);
+}
+.fl-veil--right {
+  background: linear-gradient(to left, rgba(8, 8, 9, 0.8) 0%, rgba(8, 8, 9, 0.4) 45%, transparent 72%);
+}
+.fl-root.is-portrait .fl-veil--right {
+  background: linear-gradient(to top, rgba(8, 8, 9, 0.88) 0%, rgba(8, 8, 9, 0.45) 50%, transparent 75%);
+}
+.fl-veil--bottomleft {
+  background: radial-gradient(120% 90% at 0% 100%, rgba(6, 6, 7, 0.82) 0%, rgba(6, 6, 7, 0.3) 45%, transparent 70%);
+}
+.fl-veil--call {
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.62) 0%, transparent 34%),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.4) 0%, transparent 18%);
+}
+.fl-dots {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.075) 1.2px, transparent 1.6px);
+  background-size: 30px 30px;
+  -webkit-mask-image: radial-gradient(closest-side, #000 30%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 30%, transparent 100%);
+}
+.fl-paper {
+  background: #f3f3f1;
+}
+
+/* ---------------- Type ---------------- */
+.fl-words {
+  display: inline;
+}
+.fl-mask {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+  padding: 0.06em 0.06em 0.14em;
+  margin: -0.06em -0.06em -0.14em;
+}
+.fl-word {
+  display: inline-block;
+}
+.fl-grad {
+  background-image: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.fl-kline {
+  width: max-content;
+  white-space: nowrap;
+  text-align: center;
+}
+.fl-display {
+  font-size: 136px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+.fl-root.is-portrait .fl-display {
+  font-size: 104px;
+}
+.fl-display--ink {
+  color: #111113;
+  font-size: 168px;
+}
+.fl-root.is-portrait .fl-display--ink {
+  font-size: 132px;
+}
+.fl-headline {
+  font-size: 84px;
+  font-weight: 500;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+}
+.fl-root.is-portrait .fl-headline {
+  font-size: 76px;
+}
+.fl-headline--strong {
+  font-weight: 600;
+}
+.fl-sub {
+  font-size: 36px;
+  letter-spacing: -0.015em;
+  color: var(--ink-2);
+}
+.fl-kicker {
+  font-size: 30px;
+  letter-spacing: -0.01em;
+  color: var(--ink-3);
+}
+.fl-kicker--ink {
+  font-size: 40px;
+  color: #5f6368;
+}
+.fl-note--ink {
+  font-size: 26px;
+  color: #6b6f75;
+}
+.fl-root.is-portrait .fl-note--ink {
+  font-size: 24px;
+}
+.fl-strike {
+  position: absolute;
+  left: -3%;
+  right: -3%;
+  top: 54%;
+  height: 7px;
+  border-radius: 4px;
+  background: #fff;
+  transform-origin: 0 50%;
+  transform: scaleX(var(--strike, 0));
+  box-shadow: 0 0 18px rgba(255, 255, 255, 0.35);
+}
+.fl-whybar {
+  width: 380px;
+  height: 12px;
+  border-radius: 8px;
+  background: var(--grad);
+  transform-origin: 50% 50%;
+}
+.fl-typed {
+  white-space: pre-wrap;
+}
+.fl-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.16em;
+  background: var(--blue);
+}
+
+/* ---------------- Cards, chips, buttons ---------------- */
+.fl-card {
+  border-radius: 28px;
+  background: rgba(22, 23, 26, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 40px 90px -24px rgba(0, 0, 0, 0.8);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+}
+.fl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink-2);
+  font-size: 17px;
+  white-space: nowrap;
+}
+.fl-chip--select {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  color: rgb(calc(232 - var(--sel, 0) * 222), calc(232 - var(--sel, 0) * 222), calc(234 - var(--sel, 0) * 222));
+  border-color: rgba(255, 255, 255, calc(0.16 + var(--sel, 0) * 0.84));
+}
+.fl-chip--select::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: #f1f1f2;
+  opacity: var(--sel, 0);
+}
+.fl-chip-check {
+  display: inline-flex;
+  width: calc(var(--sel, 0) * 18px);
+  margin-right: calc(var(--sel, 0) * 2px - 8px);
+  overflow: hidden;
+}
+.fl-chip--accent {
+  border-color: rgba(138, 180, 248, 0.5);
+  background: rgba(138, 180, 248, 0.12);
+  color: #dfe8fb;
+}
+.fl-chip--lg {
+  height: 54px;
+  padding: 0 22px;
+  font-size: 20px;
+  gap: 10px;
+}
+.fl-chip--glass {
+  background: var(--glass);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+.fl-chip--saved {
+  height: 34px;
+  padding: 0 14px;
+  font-size: 14px;
+  gap: 6px;
+  border-color: rgba(120, 217, 236, 0.45);
+  background: rgba(120, 217, 236, 0.12);
+  color: #c4f0f8;
+}
+.fl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 56px;
+  padding: 0 26px;
+  border-radius: 999px;
+  background: #f1f1f2;
+  color: #0a0a0b;
+  font-size: 20px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+  box-shadow: 0 0 0 calc(var(--glow, 0) * 12px) rgba(138, 180, 248, 0.28), 0 18px 40px -16px rgba(0, 0, 0, 0.8);
+}
+.fl-avatar {
+  display: block;
+  overflow: hidden;
+  background: #1b1c1f;
+}
+.fl-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fl-face {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: #16171a;
+}
+.fl-face img {
+  position: absolute;
+  max-width: none;
+}
+
+/* ---------------- Cursor ---------------- */
+.fl-cursor {
+  z-index: 20;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.5));
+}
+.fl-cursor svg {
+  display: block;
+}
+.fl-ripple {
+  z-index: 19;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: rgba(255, 255, 255, 0.12);
+}

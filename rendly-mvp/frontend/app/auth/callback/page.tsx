@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useOAuth } from '@/hooks/useOAuth';
 import { LINKEDIN_PKCE_STORAGE_KEY } from '@/lib/pkce';
 import { LINK_TO_GITHUB_ID_KEY, RENDLY_SESSION_TOKEN } from '@/lib/auth-storage';
+import AuthShell, { Enter, FormError } from '@/components/auth/AuthShell';
 
 const GITHUB_STORAGE_KEY = 'rendly_oauth_github';
 const LINKEDIN_STORAGE_KEY = 'rendly_oauth_linkedin';
@@ -101,32 +102,27 @@ export default function CallbackPage() {
     };
   }, [searchParams, router, exchangeCode]);
 
-  if (status === 'exchanging') {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-glaucous border-t-transparent" />
-        <p className="mt-4 text-sm text-muted-foreground">Authenticating...</p>
-      </div>
-    );
-  }
-
   if (status === 'error') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
-        <p className="text-center text-dusty_grape font-medium max-w-md">{error}</p>
-        <a
-          href="/login"
-          className="mt-4 px-4 py-2 rounded-lg bg-space_indigo text-white text-sm font-medium hover:brightness-110 transition-all"
-        >
-          Back to Login
-        </a>
-      </div>
+      <AuthShell title="We couldn’t sign you in" subtitle="The provider handshake didn’t complete.">
+        <Enter index={1} className="flex flex-col gap-4">
+          <FormError message={error} />
+          <a href="/login" className="rd-btn rd-btn--primary rd-btn--lg rd-btn--block">
+            Back to log in
+          </a>
+          <a href="/auth/sign-up" className="rd-btn rd-btn--lg rd-btn--block">
+            Go to sign up
+          </a>
+        </Enter>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
-      <p className="text-center text-foreground">Redirecting...</p>
-    </div>
+    <AuthShell title={status === 'done' ? 'Redirecting…' : 'Signing you in…'} subtitle="This only takes a moment.">
+      <Enter index={1} className="flex justify-center" >
+        <span className="au-spinner" role="status" aria-label="Authenticating" style={{ width: 20, height: 20, color: 'var(--rd-muted)' }} />
+      </Enter>
+    </AuthShell>
   );
 }

@@ -50,7 +50,7 @@ function GroupInviteActions({ n, onDone }: { n: AppNotification; onDone: () => v
       <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" disabled={busy} onClick={() => act(false)}>
         Decline
       </button>
-      {error ? <span className="rd-small" style={{ color: 'var(--rd-danger)' }}>{error}</span> : null}
+      {error ? <span className="rd-small shell-error">{error}</span> : null}
     </div>
   );
 }
@@ -104,18 +104,19 @@ export function NotificationBell() {
       <button
         ref={buttonRef}
         type="button"
-        className="rd-icon-btn"
+        className={`rd-icon-btn ${open ? 'rd-icon-btn--on' : ''}`}
         aria-label={unreadCount ? `Notifications, ${unreadCount} unread` : 'Notifications'}
         aria-expanded={open}
+        aria-haspopup="dialog"
         onClick={togglePanel}
       >
-        <Icon name="bell" size={19} />
+        <Icon name="bell" size={17} />
         {unreadCount > 0 ? <span className="rd-count">{unreadCount > 99 ? '99+' : unreadCount}</span> : null}
       </button>
       {open && createPortal(
         <div
           ref={panelRef}
-          className="rd-notif-panel"
+          className="rd-notif-panel shell-notif"
           role="dialog"
           aria-label="Notifications"
           style={{
@@ -125,18 +126,33 @@ export function NotificationBell() {
           }}
         >
           <div className="rd-notif-head">
-            <strong>Notifications</strong>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" disabled={unreadCount === 0} onClick={() => void markAllRead()}>
-                <Icon name="check" size={14} /> Mark all read
+            <span className="shell-notif-title">
+              Notifications
+              {unreadCount > 0 ? <span className="shell-notif-count">{unreadCount}</span> : null}
+            </span>
+            <div className="shell-notif-actions">
+              <button
+                type="button"
+                className="rd-btn rd-btn--ghost rd-btn--sm"
+                disabled={unreadCount === 0}
+                onClick={() => void markAllRead()}
+                title="Mark all as read"
+              >
+                <Icon name="check" size={14} /> <span className="shell-notif-action-label">Mark all read</span>
               </button>
               {confirmClear ? (
                 <button type="button" className="rd-btn rd-btn--danger rd-btn--sm" onClick={() => { setConfirmClear(false); void clearAll(); }}>
                   Confirm clear
                 </button>
               ) : (
-                <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" disabled={items.length === 0} onClick={() => setConfirmClear(true)}>
-                  <Icon name="trash" size={14} /> Clear
+                <button
+                  type="button"
+                  className="rd-btn rd-btn--ghost rd-btn--sm"
+                  disabled={items.length === 0}
+                  onClick={() => setConfirmClear(true)}
+                  title="Clear all"
+                >
+                  <Icon name="trash" size={14} /> <span className="shell-notif-action-label">Clear</span>
                 </button>
               )}
             </div>
@@ -144,13 +160,16 @@ export function NotificationBell() {
           <div className="rd-notif-list rd-scroll">
             {loading && items.length === 0 ? (
               <>
-                <div className="rd-skeleton" style={{ height: 56, margin: 6 }} />
-                <div className="rd-skeleton" style={{ height: 56, margin: 6 }} />
+                <div className="rd-skeleton shell-notif-skel" />
+                <div className="rd-skeleton shell-notif-skel" />
+                <div className="rd-skeleton shell-notif-skel" />
               </>
             ) : items.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center' }} className="rd-muted">
-                <Icon name="bell" size={28} />
-                <p style={{ marginTop: 8 }}>You&apos;re all caught up.</p>
+              <div className="shell-empty">
+                <span className="shell-empty-icon" aria-hidden>
+                  <Icon name="inbox" size={18} />
+                </span>
+                <p>You&apos;re all caught up.</p>
               </div>
             ) : (
               items.map((n) => {
@@ -158,7 +177,7 @@ export function NotificationBell() {
                 return (
                   <div
                     key={n.id}
-                    className={`rd-notif-item ${n.read ? '' : 'rd-notif-item--unread'}`}
+                    className={`rd-notif-item shell-notif-item ${n.read ? '' : 'rd-notif-item--unread'}`}
                     role="button"
                     tabIndex={0}
                     onClick={() => {
@@ -172,21 +191,25 @@ export function NotificationBell() {
                       if (e.key === 'Enter') (e.currentTarget as HTMLElement).click();
                     }}
                   >
-                    <span className="rd-toast-icon" aria-hidden>
-                      <Icon name={notificationIcon(n.type)} size={16} />
+                    <span className="shell-notif-icon" aria-hidden>
+                      <Icon name={notificationIcon(n.type)} size={15} />
                     </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600 }}>{n.title}</div>
-                      {n.body ? <div className="rd-small rd-muted">{n.body}</div> : null}
-                      <div className="rd-small rd-muted" style={{ marginTop: 2 }}>{timeAgo(n.created_at)}</div>
+                    <div className="shell-notif-body">
+                      <div className="shell-notif-line">
+                        <span className="shell-notif-name">{n.title}</span>
+                        <time className="shell-notif-time" dateTime={n.created_at}>
+                          {timeAgo(n.created_at)}
+                        </time>
+                      </div>
+                      {n.body ? <div className="shell-notif-text">{n.body}</div> : null}
                       {n.type === 'group_invite' ? <GroupInviteActions n={n} onDone={() => setOpen(false)} /> : null}
                     </div>
-                    {!n.read ? <span className="rd-notif-dot" aria-label="Unread" /> : null}
+                    {!n.read ? <span className="rd-notif-dot shell-notif-dot" aria-label="Unread" /> : null}
                   </div>
                 );
               })
             )}
-            {error ? <p className="rd-small" style={{ color: 'var(--rd-danger)', padding: 12 }}>{error}</p> : null}
+            {error ? <p className="rd-small shell-error">{error}</p> : null}
           </div>
         </div>,
         document.body

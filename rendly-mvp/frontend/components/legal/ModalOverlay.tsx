@@ -1,20 +1,20 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const OVERLAY_STYLES = {
-  overlay:
-    'fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 md:items-start md:justify-center md:pt-24 md:pb-6 md:px-6 lg:items-start lg:justify-center lg:pt-24 lg:pb-6 lg:px-6 xl:items-center xl:py-6 xl:p-6',
-  backdrop:
-    'absolute inset-0 bg-black/40 backdrop-blur-md transition-opacity duration-300 ease-out',
+  overlay: 'fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6',
+  backdrop: 'absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity duration-200 ease-out',
   container:
-    'relative z-10 w-[90%] sm:w-[85%] md:w-[75%] lg:w-[70%] max-w-[900px] max-h-[85vh] md:h-[58vh] md:max-h-[58vh] lg:h-[58vh] lg:max-h-[58vh] xl:max-h-[90vh] xl:h-auto flex flex-col rounded-xl border-2 border-alabaster_grey bg-white_1 shadow-2xl transition-all duration-300 ease-out mx-auto',
-  header: 'flex items-center justify-between shrink-0 px-4 py-4 sm:px-5 sm:py-5 md:px-6 md:py-5 border-b border-alabaster_grey',
-  title: 'font-chillax font-bold text-ink_black text-xl sm:text-2xl md:text-3xl',
+    'relative z-10 w-full max-w-[720px] max-h-[86vh] flex flex-col rounded-2xl border border-[rgba(255,255,255,0.12)] bg-[#0f1011] shadow-[0_24px_64px_-16px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(255,255,255,0.05)] transition-all duration-200 ease-out',
+  header: 'flex items-center justify-between gap-4 shrink-0 px-5 py-4 sm:px-6 border-b border-[rgba(255,255,255,0.08)]',
+  title: 'text-[15px] font-semibold tracking-[-0.01em] text-[#f7f8f8]',
   closeButton:
-    'flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-pale_sky_1-900 text-ink_black transition-all duration-150 hover:bg-pale_sky_1-700 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-glaucous focus:ring-offset-2',
-  body: 'flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5 md:px-6 md:py-5',
-  footer: 'shrink-0 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 px-4 py-4 sm:px-5 md:px-6 border-t border-alabaster_grey',
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#8a8f98] transition-colors duration-150 hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f8f8] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
+  body: 'flex-1 min-h-0 overflow-y-auto px-5 py-5 sm:px-6',
+  footer:
+    'shrink-0 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 px-5 py-4 sm:px-6 border-t border-[rgba(255,255,255,0.08)]',
 };
 
 function CloseIcon({ className }: { className?: string }) {
@@ -44,14 +44,15 @@ export default function ModalOverlay({
   footer,
   closeOnBackdropClick = true,
 }: ModalOverlayProps) {
-  const overlayRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const [show, setShow] = useState(isOpen);
+  const titleId = React.useId();
 
   useEffect(() => {
     if (isOpen) setShow(true);
     else {
-      const t = setTimeout(() => setShow(false), 220);
+      const t = setTimeout(() => setShow(false), 200);
       return () => clearTimeout(t);
     }
   }, [isOpen]);
@@ -64,6 +65,13 @@ export default function ModalOverlay({
     };
   }, [show]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    return () => previouslyFocused?.focus?.();
+  }, [isOpen]);
+
   const exiting = !isOpen && show;
 
   const handleBackdropClick = (e: React.MouseEvent) => {
@@ -73,42 +81,30 @@ export default function ModalOverlay({
     }
   };
 
-  if (!show) return null;
+  // Render into <body>: an ancestor with a transform (e.g. the auth pages' entrance animation)
+  // would otherwise become the containing block for `position: fixed` and trap the dialog.
+  if (!show || typeof document === 'undefined') return null;
 
-  return (
-    <div
-      ref={overlayRef}
-      className={OVERLAY_STYLES.overlay}
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-title"
-    >
-      <div
-        className={`${OVERLAY_STYLES.backdrop} ${exiting ? 'opacity-0' : 'opacity-100'}`}
-        aria-hidden
-      />
+  return createPortal(
+    <div className={OVERLAY_STYLES.overlay} onClick={handleBackdropClick} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div className={`${OVERLAY_STYLES.backdrop} ${exiting ? 'opacity-0' : 'opacity-100'}`} aria-hidden />
       <div
         ref={containerRef}
-        className={`${OVERLAY_STYLES.container} ${exiting ? 'scale-95 opacity-0' : 'scale-100 opacity-100'}`}
+        className={`${OVERLAY_STYLES.container} ${exiting ? 'translate-y-2 opacity-0' : 'translate-y-0 opacity-100'}`}
         onClick={(e) => e.stopPropagation()}
       >
         <header className={OVERLAY_STYLES.header}>
-          <h1 id="modal-title" className={OVERLAY_STYLES.title} style={{ fontFamily: 'var(--font-chillax)' }}>
+          <h2 id={titleId} className={OVERLAY_STYLES.title}>
             {title}
-          </h1>
-          <button
-            type="button"
-            onClick={onClose}
-            className={OVERLAY_STYLES.closeButton}
-            aria-label="Close modal"
-          >
-            <CloseIcon className="h-5 w-5" />
+          </h2>
+          <button ref={closeRef} type="button" onClick={onClose} className={OVERLAY_STYLES.closeButton} aria-label="Close">
+            <CloseIcon className="h-4 w-4" />
           </button>
         </header>
         <div className={OVERLAY_STYLES.body}>{children}</div>
         {footer != null && <footer className={OVERLAY_STYLES.footer}>{footer}</footer>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

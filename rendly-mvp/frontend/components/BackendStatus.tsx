@@ -43,27 +43,28 @@ export default function BackendStatus() {
     };
   }, []);
 
+  const dot =
+    status === "ok" ? "var(--rd-success)" : status === "error" ? "var(--rd-danger)" : "var(--rd-warning)";
+
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 shadow-sm">
-      <p className="text-sm font-medium text-gray-700">Backend API</p>
-      <div className="mt-1 flex items-center gap-2">
-        <span
-          className={`inline-block h-2 w-2 rounded-full ${
-            status === "ok"
-              ? "bg-green-500"
-              : status === "error"
-                ? "bg-red-500"
-                : "animate-pulse bg-amber-500"
-          }`}
-          aria-hidden
-        />
-        <span className="text-sm text-gray-600">
-          {status === "checking" && "Checking…"}
-          {status === "ok" && message}
-          {status === "error" && `Error: ${message}`}
+    <div className="rd-card px-4 py-3" role="status" aria-live="polite">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[0.75rem] font-medium text-[var(--rd-muted)]">Backend API</p>
+        <span className="rd-badge">
+          <span
+            className={`rd-dot ${status === "checking" ? "animate-pulse" : ""}`}
+            style={{ background: dot }}
+            aria-hidden
+          />
+          {status === "checking" ? "Checking" : status === "ok" ? "Operational" : "Unreachable"}
         </span>
       </div>
-      {apiUrl && <p className="mt-1 text-xs text-gray-500">{apiUrl}</p>}
+      <p className="mt-1 text-[0.8125rem] text-[var(--rd-text-2)]">
+        {status === "checking" && "Checking…"}
+        {status === "ok" && message}
+        {status === "error" && `Error: ${message}`}
+      </p>
+      {apiUrl && <p className="rd-mono mt-1 truncate text-[var(--rd-faint)]">{apiUrl}</p>}
     </div>
   );
 }

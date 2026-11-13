@@ -1,0 +1,409 @@
+/* Chapters 6-10 of the launch film (canvas px, 1600 x 900 / 900 x 1200). */
+
+/* ---------------- 6. Spark call ---------------- */
+.fl-callbg {
+  background: #0b0b0c;
+}
+.fl-calltile {
+  width: 1240px;
+  height: 698px;
+  border-radius: 28px;
+  overflow: hidden;
+  background: #121214;
+  box-shadow: 0 40px 100px -30px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.fl-root.is-portrait .fl-calltile {
+  width: 840px;
+  height: 1000px;
+}
+.fl-callchrome {
+  position: absolute;
+  inset: 0;
+}
+.fl-callchip {
+  position: absolute;
+  left: 24px;
+  top: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 46px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  font-size: 17px;
+  white-space: nowrap;
+}
+.fl-live {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--teal);
+  box-shadow: 0 0 12px var(--teal);
+}
+.fl-callchip-sep,
+.fl-huddlehead-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.25);
+}
+.fl-timer {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.fl-captions {
+  position: absolute;
+  left: 50%;
+  bottom: 118px;
+  width: 700px;
+  height: 90px;
+  translate: -50% 0;
+}
+.fl-root.is-portrait .fl-captions {
+  width: 760px;
+  bottom: 120px;
+}
+.fl-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12px 20px 14px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.62);
+  font-size: 25px;
+  line-height: 1.38;
+  text-align: center;
+}
+.fl-caption-who {
+  display: block;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.fl-dock {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  translate: -50% 0;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+.fl-dock-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 56px;
+  height: 56px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.fl-dock-btn.is-on {
+  background: rgba(138, 180, 248, 0.24);
+  color: #d6e4fc;
+}
+.fl-dock-btn.is-end {
+  min-width: 76px;
+  background: var(--coral);
+  color: #2b0a07;
+}
+.fl-wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+}
+.fl-wave-bar {
+  width: 3px;
+  height: 18px;
+  border-radius: 2px;
+  background: #fff;
+}
+.fl-pip {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  width: 240px;
+  height: 240px;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2), 0 20px 40px -12px rgba(0, 0, 0, 0.8);
+}
+.fl-root.is-portrait .fl-pip {
+  top: 86px;
+  bottom: auto;
+  width: 210px;
+  height: 210px;
+}
+.fl-pip-label,
+.fl-htile-name {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--glass);
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+/* ---------------- 7. Huddle ---------------- */
+.fl-htile {
+  width: 440px;
+  height: 248px;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #121214;
+  box-shadow: 0 0 0 calc(1px + var(--speak, 0) * 3px) rgba(255, 255, 255, calc(0.1 + var(--speak, 0) * 0.9)),
+    0 0 calc(var(--speak, 0) * 34px) rgba(138, 180, 248, 0.45);
+}
+.fl-root.is-portrait .fl-htile {
+  width: 340px;
+  height: 340px;
+}
+.fl-htile .fl-wave {
+  height: 14px;
+  opacity: var(--speak, 0);
+}
+.fl-htile .fl-wave-bar {
+  height: 12px;
+}
+.fl-huddlehead {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line-2);
+  font-size: 18px;
+  white-space: nowrap;
+}
+
+/* ---------------- 8. Whispers ---------------- */
+.fl-thread {
+  display: flex;
+  flex-direction: column;
+  width: 660px;
+  padding: 28px;
+}
+.fl-root.is-portrait .fl-thread {
+  width: 760px;
+}
+.fl-thread-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.fl-avatar--sm {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+}
+.fl-thread-who {
+  display: flex;
+  flex-direction: column;
+}
+.fl-thread-name {
+  font-size: 25px;
+  font-weight: 500;
+}
+.fl-thread-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+  color: var(--ink-3);
+}
+.fl-thread-day {
+  margin: 20px 0 14px;
+  font-size: 13px;
+  text-align: center;
+  color: var(--ink-3);
+}
+.fl-thread-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 12px;
+  min-height: 280px;
+}
+.fl-bubble {
+  align-self: flex-start;
+  max-width: 80%;
+  padding: 14px 18px;
+  border-radius: 22px 22px 22px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 23px;
+  line-height: 1.38;
+}
+.fl-bubble--out {
+  align-self: flex-end;
+  border-radius: 22px 22px 8px 22px;
+  background: #f1f1f2;
+  color: #0a0a0b;
+}
+.fl-typing {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  gap: 6px;
+  padding: 18px 20px;
+  border-radius: 22px 22px 22px 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.fl-typing i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+.fl-thread-compose {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.fl-thread-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  height: 54px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  font-size: 21px;
+}
+.fl-thread-placeholder {
+  position: absolute;
+  left: 20px;
+  color: var(--ink-3);
+}
+.fl-thread-send {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.fl-thread-send::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: #f1f1f2;
+  opacity: var(--ready, 0);
+}
+.fl-thread-send .fl-icon {
+  mix-blend-mode: difference;
+}
+.fl-pnote {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  width: 420px;
+  padding: 24px 26px;
+}
+.fl-pnote-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.fl-pnote-text {
+  font-size: 23px;
+  line-height: 1.4;
+}
+
+/* ---------------- 9. Real life ---------------- */
+.fl-reallines {
+  position: absolute;
+  left: 120px;
+  bottom: 110px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.fl-root.is-portrait .fl-reallines {
+  left: 64px;
+  bottom: 150px;
+}
+.fl-reallines .fl-kline {
+  text-align: left;
+}
+
+/* ---------------- 10. End card ---------------- */
+.fl-markclip {
+  width: 1000px;
+  height: 562px;
+  overflow: hidden;
+}
+.fl-root.is-portrait .fl-markclip {
+  width: 900px;
+  height: 506px;
+}
+.fl-markclip .fl-clip {
+  background: #000;
+}
+.fl-black {
+  background: #000;
+}
+.fl-lockup-img {
+  display: block;
+  height: 96px;
+  width: auto;
+}
+.fl-root.is-portrait .fl-lockup-img {
+  height: 84px;
+}
+.fl-tagline {
+  font-size: 64px;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  white-space: nowrap;
+  text-align: center;
+}
+.fl-tagline-a {
+  color: var(--ink-2);
+}
+.fl-root.is-portrait .fl-tagline-a,
+.fl-root.is-portrait .fl-tagline-b {
+  display: block;
+}
+.fl-root.is-portrait .fl-tagline-gap {
+  display: none;
+}
+.fl-btn--cta {
+  height: 64px;
+  padding: 0 32px;
+  font-size: 22px;
+}

@@ -62,12 +62,12 @@ function ToastCard({ toast }: { toast: Toast }) {
       }}
       onClick={open}
     >
-      <span className="rd-toast-icon" aria-hidden>
-        <Icon name={toast.icon} size={18} />
+      <span className="rd-toast-icon shell-toast-icon" aria-hidden>
+        <Icon name={toast.icon} size={15} />
       </span>
-      <div className="rd-toast-body">
+      <div className="shell-toast-content">
         <div className="rd-toast-title">{toast.title}</div>
-        {toast.body ? <div className="rd-small rd-muted">{toast.body}</div> : null}
+        {toast.body ? <div className="rd-toast-body">{toast.body}</div> : null}
         {toast.actionLabel && toast.href ? (
           <div className="rd-toast-actions">
             <button type="button" className="rd-btn rd-btn--primary rd-btn--sm" onClick={(e) => { e.stopPropagation(); moved.current = false; open(); }}>
@@ -78,14 +78,14 @@ function ToastCard({ toast }: { toast: Toast }) {
       </div>
       <button
         type="button"
-        className="rd-icon-btn"
+        className="rd-icon-btn shell-toast-close"
         aria-label="Dismiss"
         onClick={(e) => {
           e.stopPropagation();
           leave(1);
         }}
       >
-        <Icon name="close" size={16} />
+        <Icon name="close" size={14} />
       </button>
     </div>
   );

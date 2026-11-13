@@ -52,78 +52,122 @@ function ChooseStep({
   error: string | null;
   lookingNow: number | null;
 }) {
+  const intentCopy = INTENT_COPY[intent];
   return (
     <div className="spark-choose rd-stagger">
-      <div className="spark-choose-head">
-        <h1 className="rd-h1">
-          Spark a <span className="rd-gradient-text">1:1 match</span>
-        </h1>
-        <p className="rd-muted">
-          Pick how you want to talk and why. {lookingNow ? `${lookingNow} people are looking right now.` : ''}
-        </p>
-      </div>
+      <header className="spark-choose-head">
+        <span className="spark-eyebrow">
+          <Icon name="spark" size={14} /> Spark
+        </span>
+        <h1 className="rd-h1">Meet someone new, one on one</h1>
+        <p className="spark-lede">Pick how you want to talk and why. We pair you with someone who picked the same.</p>
+      </header>
 
-      <div className="spark-modes" role="radiogroup" aria-label="How do you want to talk?">
-        {(['text', 'video'] as SparkMode[]).map((m) => (
-          <button
-            key={m}
-            type="button"
-            role="radio"
-            aria-checked={mode === m}
-            className={`spark-mode rd-tilt ${mode === m ? 'spark-mode--on' : ''}`}
-            onClick={() => setMode(m)}
-          >
-            <Icon name={m === 'text' ? 'chat' : 'video'} size={22} />
-            <span>
-              <strong>{m === 'text' ? 'Text first' : 'Video'}</strong>
-              <span className="rd-small rd-muted">{m === 'text' ? 'Switch to video any time' : 'Face to face from the start'}</span>
-            </span>
+      <div className="rd-card spark-panel">
+        <div className="spark-field">
+          <span className="spark-label" id="spark-mode-label">
+            Format
+          </span>
+          <div className="spark-seg" role="radiogroup" aria-labelledby="spark-mode-label">
+            {(['text', 'video'] as SparkMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={mode === m}
+                className={`spark-seg-btn ${mode === m ? 'spark-seg-btn--on' : ''}`}
+                onClick={() => setMode(m)}
+              >
+                <Icon name={m === 'text' ? 'chat' : 'video'} size={15} />
+                {m === 'text' ? 'Text first' : 'Video'}
+              </button>
+            ))}
+          </div>
+          <p className="spark-help">{mode === 'text' ? 'Start in chat, switch to video any time.' : 'Face to face from the start.'}</p>
+        </div>
+
+        <div className="spark-field">
+          <span className="spark-label" id="spark-intent-label">
+            Intent
+          </span>
+          <div className="spark-chips" role="radiogroup" aria-labelledby="spark-intent-label">
+            {DASHBOARD_INTENTS.map((i) => (
+              <button
+                key={i}
+                type="button"
+                role="radio"
+                aria-checked={intent === i}
+                className={`rd-chip spark-chip ${intent === i ? 'rd-chip--on' : ''}`}
+                onClick={() => setIntent(i as SparkIntent)}
+              >
+                <Icon name={INTENT_COPY[i as SparkIntent].icon} size={14} />
+                {i}
+              </button>
+            ))}
+          </div>
+          <p className="spark-help">{intentCopy.blurb}.</p>
+        </div>
+
+        {error ? (
+          <p className="spark-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="spark-panel-foot">
+          <span className="spark-looking">
+            {lookingNow ? (
+              <>
+                <span className="spark-live-dot" aria-hidden />
+                <span className="spark-num">{lookingNow}</span> looking right now
+              </>
+            ) : (
+              <>
+                <Icon name="lock" size={13} /> Chats are temporary
+              </>
+            )}
+          </span>
+          <button type="button" className="rd-btn rd-btn--primary spark-go" onClick={onStart} disabled={busy}>
+            {busy ? <span className="rd-spinner" /> : <Icon name="spark" size={15} />} Find someone
           </button>
-        ))}
+        </div>
       </div>
-
-      <div className="spark-intents" role="radiogroup" aria-label="Intent">
-        {DASHBOARD_INTENTS.map((i) => (
-          <button
-            key={i}
-            type="button"
-            role="radio"
-            aria-checked={intent === i}
-            className={`spark-intent rd-tilt ${intent === i ? 'spark-intent--on' : ''}`}
-            onClick={() => setIntent(i as SparkIntent)}
-          >
-            <span className="spark-intent-icon">
-              <Icon name={INTENT_COPY[i as SparkIntent].icon} size={22} />
-            </span>
-            <strong>{i}</strong>
-            <span className="rd-small rd-muted">{INTENT_COPY[i as SparkIntent].blurb}</span>
-          </button>
-        ))}
-      </div>
-
-      {error ? <p className="spark-error" role="alert">{error}</p> : null}
-
-      <button type="button" className="rd-btn rd-btn--primary rd-btn--lg spark-go" onClick={onStart} disabled={busy}>
-        {busy ? <span className="rd-spinner" /> : <Icon name="spark" size={18} />} Find someone
-      </button>
     </div>
   );
+}
+
+function formatElapsed(total: number): string {
+  const m = Math.floor(total / 60);
+  const sec = total % 60;
+  return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
 function WaitingStep({ mode, intent, elapsed, onCancel, busy }: { mode: SparkMode; intent: SparkIntent; elapsed: number; onCancel: () => void; busy: boolean }) {
   return (
     <div className="spark-waiting" role="status" aria-live="polite">
       <div className="spark-radar" aria-hidden>
-        <span />
-        <span />
-        <span />
-        <div className="rd-orb spark-radar-orb" />
+        <span className="spark-radar-ring spark-radar-ring--1" />
+        <span className="spark-radar-ring spark-radar-ring--2" />
+        <span className="spark-radar-ring spark-radar-ring--3" />
+        <span className="spark-radar-pulse" />
+        <span className="spark-radar-pulse spark-radar-pulse--late" />
+        <span className="spark-radar-core">
+          <Icon name="spark" size={20} />
+        </span>
       </div>
-      <h2 className="rd-h2">Finding someone for {intent}</h2>
-      <p className="rd-muted">
-        {mode === 'video' ? 'Video' : 'Text'} · {elapsed}s
-      </p>
-      <button type="button" className="rd-btn rd-btn--ghost" onClick={onCancel} disabled={busy}>
+      <h2 className="spark-waiting-title">Finding someone for {intent}</h2>
+      <div className="spark-waiting-meta">
+        <span className="rd-badge">
+          <Icon name={mode === 'video' ? 'video' : 'chat'} size={12} /> {mode === 'video' ? 'Video' : 'Text first'}
+        </span>
+        <span className="rd-badge">
+          <Icon name={INTENT_COPY[intent].icon} size={12} /> {intent}
+        </span>
+        <span className="spark-elapsed" aria-label={`${elapsed} seconds`}>
+          {formatElapsed(elapsed)}
+        </span>
+      </div>
+      <button type="button" className="rd-btn spark-cancel" onClick={onCancel} disabled={busy}>
         {busy ? 'Cancelling…' : 'Cancel'}
       </button>
     </div>
@@ -276,23 +320,25 @@ function MatchRoom({
         <Avatar url={match.partner.avatar_url} name={match.partner.username} online={online} />
         <div className="spark-room-who">
           <strong>{partnerName}</strong>
-          <span className="rd-small rd-muted">
-            {match.intent} · {online ? 'online' : 'offline'}
+          <span className="spark-room-meta">
+            <span className={`spark-presence ${online ? 'spark-presence--on' : ''}`}>{online ? 'Online' : 'Offline'}</span>
+            <span aria-hidden>·</span>
+            {match.intent}
           </span>
         </div>
         <div className="spark-room-actions">
-          <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" onClick={sendInvite} disabled={invite === 'sending' || invite === 'sent'} title="Send a connection request">
-            <Icon name="user-plus" size={16} />
+          <button type="button" className="rd-btn rd-btn--sm" onClick={sendInvite} disabled={invite === 'sending' || invite === 'sent'} title="Send a connection request" aria-label={invite === 'sent' ? 'Request sent' : 'Connect'}>
+            <Icon name={invite === 'sent' ? 'check' : 'user-plus'} size={15} />
             <span className="rd-hide-mobile">{invite === 'sent' ? 'Request sent' : invite === 'sending' ? 'Sending…' : 'Connect'}</span>
           </button>
-          <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm rd-only-mobile" onClick={() => setChatOpen((o) => !o)} aria-label="Toggle chat">
+          <button type="button" className={`rd-btn rd-btn--sm rd-only-mobile ${chatOpen ? 'spark-chat-toggle--on' : ''}`} onClick={() => setChatOpen((o) => !o)} aria-label="Toggle chat" aria-pressed={chatOpen}>
             <Icon name="chat" size={16} />
           </button>
-          <button type="button" className="rd-btn rd-btn--sm" onClick={() => leave('skip')} title="Skip to the next person">
-            <Icon name="skip" size={16} /> <span className="rd-hide-mobile">Skip</span>
+          <button type="button" className="rd-btn rd-btn--sm" onClick={() => leave('skip')} title="Skip to the next person" aria-label="Skip">
+            <Icon name="skip" size={15} /> <span className="rd-hide-mobile">Skip</span>
           </button>
-          <button type="button" className="rd-btn rd-btn--danger rd-btn--sm" onClick={() => leave('close')} title="End and go back">
-            <Icon name="close" size={16} /> <span className="rd-hide-mobile">End</span>
+          <button type="button" className="rd-btn rd-btn--danger rd-btn--sm" onClick={() => leave('close')} title="End and go back" aria-label="End">
+            <Icon name="close" size={15} /> <span className="rd-hide-mobile">End</span>
           </button>
         </div>
       </header>
@@ -306,10 +352,10 @@ function MatchRoom({
           </>
         ) : inThisCall && call.callState === 'ringing_outgoing' ? (
           <div className="spark-stage-idle">
-            <div className="spark-stage-avatar">
+            <div className="spark-stage-avatar spark-stage-avatar--ringing">
               <Avatar url={match.partner.avatar_url} name={match.partner.username} size="lg" />
             </div>
-            <p>Connecting video…</p>
+            <p className="spark-match-name">Connecting video…</p>
             <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" onClick={call.endCall}>
               Cancel
             </button>
@@ -317,9 +363,17 @@ function MatchRoom({
         ) : (
           <div className="spark-stage-idle">
             <div className="spark-stage-avatar">
-              <Avatar url={match.partner.avatar_url} name={match.partner.username} size="lg" />
+              <Avatar url={match.partner.avatar_url} name={match.partner.username} size="lg" online={online} />
             </div>
-            <h2 className="rd-h2">You matched with {partnerName}</h2>
+            <h2 className="spark-match-name">You matched with {partnerName}</h2>
+            <div className="spark-match-tags">
+              <span className="spark-match-on">
+                Matched on <span className="rd-spectrum-text">{match.intent}</span>
+              </span>
+              <span className="rd-badge">
+                <Icon name={match.mode === 'video' ? 'video' : 'chat'} size={12} /> {match.mode === 'video' ? 'Video' : 'Text first'}
+              </span>
+            </div>
             <p className="rd-muted rd-small">Both of you picked “{match.intent}”. Say hi in the chat.</p>
             <button
               type="button"
@@ -327,7 +381,7 @@ function MatchRoom({
               disabled={call.callState !== 'idle' || !!ended}
               onClick={() => void call.startCall(match.conversation_id, 'video')}
             >
-              <Icon name="video" size={18} /> Switch to video
+              <Icon name="video" size={15} /> Switch to video
             </button>
           </div>
         )}
@@ -349,7 +403,7 @@ function MatchRoom({
       <aside className="spark-chat rd-card" aria-label="Temporary chat">
         <div className="spark-chat-head">
           <strong>Chat</strong>
-          <span className="rd-small rd-muted">
+          <span className="spark-chat-sub">
             <Icon name="lock" size={12} /> Temporary · cleared when you skip or end
           </span>
         </div>
@@ -382,8 +436,8 @@ function MatchRoom({
             onChange={(e) => onDraft(e.target.value)}
             aria-label="Message"
           />
-          <button type="submit" className="rd-icon-btn" disabled={!draft.trim() || joined !== 'ok' || !!ended} aria-label="Send">
-            <Icon name="send" size={18} />
+          <button type="submit" className="rd-icon-btn spark-send" disabled={!draft.trim() || joined !== 'ok' || !!ended} aria-label="Send">
+            <Icon name="send" size={16} />
           </button>
         </form>
       </aside>

@@ -52,6 +52,14 @@ async function insertUserRow(row: Record<string, unknown>): Promise<{ id: string
   return data as { id: string };
 }
 
+/** Create an email + password user (company email sign-up). Email must already be validated and lowercased. */
+export async function insertUserWithPassword(payload: {
+  email: string;
+  password_hash: string;
+}): Promise<{ id: string } | null> {
+  return insertUserRow({ email: payload.email, password_hash: payload.password_hash });
+}
+
 /** Upsert user by GitHub id. Single-provider: no merge with LinkedIn. */
 export async function upsertUserByGitHub(
   payload: {

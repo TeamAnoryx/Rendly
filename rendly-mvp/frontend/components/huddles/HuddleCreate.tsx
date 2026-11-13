@@ -182,14 +182,14 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
 
   if (created) {
     return (
-      <div className="hc hc--done rd-card">
+      <div className="hc hc--done" role="dialog" aria-modal="true" aria-labelledby="hc-done-title">
         <div className="hc-done-icon">
           <Icon name="check" size={28} />
         </div>
-        <h2 className="rd-h1">Your huddle is ready</h2>
-        <p className="rd-muted">Share the link{type === 'private' ? ' with the people you invited' : ''}.</p>
+        <h2 id="hc-done-title" className="rd-h2 hc-done-title">Your huddle is ready</h2>
+        <p className="rd-muted rd-small">Share the link{type === 'private' ? ' with the people you invited' : ''}.</p>
         <div className="hc-link">
-          <input className="rd-input" readOnly value={created.url} aria-label="Huddle link" />
+          <input className="rd-input rd-mono" readOnly value={created.url} aria-label="Huddle link" onFocus={(e) => e.currentTarget.select()} />
           <button
             type="button"
             className="rd-btn"
@@ -208,7 +208,7 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
         </div>
         {created.thumbError ? <p className="hl-err rd-small">Thumbnail: {created.thumbError}. You can add it from the huddle page.</p> : null}
         <div className="hc-actions">
-          <button type="button" className="rd-btn rd-btn--primary rd-btn--lg" onClick={() => onSuccess(created.id)}>
+          <button type="button" className="rd-btn rd-btn--primary" onClick={() => onSuccess(created.id)}>
             Open huddle
           </button>
           <button type="button" className="rd-btn rd-btn--ghost" onClick={onCancel}>
@@ -220,15 +220,15 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
   }
 
   return (
-    <form className="hc rd-card" onSubmit={handleSubmit}>
+    <form className="hc" onSubmit={handleSubmit} role="dialog" aria-modal="true" aria-labelledby="hc-heading">
       <header className="hc-head">
-        <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" onClick={onCancel}>
-          <Icon name="back" size={16} /> Back
-        </button>
-        <h2 className="rd-h2">New huddle</h2>
-        <button type="submit" className="rd-btn rd-btn--primary" disabled={!!submitting}>
-          {submitting ? <span className="rd-spinner" /> : <Icon name="plus" size={16} />}
-          {submitting === 'upload' ? 'Uploading…' : submitting ? 'Creating…' : 'Create'}
+        <span className="hc-grip" aria-hidden="true" />
+        <div className="hc-head-text">
+          <span className="rd-eyebrow">Huddles</span>
+          <h2 id="hc-heading" className="rd-h2">New huddle</h2>
+        </div>
+        <button type="button" className="rd-icon-btn" onClick={onCancel} aria-label="Close">
+          <Icon name="close" size={16} />
         </button>
       </header>
 
@@ -260,7 +260,7 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
           <label className="rd-label" htmlFor="hc-title">
             Name
           </label>
-          <input id="hc-title" className="rd-input" value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Friday AI quiz night" />
+          <input id="hc-title" autoFocus className="rd-input" value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Friday AI quiz night" />
           <label className="rd-label" htmlFor="hc-desc">
             Description
           </label>
@@ -304,15 +304,15 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
             <div className="hc-row3">
               <label>
                 <span className="rd-label">Date</span>
-                <input type="date" className="rd-input" value={date} onChange={(e) => setDate(e.target.value)} />
+                <input type="date" className="rd-input rd-mono" value={date} onChange={(e) => setDate(e.target.value)} />
               </label>
               <label>
                 <span className="rd-label">Time</span>
-                <input type="time" className="rd-input" value={time} onChange={(e) => setTime(e.target.value)} />
+                <input type="time" className="rd-input rd-mono" value={time} onChange={(e) => setTime(e.target.value)} />
               </label>
               <label>
                 <span className="rd-label">Minutes</span>
-                <input type="number" min={1} max={30} className="rd-input" value={durationMinutes} onChange={(e) => setDurationMinutes(Number(e.target.value) || 30)} />
+                <input type="number" min={1} max={30} className="rd-input rd-mono" value={durationMinutes} onChange={(e) => setDurationMinutes(Number(e.target.value) || 30)} />
               </label>
             </div>
           ) : null}
@@ -342,7 +342,26 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
           ) : null}
         </div>
       </div>
-      {submitError ? <p className="hl-err hc-error" role="alert">{submitError}</p> : null}
+      <footer className="hc-foot">
+        {submitError ? (
+          <p className="hl-err hc-error" role="alert">
+            {submitError}
+          </p>
+        ) : (
+          <span className="rd-small rd-muted hc-foot-hint">
+            Press <kbd className="rd-kbd">Esc</kbd> to close
+          </span>
+        )}
+        <div className="hc-foot-actions">
+          <button type="button" className="rd-btn rd-btn--ghost" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="submit" className="rd-btn rd-btn--primary" disabled={!!submitting}>
+            {submitting ? <span className="rd-spinner" /> : null}
+            {submitting === 'upload' ? 'Uploading…' : submitting ? 'Creating…' : 'Create huddle'}
+          </button>
+        </div>
+      </footer>
     </form>
   );
 }

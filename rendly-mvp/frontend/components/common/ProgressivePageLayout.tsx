@@ -38,7 +38,7 @@ export default function ProgressivePageLayout({
   const contentFallback = contentSkeleton ?? <DefaultContentSkeleton />;
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-[var(--rd-bg)] text-[var(--rd-text)]">
       {header !== undefined && (
         <header className="shrink-0">
           <Suspense fallback={<HeaderSkeleton />}>{header}</Suspense>
@@ -63,7 +63,7 @@ export default function ProgressivePageLayout({
 
       {footer !== undefined && (
         <footer className="shrink-0">
-          <Suspense fallback={<div className="h-16 border-t border-gray-200" />}>
+          <Suspense fallback={<div className="h-16 border-t border-[var(--rd-border-faint)]" />}>
             {footer}
           </Suspense>
         </footer>

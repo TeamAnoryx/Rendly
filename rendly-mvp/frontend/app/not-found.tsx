@@ -1,71 +1,30 @@
 import Link from 'next/link';
+import { RendlyMark } from '@/components/brand/Brand';
 
-/**
- * Renders when a route is not found (404).
- * Provides links to home and dashboard so users can recover.
- */
+/** 404: brand mark, a big mono code, one line, one way home. */
 export default function NotFound() {
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '1.5rem',
-        fontFamily: 'var(--font-sans, system-ui, sans-serif)',
-        background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-        color: '#334155',
-      }}
-    >
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-        Page not found
-      </h1>
-      <p style={{ marginBottom: '1.5rem', color: '#64748b' }}>
-        This page could not be found. It may have been moved or the URL might be incorrect.
-      </p>
-      <nav style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <Link
-          href="/"
-          style={{
-            padding: '0.5rem 1rem',
-            borderRadius: '8px',
-            background: '#4f46e5',
-            color: '#fff',
-            fontWeight: 600,
-            textDecoration: 'none',
-          }}
+    <main className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-[var(--rd-bg)] px-6 text-center text-[var(--rd-text)]">
+      <div className="rd-grid-overlay pointer-events-none absolute inset-0 opacity-60" aria-hidden />
+      <div className="relative flex flex-col items-center" style={{ animation: 'rd-page-in 0.6s var(--rd-ease) both' }}>
+        <RendlyMark className="mb-10 h-8 w-auto text-[var(--rd-muted)]" title="Rendly" />
+        <p
+          className="rd-gradient-text select-none font-mono font-medium leading-none tracking-[-0.06em] tabular-nums"
+          style={{ fontSize: 'clamp(5.5rem, 22vw, 11rem)' }}
+          aria-hidden
         >
-          Go home
+          404
+        </p>
+        <h1 className="mt-6 text-[0.9375rem] font-medium text-[var(--rd-text-2)]">
+          This page does not exist, or it has moved.
+        </h1>
+        <Link href="/" className="rd-btn rd-btn--primary mt-8">
+          Back to home
         </Link>
-        <Link
-          href="/dashboard"
-          style={{
-            padding: '0.5rem 1rem',
-            borderRadius: '8px',
-            background: '#e2e8f0',
-            color: '#334155',
-            fontWeight: 600,
-            textDecoration: 'none',
-          }}
-        >
-          Dashboard
+        <Link href="/dashboard" className="rd-btn rd-btn--ghost rd-btn--sm mt-2">
+          Open dashboard
         </Link>
-        <Link
-          href="/dashboard/chat"
-          style={{
-            padding: '0.5rem 1rem',
-            borderRadius: '8px',
-            background: '#e2e8f0',
-            color: '#334155',
-            fontWeight: 600,
-            textDecoration: 'none',
-          }}
-        >
-          Chat
-        </Link>
-      </nav>
-    </div>
+      </div>
+    </main>
   );
 }
