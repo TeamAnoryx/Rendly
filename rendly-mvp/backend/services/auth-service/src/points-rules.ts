@@ -21,7 +21,8 @@ export const HUDDLE_SEND_PURPOSE_LABELS: Readonly<Record<HuddleSendPurpose, stri
 };
 
 export const TRANSFER_MIN_AMOUNT = 1;
-export const TRANSFER_MAX_AMOUNT = 1_000_000;
+/** Equals the transfer_tokens RPC bound (and the points_ledger amount CHECK). */
+export const TRANSFER_MAX_AMOUNT = 100_000;
 export const HUDDLE_SEND_MIN_AMOUNT = 1;
 export const HUDDLE_SEND_MAX_AMOUNT = 1000;
 export const NOTE_MAX_LENGTH = 140;
@@ -110,4 +111,17 @@ export function validateHuddleSendBody(body: unknown): RulesResult<HuddleSendBod
     ok: true,
     value: { user_id: input.user_id, amount: amount.value, purpose: input.purpose, note: note.value },
   };
+}
+
+/**
+ * Parse an optional Idempotency-Key header. Absent (or empty) -> null; otherwise it must be a
+ * UUID, because it becomes the ledger transfer_id. Arrays (repeated headers) are refused.
+ */
+export function parseIdempotencyKey(raw: unknown): RulesResult<string | null> {
+  if (raw == null) return { ok: true, value: null };
+  if (typeof raw !== "string") return { ok: false, error: "Idempotency-Key must be a single UUID" };
+  const key = raw.trim();
+  if (!key) return { ok: true, value: null };
+  if (!isUuid(key)) return { ok: false, error: "Idempotency-Key must be a UUID" };
+  return { ok: true, value: key.toLowerCase() };
 }

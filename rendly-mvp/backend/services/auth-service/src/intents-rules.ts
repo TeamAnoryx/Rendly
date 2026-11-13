@@ -56,10 +56,18 @@ export function intentSlug(name: string): string {
     .slice(0, INTENT_SLUG_MAX);
 }
 
-/** Price in tokens: presets are free, your own intents are free, otherwise the source table. */
+/** Price of a location intent, whatever source the client names (= purchase_intent SQL). */
+export const LOCATION_INTENT_PRICE = 20;
+
+/**
+ * Price in tokens: presets and your own intents are free; location intents always cost 20
+ * (the source is client-chosen, so it must never discount them); other intents follow the
+ * source table. Must equal the purchase_intent SQL RPC.
+ */
 export function intentPrice(kind: IntentKind, source: IntentSource, isOwner: boolean): number {
   if (kind === "preset") return 0;
   if (isOwner) return 0;
+  if (kind === "location") return LOCATION_INTENT_PRICE;
   if (isPaidIntentSource(source)) return INTENT_PRICES[source];
   return 0;
 }

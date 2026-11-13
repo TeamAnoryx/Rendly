@@ -38,9 +38,41 @@ export const HUDDLE_SEND_PURPOSE_LABELS: Record<HuddleSendPurpose, string> = {
 /** Fired on `window` whenever the user's balance may have changed (AppShell and cards re-fetch). */
 export const POINTS_CHANGED_EVENT = 'rendly:points-changed';
 
-export type TransferTokensInput = { to_user_id: string; amount: number; note?: string | null; conversation_id: string };
+/** Largest single send; equals the server's TRANSFER_MAX_AMOUNT and the transfer_tokens RPC bound. */
+export const TRANSFER_MAX_AMOUNT = 100_000;
+
+/**
+ * A fresh Idempotency-Key for one user action. Reuse the same key when retrying that action so a
+ * lost response can never send twice (the server answers with the original result instead).
+ */
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  // RFC 4122 v4 from getRandomValues (older browsers without randomUUID).
+  const b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+export type TransferTokensInput = {
+  to_user_id: string;
+  amount: number;
+  note?: string | null;
+  conversation_id: string;
+  /** Idempotency-Key for this send; generated when omitted. Pass the same key to retry. */
+  idempotency_key?: string;
+};
 export type TransferTokensResult = { transfer_id: string; amount: number; balance: number };
-export type HuddleSendTokensInput = { user_id: string; amount: number; purpose: HuddleSendPurpose; note?: string | null };
+export type HuddleSendTokensInput = {
+  user_id: string;
+  amount: number;
+  purpose: HuddleSendPurpose;
+  note?: string | null;
+  /** Idempotency-Key for this send; generated when omitted. Pass the same key to retry. */
+  idempotency_key?: string;
+};
 export type HuddleSendTokensResult = { transfer_id?: string; amount?: number; balance?: number };
 
 async function readJson<T>(res: Response, fallback: string): Promise<T> {
@@ -100,11 +132,11 @@ export async function awardPoints(huddleId: string, userId: string, amount: numb
   await readJson<unknown>(res, 'Could not award Rendly Tokens');
 }
 
-/** Send Rendly Tokens from your balance to a chat partner. The server picks the transfer_id. */
+/** Send Rendly Tokens from your balance to a chat partner. The Idempotency-Key becomes the transfer_id. */
 export async function transferTokens(input: TransferTokensInput): Promise<TransferTokensResult> {
   const res = await authFetch('/api/tokens/transfer', {
     method: 'POST',
-    headers: JSON_HEADERS,
+    headers: { ...JSON_HEADERS, 'Idempotency-Key': input.idempotency_key ?? newIdempotencyKey() },
     body: JSON.stringify({
       to_user_id: input.to_user_id,
       amount: input.amount,
@@ -124,7 +156,7 @@ export async function transferTokens(input: TransferTokensInput): Promise<Transf
 export async function sendHuddleTokens(huddleId: string, input: HuddleSendTokensInput): Promise<HuddleSendTokensResult> {
   const res = await authFetch(`/api/huddles/${encodeURIComponent(huddleId)}/send-tokens`, {
     method: 'POST',
-    headers: JSON_HEADERS,
+    headers: { ...JSON_HEADERS, 'Idempotency-Key': input.idempotency_key ?? newIdempotencyKey() },
     body: JSON.stringify({
       user_id: input.user_id,
       amount: input.amount,

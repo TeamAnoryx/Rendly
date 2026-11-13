@@ -3,7 +3,8 @@
  * `active_user_intents` view so expired ones are ignored). Purchases and creation run inside
  * SQL RPCs (purchase_intent, create_intent) so debits, royalties and upserts are atomic.
  * Also the opt-in user location for "Near By" and the profile huddle stats.
- * Raw lat/lng of other users are never returned: only distance_km and city from the RPC.
+ * Raw lat/lng of other users are never returned: only a distance bucket and city from the RPC.
+ * creator_id is never returned either: the viewer sees is_mine instead.
  */
 
 import { supabase } from "./supabase-users";
@@ -34,7 +35,8 @@ export type IntentCard = {
   slug: string;
   kind: IntentKind;
   visibility: IntentVisibility;
-  creator_id: string | null;
+  /** The viewer created this intent (computed server-side; creator ids are not exposed). */
+  is_mine: boolean;
   city: string | null;
   usage_count: number;
   /** Tokens the viewer would pay to add it through this source. */
@@ -52,22 +54,24 @@ type IntentRow = {
   name: string;
   slug: string;
   kind: IntentKind;
-  visibility: IntentVisibility;
-  creator_id: string | null;
+  visibility?: IntentVisibility | null;
+  /** Only on rows read from the intents table here; RPC rows carry is_mine / owned instead. */
+  creator_id?: string | null;
+  is_mine?: boolean | null;
   city?: string | null;
   usage_count?: number | null;
   owned?: boolean | null;
 };
 
 function toCard(row: IntentRow, viewerId: string, source: IntentSource, owned: boolean): IntentCard {
-  const isOwner = row.creator_id != null && row.creator_id === viewerId;
+  const isOwner = row.is_mine === true || (row.creator_id != null && row.creator_id === viewerId);
   return {
     id: row.id,
     name: row.name,
     slug: row.slug,
     kind: row.kind,
-    visibility: row.visibility,
-    creator_id: row.creator_id ?? null,
+    visibility: row.visibility ?? "public",
+    is_mine: isOwner,
     city: row.city ?? null,
     usage_count: Number(row.usage_count ?? 0),
     price: intentPrice(row.kind, source, isOwner),
@@ -121,7 +125,7 @@ export async function getMyIntents(userId: string): Promise<MyIntent[]> {
 /** Top public intents by usage (hot_intents RPC). */
 export async function getHotIntents(viewerId: string, limit = HOT_INTENTS_LIMIT): Promise<IntentCard[]> {
   const client = requireClient();
-  const { data, error } = await client.rpc("hot_intents", { p_limit: limit });
+  const { data, error } = await client.rpc("hot_intents", { p_user_id: viewerId, p_limit: limit });
   if (error) throw new IntentsStoreError("hot intents", error);
   return toCards((data ?? []) as IntentRow[], viewerId, "hot");
 }
@@ -134,7 +138,15 @@ export async function getLocationIntents(viewerId: string): Promise<IntentCard[]
   return toCards((data ?? []) as IntentRow[], viewerId, "location");
 }
 
-export type NearbyUser = { id: string; username: string | null; avatar_url: string | null; city: string | null; distance_km: number };
+/** Coarse distance bucket from nearby_user_intents; the exact distance is never exposed. */
+export const NEARBY_DISTANCE_BUCKETS = ["<5 km", "5-10 km", "10-25 km", "25-50 km", "50+ km"] as const;
+export type NearbyDistance = (typeof NEARBY_DISTANCE_BUCKETS)[number];
+
+function toNearbyDistance(raw: unknown): NearbyDistance {
+  return (NEARBY_DISTANCE_BUCKETS as readonly unknown[]).includes(raw) ? (raw as NearbyDistance) : "50+ km";
+}
+
+export type NearbyUser = { id: string; username: string | null; avatar_url: string | null; city: string | null; distance: NearbyDistance };
 export type NearbyIntents =
   | { status: "no_location" }
   | { status: "nobody_online"; user: null }
@@ -148,10 +160,10 @@ export async function getNearbyIntents(userId: string): Promise<NearbyIntents> {
   const result = (data ?? {}) as { status?: string; user?: NearbyUser | null; intents?: IntentRow[] };
   if (result.status === "no_location") return { status: "no_location" };
   if (!result.user) return { status: "nobody_online", user: null };
-  const { id, username, avatar_url, city, distance_km } = result.user;
+  const { id, username, avatar_url, city, distance } = result.user;
   return {
     status: "ok",
-    user: { id, username: username ?? null, avatar_url: avatar_url ?? null, city: city ?? null, distance_km: Number(distance_km ?? 0) },
+    user: { id, username: username ?? null, avatar_url: avatar_url ?? null, city: city ?? null, distance: toNearbyDistance(distance) },
     intents: await toCards(result.intents ?? [], userId, "nearby"),
   };
 }
@@ -168,11 +180,13 @@ export async function searchIntents(userId: string, q: string, limit = SEARCH_DE
   return rows.map((r) => toCard(r, userId, "search", r.owned === true));
 }
 
-export type PurchaseFailure = "not_found" | "private" | "bad_source" | "insufficient" | "duplicate";
+export type PurchaseFailure = "not_found" | "private" | "bad_source" | "bad_input" | "insufficient" | "duplicate";
 export type PurchaseOutcome =
   | { status: "ok"; price: number; expires_at: string | null; balance: number }
+  /** An unexpired copy is already held: nothing was charged. */
+  | { status: "already_active"; expires_at: string | null }
   | { status: PurchaseFailure };
-const PURCHASE_FAILURES: readonly PurchaseFailure[] = ["not_found", "private", "bad_source", "insufficient", "duplicate"];
+const PURCHASE_FAILURES: readonly PurchaseFailure[] = ["not_found", "private", "bad_source", "bad_input", "insufficient", "duplicate"];
 
 /** Buy (or re-buy) an intent through a source (purchase_intent RPC). transferId is the idempotency key. */
 export async function purchaseIntent(userId: string, intentId: string, source: IntentSource, transferId: string): Promise<PurchaseOutcome> {
@@ -188,11 +202,12 @@ export async function purchaseIntent(userId: string, intentId: string, source: I
   if (result.status === "ok") {
     return { status: "ok", price: Number(result.price ?? 0), expires_at: result.expires_at ?? null, balance: Number(result.balance ?? 0) };
   }
+  if (result.status === "already_active") return { status: "already_active", expires_at: result.expires_at ?? null };
   if (PURCHASE_FAILURES.includes(result.status as PurchaseFailure)) return { status: result.status as PurchaseFailure };
   throw new IntentsStoreError("purchase", `unexpected result: ${JSON.stringify(data)}`);
 }
 
-export type CreateIntentOutcome = { status: "ok"; intent: IntentCard } | { status: "taken" | "bad_name" };
+export type CreateIntentOutcome = { status: "ok"; intent: IntentCard } | { status: "taken" | "bad_name" | "limit_reached" };
 
 /** Create a custom intent and hold it (create_intent RPC). Free; private ones last 7 days. */
 export async function createIntent(userId: string, name: string, visibility: IntentVisibility): Promise<CreateIntentOutcome> {
@@ -203,7 +218,9 @@ export async function createIntent(userId: string, name: string, visibility: Int
   if (result.status === "ok" && result.intent) {
     return { status: "ok", intent: toCard(result.intent, userId, "created", true) };
   }
-  if (result.status === "taken" || result.status === "bad_name") return { status: result.status };
+  if (result.status === "taken" || result.status === "bad_name" || result.status === "limit_reached") {
+    return { status: result.status };
+  }
   throw new IntentsStoreError("create", `unexpected result: ${JSON.stringify(data)}`);
 }
 
@@ -218,24 +235,44 @@ export async function removeUserIntent(userId: string, intentId: string): Promis
 
 export type UserLocationView = { has_location: boolean; city: string | null; location_updated_at: string | null };
 
-/** Store the user's opt-in location. Only the city and timestamp are echoed back. */
-export async function setUserLocation(userId: string, input: { lat: number; lng: number; city: string | null }): Promise<UserLocationView> {
+export type SetLocationOutcome = { status: "ok"; view: UserLocationView } | { status: "too_soon"; retry_after_seconds: number };
+
+/**
+ * Store the user's opt-in location through set_user_location: coordinates rounded to ~1 km,
+ * Near By discovery turned on, at most one update per 10 minutes (too_soon). Only the city and
+ * timestamp are echoed back.
+ */
+export async function setUserLocation(userId: string, input: { lat: number; lng: number; city: string | null }): Promise<SetLocationOutcome> {
   const client = requireClient();
-  const location_updated_at = new Date().toISOString();
-  const { error } = await client
-    .from("users")
-    .update({ lat: input.lat, lng: input.lng, city: input.city, location_updated_at })
-    .eq("id", userId);
+  const { data, error } = await client.rpc("set_user_location", {
+    p_user_id: userId,
+    p_lat: input.lat,
+    p_lng: input.lng,
+    p_city: input.city,
+  });
   if (error) throw new IntentsStoreError("set location", error);
-  return { has_location: true, city: input.city, location_updated_at };
+  const result = (data ?? {}) as { status?: string; city?: string | null; location_updated_at?: string; retry_after_seconds?: number };
+  if (result.status === "ok") {
+    return {
+      status: "ok",
+      view: { has_location: true, city: result.city ?? null, location_updated_at: result.location_updated_at ?? null },
+    };
+  }
+  if (result.status === "too_soon") {
+    return { status: "too_soon", retry_after_seconds: Math.max(1, Number(result.retry_after_seconds ?? 600)) };
+  }
+  throw new IntentsStoreError("set location", `unexpected result: ${JSON.stringify(data)}`);
 }
 
-/** Forget the user's location. */
+/**
+ * Forget the user's location and leave Near By. location_updated_at is kept on purpose: it is the
+ * rate-limit clock for set_user_location, so clear + set cannot bypass the 10-minute limit.
+ */
 export async function clearUserLocation(userId: string): Promise<UserLocationView> {
   const client = requireClient();
   const { error } = await client
     .from("users")
-    .update({ lat: null, lng: null, city: null, location_updated_at: null })
+    .update({ lat: null, lng: null, city: null, discoverable_nearby: false })
     .eq("id", userId);
   if (error) throw new IntentsStoreError("clear location", error);
   return { has_location: false, city: null, location_updated_at: null };

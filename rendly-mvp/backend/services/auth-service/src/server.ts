@@ -95,14 +95,17 @@ import {
 } from "./notifications";
 import {
   awardHuddlePoints,
+  findOwnDebit,
+  getBalance,
   getLeaderboard,
   getPointsHistory,
   getPointsSummary,
   huddleSendTokens,
   transferTokens,
   type HuddleSendOutcome,
+  type TransferFailure,
 } from "./points";
-import { validateHuddleSendBody, validateTransferBody } from "./points-rules";
+import { parseIdempotencyKey, validateHuddleSendBody, validateTransferBody } from "./points-rules";
 import { isPaidIntentSource, validateCreateIntentBody, validateLocationBody, type IntentSource } from "./intents-rules";
 import {
   clearUserLocation,
@@ -113,6 +116,7 @@ import {
   getNearbyIntents,
   getProfileHuddleStats,
   purchaseIntent,
+  type PurchaseFailure,
   removeUserIntent,
   searchIntents,
   setUserLocation,
@@ -284,6 +288,28 @@ const tokenLimiter = rateLimit({
   legacyHeaders: false,
   handler: tooMany,
 });
+
+/** Near By lookups: a slow per-IP budget so the distance buckets cannot be sampled rapidly. */
+const nearbyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.NEARBY_RATE_LIMIT_MAX) || 6,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: tooMany,
+});
+
+/**
+ * Read the optional Idempotency-Key header (a UUID, used as the ledger transfer_id).
+ * Answers 400 and returns undefined when it is malformed; null when absent.
+ */
+function readIdempotencyKey(req: express.Request, res: express.Response): string | null | undefined {
+  const parsed = parseIdempotencyKey(req.headers["idempotency-key"]);
+  if (!parsed.ok) {
+    res.status(400).json({ message: parsed.error });
+    return undefined;
+  }
+  return parsed.value;
+}
 
 const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_AVATAR_MIMES = ["image/jpeg", "image/png", "image/webp"];
@@ -2305,7 +2331,7 @@ app.post("/api/huddles/:id/thumbnail", (req, res) => {
 });
 
 /** POST /api/huddles/:id/award – host gives points to someone in the room. Body: { user_id, amount, note? }. */
-app.post("/api/huddles/:id/award", async (req, res) => {
+app.post("/api/huddles/:id/award", tokenLimiter, async (req, res) => {
   try {
     const current = await getCurrentUserFromRequest(req);
     if (!current) {
@@ -2330,6 +2356,7 @@ app.post("/api/huddles/:id/award", async (req, res) => {
       rewards_off: [409, "Rewards are turned off for this huddle"],
       not_in_room: [409, "That person is not in the room"],
       bad_amount: [400, "Give between 1 and 1000 points"],
+      cap_reached: [409, "Reward limit reached for today"],
     };
     if (outcome !== "ok") {
       const [status, message] = messages[outcome];
@@ -2411,11 +2438,14 @@ app.get("/api/points/history", async (req, res) => {
   }
 });
 
-const TRANSFER_FAILURE_RESPONSES: Record<string, [number, string]> = {
-  bad_amount: [400, "Send at least 1 Rendly Token"],
+const TRANSFER_FAILURE_RESPONSES: Record<Exclude<TransferFailure, "duplicate">, [number, string]> & {
+  duplicate: [number, string];
+} = {
+  bad_amount: [400, "Send between 1 and 100,000 Rendly Tokens"],
   self: [400, "You cannot send tokens to yourself"],
   bad_input: [400, "Invalid transfer"],
-  no_user: [404, "That person does not exist"],
+  too_new: [403, "New accounts can send tokens after 24 hours"],
+  no_relationship: [403, "You can only send tokens to people you have chatted with"],
   insufficient: [409, "You do not have enough Rendly Tokens"],
   duplicate: [409, "This transfer was already made"],
 };
@@ -2424,11 +2454,15 @@ const TRANSFER_FAILURE_RESPONSES: Record<string, [number, string]> = {
  * POST /api/tokens/transfer – send Rendly Tokens to a whisper partner.
  * Body: { to_user_id, amount, note?, conversation_id }. conversation_id must be the whisper
  * thread between the two users. 201 { transfer_id, amount, balance }.
+ * Optional header Idempotency-Key (UUID) becomes the transfer_id: a retry with the same key
+ * answers 200 with the original transfer instead of sending again.
  */
 app.post("/api/tokens/transfer", tokenLimiter, async (req, res) => {
   try {
     const current = await requireUser(req, res);
     if (!current) return;
+    const idempotencyKey = readIdempotencyKey(req, res);
+    if (idempotencyKey === undefined) return;
     const validation = validateTransferBody(req.body);
     if (!validation.ok) {
       res.status(400).json({ message: validation.error });
@@ -2449,8 +2483,16 @@ app.post("/api/tokens/transfer", tokenLimiter, async (req, res) => {
       amount: body.amount,
       note: body.note,
       conversationId: body.conversation_id,
-      transferId: crypto.randomUUID(),
+      transferId: idempotencyKey ?? crypto.randomUUID(),
     });
+    if (outcome.status === "duplicate" && idempotencyKey) {
+      // Replay of a completed send: only the caller's own debit with this key counts.
+      const original = await findOwnDebit(current.userId, idempotencyKey, "transfer");
+      if (original && original.counterparty_id === body.to_user_id) {
+        res.status(200).json({ transfer_id: idempotencyKey, amount: original.amount, balance: await getBalance(current.userId) });
+        return;
+      }
+    }
     if (outcome.status !== "ok") {
       const [status, message] = TRANSFER_FAILURE_RESPONSES[outcome.status];
       res.status(status).json({ message });
@@ -2487,11 +2529,14 @@ const HUDDLE_SEND_RESPONSES: Record<Exclude<HuddleSendOutcome, "ok">, [number, s
 /**
  * POST /api/huddles/:id/send-tokens – the host pays a participant from their own balance.
  * Body: { user_id, amount, purpose, note? }. 201 { sent, transfer_id }.
+ * Optional header Idempotency-Key (UUID) becomes the transfer_id; a retry answers 200 with the original send.
  */
 app.post("/api/huddles/:id/send-tokens", tokenLimiter, async (req, res) => {
   try {
     const current = await requireUser(req, res);
     if (!current) return;
+    const idempotencyKey = readIdempotencyKey(req, res);
+    if (idempotencyKey === undefined) return;
     if (!isUuid(req.params.id)) {
       res.status(404).json({ message: "Huddle not found" });
       return;
@@ -2502,7 +2547,7 @@ app.post("/api/huddles/:id/send-tokens", tokenLimiter, async (req, res) => {
       return;
     }
     const body = validation.value;
-    const transferId = crypto.randomUUID();
+    const transferId = idempotencyKey ?? crypto.randomUUID();
     const outcome = await huddleSendTokens({
       huddleId: req.params.id,
       hostId: current.userId,
@@ -2512,6 +2557,13 @@ app.post("/api/huddles/:id/send-tokens", tokenLimiter, async (req, res) => {
       note: body.note,
       transferId,
     });
+    if (outcome === "duplicate" && idempotencyKey) {
+      const original = await findOwnDebit(current.userId, idempotencyKey, "huddle_send");
+      if (original && original.huddle_id === req.params.id && original.counterparty_id === body.user_id) {
+        res.status(200).json({ sent: original.amount, transfer_id: idempotencyKey });
+        return;
+      }
+    }
     if (outcome !== "ok") {
       const [status, message] = HUDDLE_SEND_RESPONSES[outcome];
       res.status(status).json({ message });
@@ -2568,7 +2620,7 @@ app.get("/api/intents/location", async (req, res) => {
 });
 
 /** GET /api/intents/nearby – the nearest online user's intents. Needs the caller's location. */
-app.get("/api/intents/nearby", async (req, res) => {
+app.get("/api/intents/nearby", nearbyLimiter, async (req, res) => {
   try {
     const current = await requireUser(req, res);
     if (!current) return;
@@ -2598,19 +2650,27 @@ app.get("/api/intents/search", async (req, res) => {
   }
 });
 
-const PURCHASE_FAILURE_RESPONSES: Record<string, [number, string]> = {
+const PURCHASE_FAILURE_RESPONSES: Record<PurchaseFailure | "already_active", [number, string]> = {
   not_found: [404, "Intent not found"],
   private: [403, "That intent is private"],
   bad_source: [400, "Invalid source"],
+  bad_input: [400, "Invalid request"],
+  already_active: [409, "You already have this intent"],
   insufficient: [409, "You do not have enough Rendly Tokens"],
   duplicate: [409, "This purchase was already made"],
 };
 
-/** POST /api/intents/purchase – add an intent. Body: { intent_id, source: hot|location|nearby|search|preset }. */
+/**
+ * POST /api/intents/purchase – add an intent. Body: { intent_id, source: hot|location|nearby|search|preset }.
+ * 409 { code: 'already_active', expires_at } when an unexpired copy is held (nothing charged).
+ * Optional header Idempotency-Key (UUID) becomes the transfer_id; a retry answers 200 with the original purchase.
+ */
 app.post("/api/intents/purchase", tokenLimiter, async (req, res) => {
   try {
     const current = await requireUser(req, res);
     if (!current) return;
+    const idempotencyKey = readIdempotencyKey(req, res);
+    if (idempotencyKey === undefined) return;
     const body = (req.body ?? {}) as { intent_id?: unknown; source?: unknown };
     if (!isUuid(body.intent_id)) {
       res.status(400).json({ message: "intent_id must be an intent id" });
@@ -2620,7 +2680,20 @@ app.post("/api/intents/purchase", tokenLimiter, async (req, res) => {
       res.status(400).json({ message: "source must be hot, location, nearby, search or preset" });
       return;
     }
-    const outcome = await purchaseIntent(current.userId, body.intent_id, body.source as IntentSource, crypto.randomUUID());
+    const outcome = await purchaseIntent(current.userId, body.intent_id, body.source as IntentSource, idempotencyKey ?? crypto.randomUUID());
+    if (outcome.status === "duplicate" && idempotencyKey) {
+      const original = await findOwnDebit(current.userId, idempotencyKey, "intent_purchase");
+      if (original && original.intent_id === body.intent_id) {
+        const held = (await getMyIntents(current.userId)).find((i) => i.id === body.intent_id);
+        res.status(200).json({ price: original.amount, expires_at: held?.expires_at ?? null, balance: await getBalance(current.userId) });
+        return;
+      }
+    }
+    if (outcome.status === "already_active") {
+      const [status, message] = PURCHASE_FAILURE_RESPONSES.already_active;
+      res.status(status).json({ message, code: "already_active", expires_at: outcome.expires_at });
+      return;
+    }
     if (outcome.status !== "ok") {
       const [status, message] = PURCHASE_FAILURE_RESPONSES[outcome.status];
       res.status(status).json({ message });
@@ -2646,7 +2719,11 @@ app.post("/api/intents", tokenLimiter, async (req, res) => {
     const outcome = await createIntent(current.userId, validation.value.name, validation.value.visibility);
     if (outcome.status !== "ok") {
       const [status, message] =
-        outcome.status === "taken" ? [409, "An intent with that name already exists"] : [400, "That name cannot be used"];
+        outcome.status === "taken"
+          ? [409, "An intent with that name already exists"]
+          : outcome.status === "limit_reached"
+            ? [409, "You have reached the limit for new intents. Try again tomorrow"]
+            : [400, "That name cannot be used"];
       res.status(status).json({ message });
       return;
     }
@@ -2678,7 +2755,10 @@ app.delete("/api/intents/mine/:intentId", async (req, res) => {
   }
 });
 
-/** PUT /api/users/me/location – opt in to Near By. Body: { lat, lng, city? }. Echoes only city and time. */
+/**
+ * PUT /api/users/me/location – opt in to Near By. Body: { lat, lng, city? }. Echoes only city and time.
+ * At most once per 10 minutes per user (429 + Retry-After), enforced in set_user_location.
+ */
 app.put("/api/users/me/location", async (req, res) => {
   try {
     const current = await requireUser(req, res);
@@ -2688,7 +2768,13 @@ app.put("/api/users/me/location", async (req, res) => {
       res.status(400).json({ message: validation.error });
       return;
     }
-    res.json(await setUserLocation(current.userId, validation.value));
+    const outcome = await setUserLocation(current.userId, validation.value);
+    if (outcome.status === "too_soon") {
+      res.setHeader("Retry-After", String(outcome.retry_after_seconds));
+      res.status(429).json({ message: "You can update your location once every 10 minutes" });
+      return;
+    }
+    res.json(outcome.view);
   } catch (err) {
     console.error("PUT /api/users/me/location error:", err);
     res.status(500).json({ message: "Failed to save your location" });

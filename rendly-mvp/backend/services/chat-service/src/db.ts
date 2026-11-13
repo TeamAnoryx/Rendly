@@ -91,6 +91,14 @@ export type CallLogEntry = {
 
 const WHISPER_APPEND_RETRY_DELAYS_MS = [2000, 4000, 6000];
 
+/** Postgres SQLSTATE for unique_violation. */
+export const UNIQUE_VIOLATION = "23505";
+
+/** True when an append error is a Postgres unique violation (pg error or Supabase RPC error). */
+export function isUniqueViolation(e: unknown): boolean {
+  return typeof e === "object" && e !== null && (e as { code?: unknown }).code === UNIQUE_VIOLATION;
+}
+
 function runAppendWhisperViaPool(
   client: PoolClient,
   message: WhisperMessage,
@@ -135,6 +143,8 @@ export async function appendWhisperMessage(userId: string, message: WhisperMessa
           continue;
         }
         if (code === "57014") throw e;
+        // Unique violation (e.g. uq_whisper_messages_transfer_id): retrying via RPC cannot succeed.
+        if (code === UNIQUE_VIOLATION) throw e;
         const msg = (e as Error).message || "";
         if (/tenant or user not found/i.test(msg)) {
           directDbDisabled = true;

@@ -107,7 +107,7 @@ export default function IntentPickerDialog({ open, onClose, initialQuery = '', v
         ) : (
           <ul className={`ipk-grid${loading ? ' ipk-grid--busy' : ''}`} aria-label="Search results" aria-busy={loading}>
             {(results ?? []).map((intent) => {
-              const mine = !!viewerId && intent.creator_id === viewerId;
+              const mine = intent.is_mine === true;
               const owned = !!intent.owned || !!ownedIds?.has(intent.id);
               const count = intent.active_users ?? intent.usage_count ?? 0;
               return (

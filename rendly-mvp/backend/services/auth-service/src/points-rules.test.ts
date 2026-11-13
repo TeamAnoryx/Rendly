@@ -3,6 +3,8 @@ import {
   HUDDLE_SEND_PURPOSES,
   isHuddleSendPurpose,
   isUuid,
+  parseIdempotencyKey,
+  TRANSFER_MAX_AMOUNT,
   validateHuddleSendBody,
   validateTransferBody,
 } from "./points-rules";
@@ -53,7 +55,13 @@ describe("validateTransferBody", () => {
 
   test("accepts the boundary amounts", () => {
     expect(validateTransferBody({ ...good, amount: 1 }).ok).toBe(true);
-    expect(validateTransferBody({ ...good, amount: 1_000_000 }).ok).toBe(true);
+    expect(validateTransferBody({ ...good, amount: 100_000 }).ok).toBe(true);
+  });
+
+  test("caps a single send at 100,000 (the RPC bound)", () => {
+    expect(TRANSFER_MAX_AMOUNT).toBe(100_000);
+    expect(validateTransferBody({ ...good, amount: 100_001 }).ok).toBe(false);
+    expect(validateTransferBody({ ...good, amount: 1_000_000 }).ok).toBe(false);
   });
 
   test.each([
@@ -132,5 +140,23 @@ describe("validateHuddleSendBody", () => {
     const r = validateHuddleSendBody(body);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain(field);
+  });
+});
+
+describe("parseIdempotencyKey", () => {
+  test("absent or empty means no key", () => {
+    expect(parseIdempotencyKey(undefined)).toEqual({ ok: true, value: null });
+    expect(parseIdempotencyKey("   ")).toEqual({ ok: true, value: null });
+  });
+
+  test("a UUID is accepted and lower-cased", () => {
+    expect(parseIdempotencyKey(" 11111111-1111-4111-8111-11111111111A ")).toEqual({
+      ok: true,
+      value: "11111111-1111-4111-8111-11111111111a",
+    });
+  });
+
+  test.each([["not-a-uuid"], [["11111111-1111-4111-8111-111111111111"]], [42]])("rejects %p", (raw) => {
+    expect(parseIdempotencyKey(raw).ok).toBe(false);
   });
 });

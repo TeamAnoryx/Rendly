@@ -7,7 +7,7 @@ import { TokenAmount, TokenCoin } from '@/components/brand/TokenCoin';
 import { Avatar } from '@/components/shell/AppShell';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useNotifications } from '@/context/NotificationsContext';
-import { getMyPoints, emitPointsChanged, POINTS_CHANGED_EVENT } from '@/services/pointsApi';
+import { getMyPoints, emitPointsChanged, newIdempotencyKey, POINTS_CHANGED_EVENT } from '@/services/pointsApi';
 import {
   clearMyLocation,
   getHotIntents,
@@ -18,6 +18,7 @@ import {
   intentPrice,
   intentPriceLabel,
   INTENT_PURCHASE_DAYS,
+  isMyIntent,
   purchaseIntent,
   removeMyIntent,
   searchIntents,
@@ -35,7 +36,8 @@ const SEARCH_LIMIT = 5;
 const HOT_LIMIT = 10;
 
 type CategoryTab = 'hot' | 'location' | 'nearby';
-type PendingPurchase = { intent: Intent; source: IntentSource };
+/** key: Idempotency-Key of this purchase action, reused if the confirm is retried. */
+type PendingPurchase = { intent: Intent; source: IntentSource; key: string };
 
 export type MyCustomIntentsProps = {
   /** `full` adds the Hot / Location / Near By tabs; `compact` is chips + search + create only. */
@@ -153,21 +155,28 @@ export default function MyCustomIntents({ variant = 'full', className }: MyCusto
     if (tab === 'nearby' && nearby === null) void loadTab('nearby');
   }, [variant, tab, hot, location, nearby, loadTab]);
 
-  const isMine = useCallback((intent: Intent) => !!viewerId && intent.creator_id === viewerId, [viewerId]);
+  const isMine = useCallback((intent: Intent) => isMyIntent(intent), []);
 
   const askPurchase = (intent: Intent, source: IntentSource) => {
     if (ownedIds.has(intent.id)) {
       pushToast({ icon: 'check', title: 'Already active', body: `“${intent.name}” is already one of your intents.` });
       return;
     }
-    setPending({ intent, source });
+    setPending({ intent, source, key: newIdempotencyKey() });
   };
 
   const confirmPurchase = async () => {
     if (!pending || busy) return;
     setBusy(true);
     try {
-      const res = await purchaseIntent(pending.intent.id, pending.source);
+      // pending.key is fixed for this confirm dialog, so retrying it cannot charge twice.
+      const res = await purchaseIntent(pending.intent.id, pending.source, pending.key);
+      if (res.status === 'already_active') {
+        pushToast({ icon: 'check', title: 'Already active', body: `“${pending.intent.name}” is already one of your intents.` });
+        setPending(null);
+        await loadMine();
+        return;
+      }
       setBalance(res.balance);
       emitPointsChanged();
       pushToast({
@@ -453,7 +462,7 @@ export default function MyCustomIntents({ variant = 'full', className }: MyCusto
                   <Avatar url={nearby.user.avatar_url} name={nearby.user.username} size="sm" online />
                   <span className="mci-nearby-who">
                     @{nearby.user.username ?? 'someone'}
-                    {nearby.user.distance_km !== null ? <span className="rd-muted"> · {nearby.user.distance_km.toFixed(1)} km away</span> : null}
+                    {nearby.user.distance ? <span className="rd-muted"> · {nearby.user.distance} away</span> : null}
                     {nearby.user.city ? <span className="rd-muted"> · {nearby.user.city}</span> : null}
                   </span>
                   <button type="button" className="mci-link" onClick={clearLocation}>

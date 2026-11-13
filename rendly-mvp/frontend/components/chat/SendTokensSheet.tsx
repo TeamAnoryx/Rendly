@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Modal from '@/components/common/Modal';
 import { TokenCoin, TokenAmount } from '@/components/brand/TokenCoin';
-import { getMyPoints, transferTokens, emitPointsChanged } from '@/services/pointsApi';
+import { getMyPoints, transferTokens, emitPointsChanged, newIdempotencyKey } from '@/services/pointsApi';
 import { chat as chatApi, type ChatMessage } from '@/services/chat';
 import { useNotifications } from '@/context/NotificationsContext';
 
@@ -60,6 +60,8 @@ export default function SendTokensSheet({ open, onClose, conversationId, recipie
   const [spinKey, setSpinKey] = useState(0);
   /** Transfer that moved tokens but whose message has not been posted yet. */
   const pendingTransferRef = useRef<{ transferId: string; amount: number } | null>(null);
+  /** Idempotency-Key of the current send attempt; reused when step 1 is retried with the same amount and note. */
+  const attemptRef = useRef<{ key: string; amount: number; note: string } | null>(null);
   const busyRef = useRef(false);
   const amountInputRef = useRef<HTMLInputElement>(null);
 
@@ -80,6 +82,7 @@ export default function SendTokensSheet({ open, onClose, conversationId, recipie
     setError(null);
     setPhase('idle');
     pendingTransferRef.current = null;
+    attemptRef.current = null;
     busyRef.current = false;
     setBalance(null);
     void refreshBalance();
@@ -128,14 +131,23 @@ export default function SendTokensSheet({ open, onClose, conversationId, recipie
     setError(null);
     setPhase('sending');
     let transferId: string;
+    const trimmedNote = note.trim();
+    const prior = attemptRef.current;
+    const attempt =
+      prior && prior.amount === amount && prior.note === trimmedNote
+        ? prior
+        : { key: newIdempotencyKey(), amount, note: trimmedNote };
+    attemptRef.current = attempt;
     try {
       const result = await transferTokens({
         to_user_id: recipient.id,
         amount,
-        note: note.trim() || null,
+        note: trimmedNote || null,
         conversation_id: conversationId,
+        idempotency_key: attempt.key,
       });
       transferId = result.transfer_id;
+      attemptRef.current = null;
       setBalance(result.balance);
       if (!transferId) throw new Error('Transfer did not return an id');
     } catch (err: unknown) {

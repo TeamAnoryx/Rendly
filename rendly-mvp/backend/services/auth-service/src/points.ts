@@ -148,10 +148,13 @@ export async function getLeaderboard(limit = LEADERBOARD_SIZE): Promise<Leaderbo
   }));
 }
 
-export type AwardOutcome = "ok" | "not_found" | "not_host" | "rewards_off" | "not_in_room" | "bad_amount";
-const AWARD_OUTCOMES: readonly AwardOutcome[] = ["ok", "not_found", "not_host", "rewards_off", "not_in_room", "bad_amount"];
+export type AwardOutcome = "ok" | "not_found" | "not_host" | "rewards_off" | "not_in_room" | "bad_amount" | "cap_reached";
+const AWARD_OUTCOMES: readonly AwardOutcome[] = ["ok", "not_found", "not_host", "rewards_off", "not_in_room", "bad_amount", "cap_reached"];
 
-/** The host awards minted tokens to someone in the room. Rules are enforced in award_huddle_points. */
+/**
+ * The host awards minted tokens to someone in the room. Rules and the mint caps (2000 per huddle,
+ * 1000 per recipient per huddle, 3000 per host per 24 h -> cap_reached) live in award_huddle_points.
+ */
 export async function awardHuddlePoints(
   huddleId: string,
   hostId: string,
@@ -174,9 +177,22 @@ export async function awardHuddlePoints(
   return data as AwardOutcome;
 }
 
-export type TransferFailure = "bad_amount" | "self" | "bad_input" | "no_user" | "insufficient" | "duplicate";
+/**
+ * too_new: the sender's account is younger than 24 hours.
+ * no_relationship: no connection / whisper reply between the pair, a block, or an unknown recipient
+ * (one code for all, so user ids cannot be probed).
+ */
+export type TransferFailure = "bad_amount" | "self" | "bad_input" | "too_new" | "no_relationship" | "insufficient" | "duplicate";
 export type TransferOutcome = { status: "ok"; transfer_id: string; balance: number } | { status: TransferFailure };
-const TRANSFER_FAILURES: readonly TransferFailure[] = ["bad_amount", "self", "bad_input", "no_user", "insufficient", "duplicate"];
+const TRANSFER_FAILURES: readonly TransferFailure[] = [
+  "bad_amount",
+  "self",
+  "bad_input",
+  "too_new",
+  "no_relationship",
+  "insufficient",
+  "duplicate",
+];
 
 /** Peer-to-peer send (transfer_tokens). transferId is the caller-generated idempotency key. */
 export async function transferTokens(input: {
@@ -258,4 +274,35 @@ export async function huddleSendTokens(input: {
     throw new PointsStoreError("huddle send", `unexpected result: ${String(data)}`);
   }
   return data as HuddleSendOutcome;
+}
+
+/** The caller's own debit row of one transfer, used to answer an idempotent retry. */
+export type OwnDebit = {
+  amount: number;
+  counterparty_id: string | null;
+  huddle_id: string | null;
+  intent_id: string | null;
+  conversation_id: string | null;
+  purpose: string | null;
+};
+
+/**
+ * Find the debit row of `transferId` that belongs to `userId` in `category`. Returns null when the
+ * transfer id was used by someone else (or another kind of operation), so a retry can never read
+ * another user's transfer.
+ */
+export async function findOwnDebit(userId: string, transferId: string, category: PointsCategory): Promise<OwnDebit | null> {
+  const client = requireClient();
+  const { data, error } = await client
+    .from("points_ledger")
+    .select("amount, counterparty_id, huddle_id, intent_id, conversation_id, purpose")
+    .eq("transfer_id", transferId)
+    .eq("user_id", userId)
+    .eq("category", category)
+    .lt("amount", 0)
+    .maybeSingle();
+  if (error) throw new PointsStoreError("own debit", error);
+  if (!data) return null;
+  const row = data as OwnDebit;
+  return { ...row, amount: Math.abs(Number(row.amount)) };
 }

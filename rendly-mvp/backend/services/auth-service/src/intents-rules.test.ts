@@ -59,6 +59,12 @@ describe("prices and durations", () => {
     expect(intentPrice("custom", "search", false)).toBe(10);
   });
 
+  test("location intents cost 20 whatever source the client names", () => {
+    expect(intentPrice("location", "search", false)).toBe(20);
+    expect(intentPrice("location", "hot", false)).toBe(20);
+    expect(intentPrice("location", "nearby", false)).toBe(20);
+  });
+
   test("non-paid sources cost nothing", () => {
     expect(intentPrice("custom", "created", false)).toBe(0);
     expect(intentPrice("custom", "preset", false)).toBe(0);

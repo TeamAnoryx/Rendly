@@ -20,6 +20,7 @@ import {
   getGroupMessagesViaRpc,
   toFrontendMessage,
   appendWhisperMessage,
+  isUniqueViolation,
   appendGroupMessage,
   addDeletedForMe,
   markWhisperMessagesAsDeletedForEveryone,
@@ -402,6 +403,11 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req: express.Req
       res.status(201).json(front);
     } catch (e) {
       broadcastMessageDeleted(convId, [id]);
+      // A concurrent post of the same transfer lost the race on uq_whisper_messages_transfer_id.
+      if (transferFields && isUniqueViolation(e)) {
+        if (!res.headersSent) res.status(409).json({ message: "Transfer already posted" });
+        return;
+      }
       const errMsg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : String(e);
       const isHtml = errMsg.trimStart().startsWith("<!DOCTYPE") || errMsg.includes("</html>");
       console.error("[Chat] Whisper append failed (sender=" + user.userId + "):", isHtml ? "API/connection error (e.g. 520)" : e);

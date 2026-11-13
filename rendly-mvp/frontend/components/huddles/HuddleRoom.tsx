@@ -18,6 +18,7 @@ import {
   getMyPoints,
   HUDDLE_SEND_PURPOSE_LABELS,
   HUDDLE_SEND_PURPOSES,
+  newIdempotencyKey,
   sendHuddleTokens,
   type HuddleSendPurpose,
 } from '@/services/pointsApi';
@@ -712,6 +713,8 @@ function PeoplePanel({
     void refreshBalance();
   };
 
+  /** Idempotency-Key of the last unconfirmed host send, keyed by what was sent. */
+  const sendAttemptRef = useRef<{ sig: string; key: string } | null>(null);
   const clampSend = (n: number) => Math.max(SEND_MIN, Math.min(SEND_MAX, Math.round(n) || SEND_MIN));
   const noteNeeded = sendPurpose === 'other';
   const noteMissing = noteNeeded && !sendNote.trim();
@@ -729,8 +732,20 @@ function PeoplePanel({
     }
     setSending(true);
     setSendErr(null);
+    // Same recipient, amount, purpose and note as the failed attempt: retry with its key so it cannot send twice.
+    const sig = `${m.user_id}|${amt}|${sendPurpose}|${sendNote.trim()}`;
+    if (!sendAttemptRef.current || sendAttemptRef.current.sig !== sig) {
+      sendAttemptRef.current = { sig, key: newIdempotencyKey() };
+    }
     try {
-      const res = await sendHuddleTokens(huddle.id, { user_id: m.user_id, amount: amt, purpose: sendPurpose, note: noteNeeded ? sendNote.trim() : sendNote.trim() || null });
+      const res = await sendHuddleTokens(huddle.id, {
+        user_id: m.user_id,
+        amount: amt,
+        purpose: sendPurpose,
+        note: noteNeeded ? sendNote.trim() : sendNote.trim() || null,
+        idempotency_key: sendAttemptRef.current.key,
+      });
+      sendAttemptRef.current = null;
       if (typeof res.balance === 'number') setBalance(res.balance);
       else void refreshBalance();
       emitPointsChanged();

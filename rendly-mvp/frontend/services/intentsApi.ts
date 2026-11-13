@@ -1,4 +1,5 @@
 import { authFetch } from '@/lib/api';
+import { newIdempotencyKey } from '@/services/pointsApi';
 
 /** Intents (preset chips, user-created custom intents and city "location" intents). */
 
@@ -13,7 +14,8 @@ export type Intent = {
   slug: string;
   kind: IntentKind;
   visibility: IntentVisibility;
-  creator_id: string | null;
+  /** The viewer created this intent (computed by the server; creator ids are not exposed). */
+  is_mine?: boolean;
   usage_count: number;
   active_users?: number;
   city?: string | null;
@@ -26,16 +28,17 @@ export type MyIntent = Intent & {
   source: IntentSource;
   /** ISO date, or null when it never expires. */
   expires_at: string | null;
-  /** The viewer created this intent. */
-  is_mine: boolean;
 };
+
+/** Coarse distance to the Near By user; the server never returns an exact distance. */
+export type NearbyDistance = '<5 km' | '5-10 km' | '10-25 km' | '25-50 km' | '50+ km';
 
 export type NearbyUser = {
   id: string;
   username: string | null;
   avatar_url: string | null;
   city: string | null;
-  distance_km: number | null;
+  distance: NearbyDistance | null;
 };
 
 export type NearbyResult =
@@ -43,7 +46,10 @@ export type NearbyResult =
   | { status: 'no_location' }
   | { status: 'nobody' };
 
-export type PurchaseIntentResult = { price: number; expires_at: string | null; balance: number };
+export type PurchaseIntentResult =
+  | { status: 'ok'; price: number; expires_at: string | null; balance: number }
+  /** The viewer already holds an unexpired copy; nothing was charged. */
+  | { status: 'already_active'; expires_at: string | null };
 export type CreateIntentInput = { name: string; visibility: IntentVisibility };
 export type SetLocationInput = { lat: number; lng: number; city?: string | null };
 export type HuddleStats = { hosted: number; public_joined: number };
@@ -61,10 +67,19 @@ export const INTENT_ROYALTY = 10;
 export const INTENT_PURCHASE_DAYS = 28;
 export const INTENT_PRIVATE_DAYS = 7;
 
-/** Price the viewer would pay for `intent` via `source`; own intents are free. */
+/** Price of a location intent whatever the source (= server intentPrice / purchase_intent). */
+export const LOCATION_INTENT_PRICE = 20;
+
+/** Price the viewer would pay for `intent` via `source`; own intents are free, location intents always 20. */
 export function intentPrice(intent: Pick<Intent, 'kind'>, source: IntentSource, isMine: boolean): number {
   if (isMine || intent.kind === 'preset') return 0;
+  if (intent.kind === 'location') return LOCATION_INTENT_PRICE;
   return INTENT_PRICES[source] ?? 0;
+}
+
+/** The viewer created `intent` (server-computed flag). */
+export function isMyIntent(intent: Pick<Intent, 'is_mine'>): boolean {
+  return intent.is_mine === true;
 }
 
 /** "Free", "Yours" or "20 tokens" for a chip / result row. */
@@ -138,14 +153,30 @@ export async function searchIntents(q: string, limit = 5): Promise<Intent[]> {
   return asArray<Intent>(data);
 }
 
-export async function purchaseIntent(intentId: string, source: IntentSource): Promise<PurchaseIntentResult> {
+/**
+ * Buy (add) an intent. `idempotencyKey` identifies this one user action: pass the same key when
+ * retrying it, so a lost response cannot charge twice. 409 already_active is returned as a result,
+ * not thrown.
+ */
+export async function purchaseIntent(
+  intentId: string,
+  source: IntentSource,
+  idempotencyKey: string = newIdempotencyKey()
+): Promise<PurchaseIntentResult> {
   const res = await authFetch('/api/intents/purchase', {
     method: 'POST',
-    headers: JSON_HEADERS,
+    headers: { ...JSON_HEADERS, 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({ intent_id: intentId, source }),
   });
-  const data = await readJson<Partial<PurchaseIntentResult>>(res, 'Could not add that intent');
+  if (res.status === 409) {
+    const body = (await res.clone().json().catch(() => null)) as { code?: unknown; expires_at?: unknown } | null;
+    if (body?.code === 'already_active') {
+      return { status: 'already_active', expires_at: typeof body.expires_at === 'string' ? body.expires_at : null };
+    }
+  }
+  const data = await readJson<{ price?: number; expires_at?: string | null; balance?: number }>(res, 'Could not add that intent');
   return {
+    status: 'ok',
     price: Number(data.price ?? 0),
     expires_at: typeof data.expires_at === 'string' ? data.expires_at : null,
     balance: Number(data.balance ?? 0),
