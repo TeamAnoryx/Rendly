@@ -714,3 +714,112 @@
     animation: none;
   }
 }
+
+/* ---- Spark custom intents ---- */
+.spark-intent-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.spark-intent-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--rd-border-faint);
+  border-radius: calc(var(--rd-radius) - 4px);
+  background: color-mix(in srgb, var(--rd-surface) 60%, transparent);
+}
+
+.spark-intent-group-title {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rd-text-muted, rgba(255, 255, 255, 0.55));
+}
+
+.spark-intent-empty {
+  margin: 0;
+}
+
+.rd-chip.spark-chip--mine {
+  gap: 6px;
+}
+
+.rd-chip.spark-chip--mine:hover:not(.rd-chip--on) {
+  border-color: rgba(255, 255, 255, 0.22);
+  transform: translateY(-1px);
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+
+.spark-chip-hint {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  opacity: 0.65;
+  padding-left: 6px;
+  border-left: 1px solid currentColor;
+  line-height: 1;
+}
+
+.rd-chip.spark-chip--skeleton {
+  width: 96px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
+  background-size: 200% 100%;
+  animation: spark-skeleton 1.4s ease-in-out infinite;
+}
+
+@keyframes spark-skeleton {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.spark-custom {
+  gap: 8px;
+}
+
+.spark-custom-mount {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.spark-waiting-widen {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  color: var(--rd-text, #fff);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--rd-border-faint);
+  animation: spark-widen-in 240ms ease-out;
+}
+
+@keyframes spark-widen-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rd-chip.spark-chip--skeleton,
+  .spark-waiting-widen {
+    animation: none;
+  }
+  .rd-chip.spark-chip--mine:hover:not(.rd-chip--on) {
+    transform: none;
+  }
+}

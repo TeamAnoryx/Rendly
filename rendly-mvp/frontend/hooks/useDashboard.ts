@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getResolvedApiUrl, getResolvedApiUrlSync } from '@/lib/resolvedApiUrl';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { authFetch } from '@/lib/api';
-import { joinHuddle as joinHuddleRequest } from '@/services/huddlesApi';
+import { joinHuddle as joinHuddleRequest, type JoinHuddleResponse } from '@/services/huddlesApi';
 import { mapActiveHuddle, type ActiveHuddle } from '@/lib/huddleActive';
 
 export const DASHBOARD_INTENTS = ['Light chat', 'Brainstorm', 'Motivation', 'Collaborate'] as const;
@@ -37,6 +37,7 @@ export function useDashboard() {
   const [huddles, setHuddles] = useState<Huddle[]>([]);
   const [selectedIntent, setSelectedIntent] = useState<DashboardIntent>('Brainstorm');
   const [loading, setLoading] = useState(true);
+  /** Last live-huddles load failure, shown by the dashboard; cleared on the next successful load. */
   const [error, setError] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
@@ -71,8 +72,7 @@ export function useDashboard() {
       );
       setError(null);
     } catch (err) {
-      console.warn('[dashboard] live huddles unavailable', err);
-      setHuddles([]);
+      // Surface the failure to the UI; keep the last good list so a blip does not blank the panel.
       setError(err instanceof Error ? err.message : 'Failed to load live huddles');
     }
   }, []);
@@ -104,10 +104,15 @@ export function useDashboard() {
     };
   }, [fetchStats, fetchHuddles]);
 
-  const joinHuddle = useCallback(async (huddleId: string) => {
-    await joinHuddleRequest(huddleId);
-    await fetchHuddles();
-  }, [fetchHuddles]);
+  /** Join (or request to join) a live huddle; resolves to the server's join status. */
+  const joinHuddle = useCallback(
+    async (huddleId: string): Promise<JoinHuddleResponse> => {
+      const result = await joinHuddleRequest(huddleId);
+      await fetchHuddles();
+      return result;
+    },
+    [fetchHuddles]
+  );
 
   return {
     user,

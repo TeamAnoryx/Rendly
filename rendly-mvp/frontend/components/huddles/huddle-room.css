@@ -534,6 +534,98 @@
   margin: 4px 6px 6px 40px;
 }
 
+/* host -> participant token send (paid from the host's balance) */
+.hr-coin-btn .rd-coin {
+  transition: transform 180ms var(--rd-ease);
+}
+
+.hr-coin-btn:hover .rd-coin,
+.hr-coin-btn:focus-visible .rd-coin {
+  transform: scale(1.12);
+}
+
+.hr-send {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 6px 8px 40px;
+  padding: 10px;
+  border-radius: var(--rd-radius-sm);
+  background: var(--rd-surface);
+  border: 1px solid var(--rd-border);
+  animation: hr-send-in 180ms var(--rd-ease);
+}
+
+.hr-send-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hr-send-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hr-send-balance {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.hr-send-amount {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+}
+
+.hr-send-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.hr-send-chips .rd-chip {
+  cursor: pointer;
+  transition: background var(--rd-fast), border-color var(--rd-fast), color var(--rd-fast);
+}
+
+.hr-send-err {
+  margin: 0;
+}
+
+.hr-send-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+@keyframes hr-send-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hr-send {
+    animation: none;
+  }
+  .hr-coin-btn .rd-coin {
+    transition: none;
+  }
+}
+
 /* chat */
 .hr-chat {
   flex: 1;
@@ -816,6 +908,12 @@
   }
   .hr-award .rd-btn {
     grid-column: 1 / -1;
+  }
+  .hr-send {
+    margin-left: 6px;
+  }
+  .hr-send-amount {
+    grid-template-columns: 1fr;
   }
 }
 

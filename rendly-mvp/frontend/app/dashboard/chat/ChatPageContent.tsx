@@ -11,6 +11,10 @@ import { chat, type CallLogListItem } from '@/services/chat';
 import { getConnections, type Connection } from '@/services/connectionsApi';
 import { groupsApi, type GroupListItem, type GroupInvitePending } from '@/services/groups';
 import { GroupSettingsPanel } from '@/app/dashboard/chat/GroupSettingsPanel';
+import { TokenCoin } from '@/components/brand/TokenCoin';
+import SendTokensSheet from '@/components/chat/SendTokensSheet';
+import TokenTransferCard, { tokenTransferPreview } from '@/components/chat/TokenTransferCard';
+import { emitPointsChanged } from '@/services/pointsApi';
 
 type ChatTab = 'Group' | 'Whispers' | 'Archive';
 type ConnectionFilter = 'all' | 'unread' | 'favorites';
@@ -62,10 +66,14 @@ export type ChatMessage = {
   id: string;
   sender_id: string;
   content: string;
-  content_type: 'text' | 'image' | 'audio';
+  content_type: 'text' | 'image' | 'audio' | 'token_transfer';
   created_at: string;
   delivered_at?: string | null;
   read_at?: string | null;
+  /** Rendly Tokens transfer carried by a `token_transfer` message (content = String(amount)). */
+  transfer_id?: string | null;
+  amount?: number | null;
+  note?: string | null;
   /** Set for group messages so UI can show who sent the message */
   sender_username?: string | null;
   /** True when message was unsent / deleted for everyone; show placeholder for others */
@@ -88,7 +96,7 @@ export type ConversationItem = {
   isOnline: boolean;
   isBlocked?: boolean;
   otherUserId?: string | null;
-  lastMessageContentType?: 'text' | 'image' | 'audio';
+  lastMessageContentType?: 'text' | 'image' | 'audio' | 'token_transfer';
   lastMessageSenderId?: string | null;
 };
 
@@ -138,6 +146,8 @@ function ConversationRow({
     preview = item.lastMessageSenderId === currentUserId ? 'Image sent' : 'Image received';
   } else if (item.lastMessageContentType === 'audio') {
     preview = item.lastMessageSenderId === currentUserId ? 'Audio message sent' : 'Audio message received';
+  } else if (item.lastMessageContentType === 'token_transfer') {
+    preview = tokenTransferPreview(Number(item.lastMessage), item.lastMessageSenderId === currentUserId);
   } else {
     preview = item.lastMessage?.trim() ? item.lastMessage : 'Send new message...';
   }
@@ -994,7 +1004,7 @@ function MessageBubble({
         </div>
       )}
       <div
-        className={`chat-message-bubble ${isSender ? 'chat-message-bubble--sender' : 'chat-message-bubble--receiver'}`}
+        className={`chat-message-bubble ${isSender ? 'chat-message-bubble--sender' : 'chat-message-bubble--receiver'} ${message.content_type === 'token_transfer' && !isDeletedForEveryone ? 'chat-message-bubble--tokens' : ''}`}
         onClick={selectionMode ? (e) => { e.stopPropagation(); onToggleSelect?.(e); } : undefined}
       >
         {!isDeletedForEveryone && senderLabel && (
@@ -1027,6 +1037,13 @@ function MessageBubble({
                 </span>
               </div>
             )}
+            {message.content_type === 'token_transfer' ? (
+              <TokenTransferCard
+                amount={typeof message.amount === 'number' ? message.amount : Number(message.content)}
+                note={message.note}
+                isSender={isSender}
+              />
+            ) : (
             <div className={`chat-message-content ${message.content_type !== 'text' ? 'chat-message-content--media' : ''}`}>
               {message.content_type === 'text' && message.content}
               {message.content_type === 'image' && (
@@ -1047,6 +1064,7 @@ function MessageBubble({
                 <ChatAudioPlayer src={message.content} isSender={isSender} />
               )}
             </div>
+            )}
           </>
         )}
         <div className="chat-message-meta">
@@ -1852,6 +1870,14 @@ function ChatPageContent() {
   /** Enable bar when a real conversation is selected; disable for "You", connection placeholder, blocked, or group view-only. */
   const groupViewOnlyBlocksSend = activeTab === 'Group' && !!selectedGroupId && groupViewOnly && !groupAmAdmin;
   const canSend = !!selectedId && !isSelfSelected && !isConnectionPlaceholder && !isSelectedBlocked && !groupViewOnlyBlocksSend;
+  /** Rendly Tokens can only be sent in a 1:1 whisper (`whisper_…` id with a known partner); groups are uuids. */
+  const isWhisperSelected = !!selectedId?.startsWith('whisper_') && !!selectedConv?.otherUserId;
+  const [sendTokensOpen, setSendTokensOpen] = useState(false);
+  const handleTokenMessageSent = useCallback((serverMsg: { id: string; content: string; content_type: string; created_at: string; sender_id: string; transfer_id?: string | null; amount?: number | null; note?: string | null }) => {
+    const chatMsg: ChatMessage = { ...serverMsg, content_type: 'token_transfer' };
+    setMessages((prev) => (prev.some((m) => m.id === chatMsg.id) ? prev : [...prev, chatMsg]));
+    setConversations((prev) => prev.map((c) => (c.id === selectedId ? { ...c, lastMessage: chatMsg.content, lastSeenAt: chatMsg.created_at, lastMessageContentType: 'token_transfer', lastMessageSenderId: chatMsg.sender_id } : c)));
+  }, [selectedId]);
 
   /** Resolve to real conversation id (for "You" placeholder we fetch self-conversation id at send time; connection placeholders are invalid for send until resolved). */
   const getEffectiveConversationId = useCallback(async (sid: string | null) => {
@@ -2018,8 +2044,14 @@ function ChatPageContent() {
       reply_to_content?: string;
       reply_to_sender_id?: string;
       reply_to_sender_username?: string;
+      transfer_id?: string | null;
+      amount?: number | null;
+      note?: string | null;
     }) => {
       delete messagesCacheRef.current[msg.conversation_id];
+      const isTokenTransfer = msg.content_type === 'token_transfer';
+      // Tokens landed in my balance: refresh the top-bar coin even if this chat is not open.
+      if (isTokenTransfer && msg.sender_id !== currentUser?.id) emitPointsChanged();
 
       const otherUserIdFromConv =
         msg.conversation_id.startsWith('whisper_') && currentUser?.id
@@ -2041,7 +2073,7 @@ function ChatPageContent() {
       const alreadyCounted = countedSet.has(msg.id);
       if (isFromOther && !alreadyCounted) countedSet.add(msg.id);
       const shouldIncrementUnread = isFromOther && !isForSelected && !alreadyCounted;
-      const baseUpdate = { lastMessage: msg.content, lastSeenAt: msg.created_at, lastMessageContentType: (msg.content_type === 'image' || msg.content_type === 'audio' ? msg.content_type : 'text') as 'text' | 'image' | 'audio', lastMessageSenderId: msg.sender_id };
+      const baseUpdate = { lastMessage: msg.content, lastSeenAt: msg.created_at, lastMessageContentType: (msg.content_type === 'image' || msg.content_type === 'audio' || isTokenTransfer ? msg.content_type : 'text') as ChatMessage['content_type'], lastMessageSenderId: msg.sender_id };
       setConversations((prev) =>
         prev.map((c) => {
           const isMatch = c.id === msg.conversation_id || (!!otherUserIdFromConv && c.otherUserId === otherUserIdFromConv);
@@ -2067,10 +2099,11 @@ function ChatPageContent() {
         id: msg.id,
         sender_id: msg.sender_id,
         content: msg.content,
-        content_type: msg.content_type as 'text' | 'image' | 'audio',
+        content_type: msg.content_type as ChatMessage['content_type'],
         created_at: msg.created_at,
         delivered_at: msg.delivered_at ?? undefined,
         read_at: msg.read_at ?? undefined,
+        ...(isTokenTransfer && { transfer_id: msg.transfer_id ?? null, amount: msg.amount ?? Number(msg.content), note: msg.note ?? null }),
         sender_username: msg.sender_username ?? undefined,
         reply_to_message_id: msg.reply_to_message_id,
         reply_to_content: msg.reply_to_content,
@@ -2270,7 +2303,7 @@ function ChatPageContent() {
     const replyOpts = replyingTo
       ? {
         reply_to_message_id: replyingTo.id,
-        reply_to_content: replyingTo.content_type === 'text' ? replyingTo.content.slice(0, 200) : (replyingTo.content_type === 'image' ? 'Photo' : 'Audio'),
+        reply_to_content: replyingTo.content_type === 'text' ? replyingTo.content.slice(0, 200) : replyingTo.content_type === 'image' ? 'Photo' : replyingTo.content_type === 'token_transfer' ? `${Number(replyingTo.amount ?? replyingTo.content).toLocaleString('en-IN')} Rendly Tokens` : 'Audio',
         reply_to_sender_id: replyingTo.sender_id,
         reply_to_sender_username: replyingTo.sender_username ?? undefined,
       }
@@ -3482,7 +3515,9 @@ function ChatPageContent() {
                           ? (replyingTo.content.slice(0, 60) + (replyingTo.content.length > 60 ? '…' : ''))
                           : replyingTo.content_type === 'image'
                             ? 'Photo'
-                            : 'Audio'}
+                            : replyingTo.content_type === 'token_transfer'
+                              ? `${Number(replyingTo.amount ?? replyingTo.content).toLocaleString('en-IN')} Rendly Tokens`
+                              : 'Audio'}
                       </span>
                     </div>
                     <button
@@ -3498,6 +3533,18 @@ function ChatPageContent() {
                 <div className={`chat-bar-wrap ${!canSend ? 'chat-bar-wrap--disabled' : ''}`}>
                   <div className="chat-bar">
                     <div className="chat-bar-actions">
+                      {isWhisperSelected && (
+                        <button
+                          type="button"
+                          className="chat-bar-btn chat-bar-btn--tokens"
+                          onClick={() => canSend && setSendTokensOpen(true)}
+                          disabled={!canSend}
+                          aria-label="Send Rendly Tokens"
+                          title="Send Rendly Tokens"
+                        >
+                          <TokenCoin size={18} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="chat-bar-btn"
@@ -3557,6 +3604,15 @@ function ChatPageContent() {
                     </button>
                   </div>
                 </div>
+                {isWhisperSelected && selectedId && selectedConv?.otherUserId && (
+                  <SendTokensSheet
+                    open={sendTokensOpen}
+                    onClose={() => setSendTokensOpen(false)}
+                    conversationId={selectedId}
+                    recipient={{ id: selectedConv.otherUserId, name: selectedConv.name || 'Unknown', avatarUrl: selectedConv.avatar_url }}
+                    onSent={handleTokenMessageSent}
+                  />
+                )}
               </div>
               {activeTab === 'Group' && (
                 <div className="chat-right-group-settings">

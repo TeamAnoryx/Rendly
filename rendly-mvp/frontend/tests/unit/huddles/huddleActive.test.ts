@@ -12,6 +12,13 @@ describe('mapActiveHuddle', () => {
         participants_count: 4,
         ends_at: '2026-11-01T12:10:00.000Z',
         canJoin: true,
+        thumbnail_url: 'https://cdn.example/h1.jpg',
+        mode: 'seminar',
+        type: 'private',
+        intents: ['Brainstorm', 'Collaborate'],
+        is_owner: true,
+        is_participant: true,
+        waiting_room: true,
       },
       NOW
     );
@@ -22,6 +29,13 @@ describe('mapActiveHuddle', () => {
       participantsCount: 4,
       maxParticipants: 10,
       canJoin: true,
+      thumbnailUrl: 'https://cdn.example/h1.jpg',
+      mode: 'seminar',
+      type: 'private',
+      intents: ['Brainstorm', 'Collaborate'],
+      isOwner: true,
+      isParticipant: true,
+      waitingRoom: true,
     });
   });
 
@@ -46,6 +60,35 @@ describe('mapActiveHuddle', () => {
 
   test('missing title becomes Untitled', () => {
     expect(mapActiveHuddle({ id: 'a' }, NOW).topic).toBe('Untitled');
+  });
+
+  test('defaults the new fields when the API omits them', () => {
+    const out = mapActiveHuddle({ id: 'a', title: 't' }, NOW);
+    expect(out.thumbnailUrl).toBeNull();
+    expect(out.mode).toBeNull();
+    expect(out.type).toBeNull();
+    expect(out.intents).toEqual([]);
+    expect(out.isOwner).toBe(false);
+    expect(out.isParticipant).toBe(false);
+    expect(out.waitingRoom).toBe(false);
+  });
+
+  test('rejects unknown mode and type values and non-string intents', () => {
+    const out = mapActiveHuddle(
+      { id: 'a', title: 't', mode: 'party', type: 'secret', intents: ['ok', 42, '', null], thumbnail_url: '' },
+      NOW
+    );
+    expect(out.mode).toBeNull();
+    expect(out.type).toBeNull();
+    expect(out.intents).toEqual(['ok']);
+    expect(out.thumbnailUrl).toBeNull();
+  });
+
+  test('treats non-boolean flags as false', () => {
+    const out = mapActiveHuddle({ id: 'a', title: 't', is_owner: 'yes', is_participant: 1, waiting_room: 'true' }, NOW);
+    expect(out.isOwner).toBe(false);
+    expect(out.isParticipant).toBe(false);
+    expect(out.waitingRoom).toBe(false);
   });
 });
 

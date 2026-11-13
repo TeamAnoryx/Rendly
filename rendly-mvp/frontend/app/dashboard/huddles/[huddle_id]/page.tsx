@@ -360,6 +360,11 @@ export default function HuddleDetailPage() {
                 <Icon name="trophy" size={12} /> Rewards
               </span>
             ) : null}
+            {huddle.rewards_receive_enabled === true ? (
+              <span className="rd-chip">
+                <Icon name="coin" size={12} /> Host sends tokens
+              </span>
+            ) : null}
           </div>
           <h1 className="rd-h1">{huddle.title}</h1>
           {huddle.description ? <p className="hl-desc">{huddle.description}</p> : null}

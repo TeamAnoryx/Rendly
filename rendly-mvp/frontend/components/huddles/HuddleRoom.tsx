@@ -12,9 +12,19 @@ import {
   type HuddleDetail,
   type HuddleMember,
 } from '@/services/huddlesApi';
-import { awardPoints } from '@/services/pointsApi';
+import {
+  awardPoints,
+  emitPointsChanged,
+  getMyPoints,
+  HUDDLE_SEND_PURPOSE_LABELS,
+  HUDDLE_SEND_PURPOSES,
+  sendHuddleTokens,
+  type HuddleSendPurpose,
+} from '@/services/pointsApi';
+import { useNotifications } from '@/context/NotificationsContext';
 import { Icon } from '@/components/shell/Icon';
 import { Avatar } from '@/components/shell/AppShell';
+import { TokenAmount, TokenCoin } from '@/components/brand/TokenCoin';
 import './huddle-room.css';
 
 const MAIN_ROOM = 'main';
@@ -26,6 +36,11 @@ type Role = 'host' | 'co_host' | 'participant';
 type Peer = { cam: MediaStream | null; screen: MediaStream | null; screenId: string | null };
 type ChatLine = { id: string; from: string; text: string; at: string };
 type Panel = 'people' | 'chat' | 'rooms' | 'host' | null;
+type RewardFlags = { rewards_enabled: boolean; rewards_receive_enabled: boolean };
+const SEND_MIN = 1;
+const SEND_MAX = 1000;
+const SEND_NOTE_MAX = 140;
+const SEND_QUICK_AMOUNTS = [25, 50, 100] as const;
 type JoinAck = { ok: boolean; message?: string; peers?: string[]; can_speak?: boolean; can_share_screen?: boolean; screens?: Record<string, string> };
 
 /** RMS level of a stream's audio, sampled for the active-speaker ring. */
@@ -153,6 +168,11 @@ export default function HuddleRoom({
   const [peers, setPeers] = useState<Record<string, Peer>>({});
   const [members, setMembers] = useState<HuddleMember[]>([]);
   const [chat, setChat] = useState<ChatLine[]>([]);
+  /** Reward switches, kept locally so a host toggle in settings applies to the People panel at once. */
+  const [rewardFlags, setRewardFlags] = useState<RewardFlags>({
+    rewards_enabled: huddle.rewards_enabled !== false,
+    rewards_receive_enabled: huddle.rewards_receive_enabled === true,
+  });
   const [unreadChat, setUnreadChat] = useState(0);
   const [draft, setDraft] = useState('');
   const [panel, setPanel] = useState<Panel>(null);
@@ -604,7 +624,7 @@ export default function HuddleRoom({
               <Icon name="close" size={16} />
             </button>
           </header>
-          {panel === 'people' ? <PeoplePanel huddle={huddle} members={members} myId={myId} isManager={isManager} isHost={role === 'host'} onChanged={loadMembers} peersInRoom={peerIds} /> : null}
+          {panel === 'people' ? <PeoplePanel huddle={huddle} flags={rewardFlags} members={members} myId={myId} isManager={isManager} isHost={role === 'host'} onChanged={loadMembers} peersInRoom={peerIds} /> : null}
           {panel === 'chat' ? (
             <div className="hr-chat">
               <div className="hr-chat-list rd-scroll" aria-live="polite">
@@ -625,7 +645,7 @@ export default function HuddleRoom({
             </div>
           ) : null}
           {panel === 'rooms' && isManager ? <RoomsPanel huddleId={huddleId} members={members} myId={myId} currentRoom={room} onPeek={(r) => void moveTo(r)} /> : null}
-          {panel === 'host' && isManager ? <HostSettings huddle={huddle} isHost={role === 'host'} /> : null}
+          {panel === 'host' && isManager ? <HostSettings huddle={huddle} isHost={role === 'host'} flags={rewardFlags} onFlagsChange={setRewardFlags} /> : null}
         </aside>
       ) : null}
     </div>
@@ -634,6 +654,7 @@ export default function HuddleRoom({
 
 function PeoplePanel({
   huddle,
+  flags,
   members,
   myId,
   isManager,
@@ -642,6 +663,7 @@ function PeoplePanel({
   peersInRoom,
 }: {
   huddle: HuddleDetail;
+  flags: RewardFlags;
   members: HuddleMember[];
   myId: string | null;
   isManager: boolean;
@@ -649,13 +671,78 @@ function PeoplePanel({
   onChanged: () => Promise<void>;
   peersInRoom: string[];
 }) {
+  const { pushToast } = useNotifications();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [awardFor, setAwardFor] = useState<string | null>(null);
   const [amount, setAmount] = useState(50);
   const [note, setNote] = useState('');
+  const [sendFor, setSendFor] = useState<string | null>(null);
+  const [sendAmount, setSendAmount] = useState(50);
+  const [sendPurpose, setSendPurpose] = useState<HuddleSendPurpose>('winner');
+  const [sendNote, setSendNote] = useState('');
+  const [sendErr, setSendErr] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [balance, setBalance] = useState<number | null>(null);
+  const canSendTokens = isHost && flags.rewards_receive_enabled;
   const waiting = members.filter((m) => !m.admitted);
   const inRoom = members.filter((m) => m.admitted);
+
+  const refreshBalance = useCallback(async () => {
+    try {
+      const me = await getMyPoints();
+      setBalance(me.total);
+    } catch {
+      setBalance(null); // header shows "—"; the server still enforces the balance
+    }
+  }, []);
+
+  useEffect(() => {
+    if (canSendTokens) void refreshBalance();
+  }, [canSendTokens, refreshBalance]);
+
+  const openSend = (userId: string) => {
+    setSendErr(null);
+    if (sendFor === userId) {
+      setSendFor(null);
+      return;
+    }
+    setAwardFor(null);
+    setSendFor(userId);
+    void refreshBalance();
+  };
+
+  const clampSend = (n: number) => Math.max(SEND_MIN, Math.min(SEND_MAX, Math.round(n) || SEND_MIN));
+  const noteNeeded = sendPurpose === 'other';
+  const noteMissing = noteNeeded && !sendNote.trim();
+
+  const submitSend = async (m: HuddleMember) => {
+    if (sending) return;
+    const amt = clampSend(sendAmount);
+    if (noteMissing) {
+      setSendErr('Add a short note for "Other".');
+      return;
+    }
+    if (balance !== null && amt > balance) {
+      setSendErr('Not enough Rendly Tokens.');
+      return;
+    }
+    setSending(true);
+    setSendErr(null);
+    try {
+      const res = await sendHuddleTokens(huddle.id, { user_id: m.user_id, amount: amt, purpose: sendPurpose, note: noteNeeded ? sendNote.trim() : sendNote.trim() || null });
+      if (typeof res.balance === 'number') setBalance(res.balance);
+      else void refreshBalance();
+      emitPointsChanged();
+      pushToast({ icon: 'coin', title: `Sent ${amt} Rendly Tokens to ${name(m)}` });
+      setSendFor(null);
+      setSendNote('');
+    } catch (e) {
+      setSendErr(e instanceof Error ? e.message : 'Could not send Rendly Tokens');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const act = async (id: string, fn: () => Promise<void>) => {
     setBusy(id);
@@ -717,9 +804,16 @@ function PeoplePanel({
                     onClick={() => act(m.user_id, () => updateHuddleMember(huddle.id, m.user_id, { can_share_screen: !m.can_share_screen }))}>
                     <Icon name="screen" size={15} />
                   </button>
-                  {huddle.rewards_enabled !== false ? (
-                    <button type="button" className="rd-icon-btn" title="Give points" onClick={() => setAwardFor(awardFor === m.user_id ? null : m.user_id)}>
+                  {flags.rewards_enabled ? (
+                    <button type="button" className={`rd-icon-btn ${awardFor === m.user_id ? 'rd-icon-btn--on' : ''}`} title="Give free Rendly Tokens" aria-label={`Give free Rendly Tokens to ${name(m)}`} aria-expanded={awardFor === m.user_id}
+                      onClick={() => { setSendFor(null); setAwardFor(awardFor === m.user_id ? null : m.user_id); }}>
                       <Icon name="trophy" size={15} />
+                    </button>
+                  ) : null}
+                  {canSendTokens ? (
+                    <button type="button" className={`rd-icon-btn hr-coin-btn ${sendFor === m.user_id ? 'rd-icon-btn--on' : ''}`} title="Send Rendly Tokens from your balance" aria-label={`Send Rendly Tokens to ${name(m)}`} aria-expanded={sendFor === m.user_id}
+                      onClick={() => openSend(m.user_id)}>
+                      <TokenCoin size={15} />
                     </button>
                   ) : null}
                   {isHost ? (
@@ -746,11 +840,81 @@ function PeoplePanel({
                   });
                 }}
               >
-                <input className="rd-input" type="number" min={1} max={1000} value={amount} onChange={(e) => setAmount(Math.max(1, Math.min(1000, Number(e.target.value) || 1)))} aria-label="Points" />
+                <input className="rd-input" type="number" min={1} max={1000} value={amount} onChange={(e) => setAmount(Math.max(1, Math.min(1000, Number(e.target.value) || 1)))} aria-label="Rendly Tokens" />
                 <input className="rd-input" value={note} maxLength={140} onChange={(e) => setNote(e.target.value)} placeholder="For… (quiz winner)" aria-label="Reason" />
                 <button type="submit" className="rd-btn rd-btn--primary rd-btn--sm" disabled={disabled}>
                   Give
                 </button>
+              </form>
+            ) : null}
+            {sendFor === m.user_id && canSendTokens ? (
+              <form
+                className="hr-send"
+                aria-label={`Send Rendly Tokens to ${name(m)}`}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void submitSend(m);
+                }}
+              >
+                <div className="hr-send-head">
+                  <span className="hr-send-title">
+                    <TokenCoin size={14} /> Send to {name(m)}
+                  </span>
+                  <span className="hr-send-balance rd-small rd-muted">
+                    Balance {balance === null ? '—' : <TokenAmount amount={balance} size={12} />}
+                  </span>
+                </div>
+                <div className="hr-send-amount">
+                  <input
+                    className="rd-input rd-mono"
+                    type="number"
+                    inputMode="numeric"
+                    min={SEND_MIN}
+                    max={SEND_MAX}
+                    value={sendAmount}
+                    onChange={(e) => setSendAmount(clampSend(Number(e.target.value)))}
+                    aria-label="Amount of Rendly Tokens"
+                  />
+                  <div className="hr-send-chips" role="group" aria-label="Quick amounts">
+                    {SEND_QUICK_AMOUNTS.map((q) => (
+                      <button key={q} type="button" className={`rd-chip ${sendAmount === q ? 'rd-chip--on' : ''}`} aria-pressed={sendAmount === q} onClick={() => setSendAmount(q)}>
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <select className="rd-select" value={sendPurpose} onChange={(e) => setSendPurpose(e.target.value as HuddleSendPurpose)} aria-label="Purpose">
+                  {HUDDLE_SEND_PURPOSES.map((p) => (
+                    <option key={p} value={p}>
+                      {HUDDLE_SEND_PURPOSE_LABELS[p]}
+                    </option>
+                  ))}
+                </select>
+                {noteNeeded ? (
+                  <input
+                    className="rd-input"
+                    value={sendNote}
+                    maxLength={SEND_NOTE_MAX}
+                    required
+                    onChange={(e) => setSendNote(e.target.value)}
+                    placeholder="What is this for? (required)"
+                    aria-label="Note (required for Other)"
+                  />
+                ) : null}
+                {sendErr ? (
+                  <p className="hr-err hr-send-err" role="alert">
+                    {sendErr}
+                  </p>
+                ) : null}
+                <div className="hr-send-actions">
+                  <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" onClick={() => setSendFor(null)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="rd-btn rd-btn--primary rd-btn--sm" disabled={sending || noteMissing}>
+                    {sending ? <span className="rd-spinner" /> : null}
+                    Send {clampSend(sendAmount)}
+                  </button>
+                </div>
               </form>
             ) : null}
           </div>
@@ -893,13 +1057,15 @@ function RoomsPanel({
   );
 }
 
-function HostSettings({ huddle, isHost }: { huddle: HuddleDetail; isHost: boolean }) {
+function HostSettings({ huddle, isHost, flags, onFlagsChange }: { huddle: HuddleDetail; isHost: boolean; flags: RewardFlags; onFlagsChange: (next: RewardFlags) => void }) {
   const [state, setState] = useState({
     waiting_room: huddle.waiting_room ?? false,
     allow_self_exit: huddle.allow_self_exit !== false,
-    rewards_enabled: huddle.rewards_enabled !== false,
+    rewards_enabled: flags.rewards_enabled,
+    rewards_receive_enabled: flags.rewards_receive_enabled,
   });
   const [err, setErr] = useState<string | null>(null);
+  const isRewardKey = (key: keyof typeof state): key is keyof RewardFlags => key === 'rewards_enabled' || key === 'rewards_receive_enabled';
   const toggle = async (key: keyof typeof state) => {
     if (!isHost) return;
     const next = !state[key];
@@ -907,6 +1073,7 @@ function HostSettings({ huddle, isHost }: { huddle: HuddleDetail; isHost: boolea
     setErr(null);
     try {
       await updateHuddleSettings(huddle.id, { [key]: next });
+      if (isRewardKey(key)) onFlagsChange({ ...flags, [key]: next });
     } catch (e) {
       setState((s) => ({ ...s, [key]: !next }));
       setErr(e instanceof Error ? e.message : 'Could not save');
@@ -915,7 +1082,8 @@ function HostSettings({ huddle, isHost }: { huddle: HuddleDetail; isHost: boolea
   const rows: { key: keyof typeof state; title: string; hint: string }[] = [
     { key: 'waiting_room', title: 'Waiting room', hint: 'You admit each person before they enter.' },
     { key: 'allow_self_exit', title: 'People can leave freely', hint: 'Off: you control entry and exit, including breakout rooms.' },
-    { key: 'rewards_enabled', title: 'Rewards', hint: 'Give points for quizzes and competitions.' },
+    { key: 'rewards_enabled', title: 'Give rewards', hint: 'Free Rendly Tokens for quizzes and best answers (not taken from you).' },
+    { key: 'rewards_receive_enabled', title: 'Send tokens', hint: 'Pay participants Rendly Tokens from your own balance.' },
   ];
   return (
     <div className="hr-settings rd-scroll">

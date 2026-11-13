@@ -3192,3 +3192,254 @@
     animation: none;
   }
 }
+
+/* ------------------------------------------------------------------
+   Rendly Tokens in whispers: composer coin, transfer bubble, send sheet
+   ------------------------------------------------------------------ */
+.chat-bar-btn--tokens .rd-coin {
+  transition: transform 0.2s var(--rd-ease);
+}
+.chat-bar-btn--tokens:hover:not(:disabled) .rd-coin {
+  transform: scale(1.12) rotate(-8deg);
+}
+
+/* Bubble wrapper becomes transparent; the card carries the look. */
+.chat-message-bubble.chat-message-bubble--tokens {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+.tt-card {
+  position: relative;
+  min-width: 220px;
+  max-width: 300px;
+  padding: 1px;
+  border-radius: var(--chat-r, 16px);
+  background: linear-gradient(135deg, var(--rd-coin-gold) 0%, var(--rd-coin-gold-deep) 45%, var(--rd-primary) 100%);
+  box-shadow: 0 6px 22px -8px rgba(246, 196, 83, 0.55), 0 0 0 1px rgba(246, 196, 83, 0.12);
+  white-space: normal;
+}
+.tt-card-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px 6px;
+  border-radius: calc(var(--chat-r, 16px) - 1px) calc(var(--chat-r, 16px) - 1px) 0 0;
+  background: var(--rd-panel);
+}
+.tt-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0 14px 8px;
+  border-radius: 0 0 calc(var(--chat-r, 16px) - 1px) calc(var(--chat-r, 16px) - 1px);
+  background: var(--rd-panel);
+  font-size: 0.6875rem;
+  color: var(--rd-muted);
+}
+.tt-card-coin {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(246, 196, 83, 0.28) 0%, transparent 70%);
+}
+.tt-card-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tt-card-amount {
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--rd-text);
+}
+.tt-card--received .tt-card-amount {
+  color: var(--rd-success);
+}
+.tt-card-sub {
+  font-size: 0.72rem;
+  color: var(--rd-muted);
+}
+.tt-card-note {
+  margin-top: 4px;
+  font-size: 0.82rem;
+  color: var(--rd-text-2);
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+/* The bubble's own meta row sits under the card; keep it subtle. */
+.chat-message-bubble--tokens > .chat-message-meta {
+  padding: 4px 6px 0;
+  color: var(--rd-muted);
+}
+
+/* Send sheet (inside .rd-modal) */
+.stk {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.stk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.stk-recipient {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.stk-avatar {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--rd-border);
+}
+.stk-avatar--initials {
+  display: grid;
+  place-items: center;
+  background: var(--rd-surface-2);
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+.stk-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.stk-to {
+  font-size: 0.8rem;
+  color: var(--rd-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stk-balance {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex: none;
+}
+.stk-balance-label {
+  font-size: 0.7rem;
+  color: var(--rd-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.stk-balance-value--loading {
+  color: var(--rd-muted);
+}
+.stk-label {
+  margin-top: 4px;
+}
+.stk-optional {
+  font-weight: 400;
+  color: var(--rd-muted);
+}
+.stk-amount-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.stk-amount-input {
+  flex: 1;
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.stk-amount-input--invalid {
+  border-color: var(--rd-danger);
+}
+.stk-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.stk-hint,
+.stk-counter {
+  font-size: 0.75rem;
+  color: var(--rd-muted);
+}
+.stk-counter {
+  text-align: right;
+}
+.stk-counter--over {
+  color: var(--rd-danger);
+}
+.stk-note {
+  resize: none;
+}
+.stk-error {
+  padding: 8px 10px;
+  border-radius: var(--rd-radius-sm);
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--rd-danger);
+  font-size: 0.82rem;
+}
+.stk-retry {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  border-radius: var(--rd-radius);
+  border: 1px solid var(--rd-warning);
+  background: rgba(245, 158, 11, 0.08);
+}
+.stk-retry-title {
+  font-weight: 700;
+}
+.stk-retry-body {
+  font-size: 0.82rem;
+  color: var(--rd-text-2);
+}
+.stk-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.stk-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.stk-send--done {
+  background: var(--rd-success);
+}
+
+/* Bottom-sheet presentation on small screens */
+@media (max-width: 640px) {
+  .rd-modal-backdrop:has(.stk) {
+    place-items: end stretch;
+    padding: 0;
+  }
+  .rd-modal:has(.stk) {
+    width: 100%;
+    border-radius: var(--rd-radius-lg) var(--rd-radius-lg) 0 0;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-bar-btn--tokens .rd-coin,
+  .chat-bar-btn--tokens:hover:not(:disabled) .rd-coin {
+    transition: none;
+    transform: none;
+  }
+  .tt-card {
+    box-shadow: 0 0 0 1px rgba(246, 196, 83, 0.25);
+  }
+}

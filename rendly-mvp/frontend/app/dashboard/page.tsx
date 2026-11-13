@@ -7,9 +7,20 @@ import { useDashboard, type Huddle } from '@/hooks/useDashboard';
 import { formatTimeLeft } from '@/lib/huddleActive';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
 import { getLeaderboard, getMyPoints, type LeaderboardRow } from '@/services/pointsApi';
+import { HUDDLE_MODE_LABELS } from '@/services/huddlesApi';
+import { useNotifications } from '@/context/NotificationsContext';
 import { Icon } from '@/components/shell/Icon';
 import { Avatar } from '@/components/shell/AppShell';
+import HotHuddles from '@/components/home/HotHuddles';
 import './home.css';
+
+/** Button copy for a live-huddle row. */
+function joinLabel(h: Pick<Huddle, 'canJoin' | 'isParticipant' | 'waitingRoom'>): string {
+  if (h.isParticipant) return 'Rejoin';
+  if (!h.canJoin) return 'Full';
+  if (h.waitingRoom) return 'Request to join';
+  return 'Join';
+}
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -54,7 +65,8 @@ const SHORTCUTS: { href: string; icon: string; title: string; hint: string }[] =
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, stats, huddles, loading, joinHuddle } = useDashboard();
+  const { user, stats, huddles, loading, error: huddlesError, joinHuddle, refetchHuddles } = useDashboard();
+  const { pushToast } = useNotifications();
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [points, setPoints] = useState<{ total: number; rank: number | null } | null>(null);
@@ -73,18 +85,22 @@ export default function DashboardPage() {
 
   const handleJoin = useCallback(
     async (h: Huddle) => {
-      if (!h.canJoin || joiningId) return;
+      if (joiningId) return;
+      if (!h.canJoin && !h.isParticipant) return;
       setJoiningId(h.id);
       setJoinError(null);
       try {
-        await joinHuddle(h.id);
-        router.push(`/dashboard/huddles/${h.id}`);
+        const result = await joinHuddle(h.id);
+        if (result.status === 'waiting') {
+          pushToast({ icon: 'clock', title: "You're in the waiting room", body: 'The host will let you in shortly.' });
+        }
+        router.push(`/dashboard/huddles/${encodeURIComponent(h.id)}`);
       } catch (err) {
         setJoinError(err instanceof Error ? err.message : 'Could not join');
         setJoiningId(null);
       }
     },
-    [joinHuddle, router, joiningId]
+    [joinHuddle, pushToast, router, joiningId]
   );
 
   const name = user?.username ? `@${user.username}` : 'there';
@@ -121,8 +137,8 @@ export default function DashboardPage() {
 
         <section className="home-stats" aria-label="Overview">
           <Stat
-            icon="star"
-            label="Points"
+            icon="coin"
+            label="Rendly Tokens"
             value={points ? points.total.toLocaleString('en-IN') : '—'}
             hint={points?.rank ? `Rank #${points.rank}` : 'Unranked'}
             href="/dashboard/profile#rankings"
@@ -161,6 +177,14 @@ export default function DashboardPage() {
               </Link>
             </header>
             {joinError ? <p className="rd-small home-error" role="alert">{joinError}</p> : null}
+            {huddlesError && !loading ? (
+              <p className="rd-small home-error" role="alert">
+                {huddlesError}{' '}
+                <button type="button" className="home-error-retry" onClick={() => refetchHuddles()}>
+                  Retry
+                </button>
+              </p>
+            ) : null}
             <div className="home-list">
               {loading ? (
                 [0, 1, 2].map((i) => (
@@ -185,28 +209,46 @@ export default function DashboardPage() {
               ) : (
                 huddles.map((h) => {
                   const joining = joiningId === h.id;
+                  const enabled = (h.canJoin || h.isParticipant) && !joining;
+                  const label = joinLabel(h);
                   return (
                     <article key={h.id} className="home-row">
-                      <span className="home-row-tile" aria-hidden>
-                        <Icon name="huddle" size={16} />
-                      </span>
+                      {h.thumbnailUrl ? (
+                        <span className="home-row-tile home-row-tile--thumb" aria-hidden>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={h.thumbnailUrl} alt="" loading="lazy" />
+                        </span>
+                      ) : (
+                        <span className="home-row-tile" aria-hidden>
+                          <Icon name="huddle" size={16} />
+                        </span>
+                      )}
                       <div className="home-row-main">
-                        <h3 className="home-row-title">{h.topic}</h3>
+                        <h3 className="home-row-title">
+                          <span className="home-row-title-text">{h.topic}</span>
+                          {h.mode ? <span className="home-row-chip">{HUDDLE_MODE_LABELS[h.mode]}</span> : null}
+                          {h.isOwner ? <span className="home-row-chip home-row-chip--you">Yours</span> : null}
+                        </h3>
                         <p className="home-row-meta">
                           <span className="home-num">
                             {h.participantsCount}
                             {h.maxParticipants != null ? `/${h.maxParticipants}` : ''}
                           </span>{' '}
                           in the room · <span className="home-num">{formatTimeLeft(h.timeLeftSeconds)}</span>
+                          {h.intents.slice(0, 2).map((t) => (
+                            <span key={t} className="home-row-tag">
+                              #{t}
+                            </span>
+                          ))}
                         </p>
                       </div>
                       <button
                         type="button"
-                        className={`rd-btn rd-btn--sm ${h.canJoin ? 'rd-btn--primary' : ''}`}
-                        disabled={!h.canJoin || joining}
+                        className={`rd-btn rd-btn--sm ${enabled && !h.isParticipant ? 'rd-btn--primary' : ''}`}
+                        disabled={!enabled}
                         onClick={() => handleJoin(h)}
                       >
-                        {joining ? <span className="rd-spinner" /> : h.canJoin ? 'Join' : 'Full'}
+                        {joining ? <span className="rd-spinner" /> : label}
                       </button>
                     </article>
                   );
@@ -215,7 +257,7 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          {/* Points and rankings */}
+          {/* Rendly Tokens and rankings */}
           <section className="rd-card home-panel" aria-labelledby="home-ranks-title">
             <header className="home-panel-head">
               <h2 id="home-ranks-title" className="rd-h2">
@@ -237,7 +279,7 @@ export default function DashboardPage() {
                   <span className="shell-empty-icon" aria-hidden>
                     <Icon name="trophy" size={18} />
                   </span>
-                  <p>Rankings appear once points are awarded.</p>
+                  <p>Rankings appear once Rendly Tokens are earned.</p>
                 </li>
               ) : (
                 leaders.map((r) => (
@@ -255,6 +297,9 @@ export default function DashboardPage() {
             </ol>
           </section>
         </div>
+
+        {/* Top 5 hot huddles */}
+        <HotHuddles />
 
         {/* Shortcuts */}
         <nav className="rd-card home-shortcuts" aria-label="Shortcuts">

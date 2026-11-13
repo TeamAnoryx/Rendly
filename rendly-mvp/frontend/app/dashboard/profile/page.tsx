@@ -6,7 +6,10 @@ import '../account.css';
 import Link from 'next/link';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { Avatar } from '@/components/shell/AppShell';
-import { getMyPoints } from '@/services/pointsApi';
+import { getMyPoints, POINTS_CHANGED_EVENT } from '@/services/pointsApi';
+import { getMyHuddleStats, type HuddleStats } from '@/services/intentsApi';
+import { TokenCoin } from '@/components/brand/TokenCoin';
+import MyCustomIntents from '@/components/intents/MyCustomIntents';
 import {
   getProfile,
   patchProfile,
@@ -545,14 +548,34 @@ export default function DashboardProfilePage() {
   const [pointsRank, setPointsRank] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
-    getMyPoints()
-      .then((p) => {
-        if (!alive) return;
-        setPointsTotal(p.total);
-        setPointsRank(p.rank);
-      })
-      .catch(() => {
-        /* stats stay as "—"; PointsCard shows its own error */
+    const load = () =>
+      getMyPoints()
+        .then((p) => {
+          if (!alive) return;
+          setPointsTotal(p.total);
+          setPointsRank(p.rank);
+        })
+        .catch(() => {
+          /* stats stay as "—"; PointsCard shows its own error */
+        });
+    void load();
+    const onChange = () => void load();
+    window.addEventListener(POINTS_CHANGED_EVENT, onChange);
+    return () => {
+      alive = false;
+      window.removeEventListener(POINTS_CHANGED_EVENT, onChange);
+    };
+  }, []);
+
+  // Huddles card: hosted / public joined counts ("—" while loading, 0 on error).
+  const [huddleStats, setHuddleStats] = useState<HuddleStats | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getMyHuddleStats()
+      .then((s) => alive && setHuddleStats(s))
+      .catch((err) => {
+        console.warn('[profile] huddle stats unavailable', err);
+        if (alive) setHuddleStats({ hosted: 0, public_joined: 0 });
       });
     return () => {
       alive = false;
@@ -666,8 +689,11 @@ export default function DashboardProfilePage() {
 
           <div className="pf-stats">
             <a href="#rankings" className="pf-stat">
-              <span className="pf-stat-label">Points</span>
-              <span className="pf-stat-value">{pointsTotal === null ? '—' : fmt(pointsTotal)}</span>
+              <span className="pf-stat-label">Tokens</span>
+              <span className="pf-stat-value pf-stat-value--coin">
+                <TokenCoin size={18} title="Rendly Tokens" />
+                {pointsTotal === null ? '—' : fmt(pointsTotal)}
+              </span>
             </a>
             <div className="pf-stat">
               <span className="pf-stat-label">Connections</span>
@@ -822,6 +848,15 @@ export default function DashboardProfilePage() {
                     </button>
                   );
                 })}
+              </div>
+              <div className="pf-custom-intents">
+                <SectionHead
+                  id="pf-custom-intents"
+                  icon={<IconTarget />}
+                  title="My custom Intents"
+                  desc="Buy intents with Rendly Tokens, or create your own. Public ones earn you tokens when others buy them."
+                />
+                <MyCustomIntents variant="full" />
               </div>
             </section>
 
@@ -1151,11 +1186,11 @@ export default function DashboardProfilePage() {
               <dl className="pf-mini-stats">
                 <div>
                   <dt>Hosted</dt>
-                  <dd>0</dd>
+                  <dd>{huddleStats === null ? '—' : fmt(huddleStats.hosted)}</dd>
                 </div>
                 <div>
                   <dt>Public joined</dt>
-                  <dd>0</dd>
+                  <dd>{huddleStats === null ? '—' : fmt(huddleStats.public_joined)}</dd>
                 </div>
               </dl>
             </section>

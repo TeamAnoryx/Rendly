@@ -66,7 +66,8 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
   const [mode, setMode] = useState<HuddleMode>('open');
   const [waitingRoom, setWaitingRoom] = useState(false);
   const [allowSelfExit, setAllowSelfExit] = useState(true);
-  const [rewards, setRewards] = useState(true);
+  const [rewardsGive, setRewardsGive] = useState(true);
+  const [rewardsReceive, setRewardsReceive] = useState(false);
   const [intents, setIntents] = useState<string[]>([]);
   const [intentDraft, setIntentDraft] = useState('');
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -159,7 +160,8 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
         mode,
         waiting_room: waitingRoom,
         allow_self_exit: allowSelfExit,
-        rewards_enabled: rewards,
+        rewards_enabled: rewardsGive,
+        rewards_receive_enabled: rewardsReceive,
         intents,
         invitee_ids: inviteeIds,
       });
@@ -290,6 +292,26 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
               disabled={intents.length >= MAX_INTENTS}
             />
           </div>
+
+          {connections.length ? (
+            <div className="hc-invite">
+              <span className="rd-label">Invite connections</span>
+              <div className="hc-invitees rd-scroll">
+                {connections.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={`rd-chip ${inviteeIds.includes(c.id) ? 'rd-chip--on' : ''}`}
+                    aria-pressed={inviteeIds.includes(c.id)}
+                    onClick={() => setInviteeIds((cur) => (cur.includes(c.id) ? cur.filter((x) => x !== c.id) : [...cur, c.id]))}
+                  >
+                    @{c.username ?? 'user'}
+                  </button>
+                ))}
+              </div>
+              <span className="rd-small rd-muted">{inviteeIds.length ? `${inviteeIds.length} invited` : 'Tap a connection to invite them.'}</span>
+            </div>
+          ) : null}
         </div>
 
         <div className="hc-col">
@@ -320,26 +342,13 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
           <div className="hc-switches">
             <Switch checked={waitingRoom} onChange={setWaitingRoom} title="Waiting room" hint="You admit each person." />
             <Switch checked={allowSelfExit} onChange={setAllowSelfExit} title="People can leave freely" hint="Turn off to control entry and exit yourself." />
-            <Switch checked={rewards} onChange={setRewards} title="Rewards" hint="Give points for quizzes and competitions." />
           </div>
 
-          {connections.length ? (
-            <>
-              <span className="rd-label">Invite connections</span>
-              <div className="hc-invitees rd-scroll">
-                {connections.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={`rd-chip ${inviteeIds.includes(c.id) ? 'rd-chip--on' : ''}`}
-                    onClick={() => setInviteeIds((cur) => (cur.includes(c.id) ? cur.filter((x) => x !== c.id) : [...cur, c.id]))}
-                  >
-                    @{c.username ?? 'user'}
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : null}
+          <span className="rd-label">Rewards</span>
+          <div className="hc-switches hc-rewards">
+            <Switch checked={rewardsGive} onChange={setRewardsGive} title="Give rewards" hint="Free Rendly Tokens for quizzes and best answers (not taken from you)." />
+            <Switch checked={rewardsReceive} onChange={setRewardsReceive} title="Send tokens" hint="Pay participants Rendly Tokens from your own balance." />
+          </div>
         </div>
       </div>
       <footer className="hc-foot">

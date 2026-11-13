@@ -642,6 +642,39 @@
   max-height: 120px;
 }
 
+/* Invite block lives in the left column */
+.hc-invite {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.hc-invite .rd-label {
+  margin-top: 0;
+}
+
+.hc-invite .rd-chip {
+  cursor: pointer;
+  transition: background var(--rd-fast), border-color var(--rd-fast), color var(--rd-fast);
+}
+
+/* Rewards block: give (free, minted) and send (paid from the host's balance) */
+.hc-rewards {
+  margin-top: 0;
+}
+
+.hc-rewards .hr-switch-row {
+  transition: background 160ms var(--rd-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hc-invite .rd-chip,
+  .hc-rewards .hr-switch-row {
+    transition: none;
+  }
+}
+
 .hc-foot {
   flex: none;
   display: flex;

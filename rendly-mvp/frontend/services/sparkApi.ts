@@ -1,13 +1,29 @@
 import { authFetch } from '@/lib/api';
 
 export type SparkMode = 'text' | 'video';
-export type SparkIntent = 'Light chat' | 'Brainstorm' | 'Motivation' | 'Collaborate';
+
+/** Built-in intents shown first in the Spark chooser. Any active intent (custom or purchased) is also valid. */
+export const SPARK_PRESET_INTENTS = ['Light chat', 'Brainstorm', 'Motivation', 'Collaborate'] as const;
+export type SparkPresetIntent = (typeof SPARK_PRESET_INTENTS)[number];
+/** Free-text intent name (2..40 chars, validated server-side). */
+export type SparkIntent = string;
+
+/** Seconds after which the backend widens the match to any shared active intent. */
+export const SPARK_FALLBACK_AFTER_SECONDS = 60;
 
 export type SparkPartner = { id: string; username: string | null; avatar_url: string | null };
 
 export type SparkView =
   | { status: 'idle' }
-  | { status: 'waiting'; queue_id: string; mode: SparkMode; intent: SparkIntent; waited_seconds: number }
+  | {
+      status: 'waiting';
+      queue_id: string;
+      mode: SparkMode;
+      intent: SparkIntent;
+      waited_seconds: number;
+      /** True once the search has widened to any shared active intent. */
+      fallback?: boolean;
+    }
   | {
       status: 'matched';
       mode: SparkMode;
@@ -15,6 +31,9 @@ export type SparkView =
       conversation_id: string;
       initiator: boolean;
       partner: SparkPartner;
+      /** True when the pair was made on a shared intent rather than the exact one requested. */
+      fallback?: boolean;
+      waited_seconds?: number;
     };
 
 /** Parse the JSON body, tolerating empty or non-JSON responses from proxies. */

@@ -6,11 +6,16 @@ import {
   getSparkStatus,
   joinSparkQueue,
   leaveSparkQueue,
+  SPARK_FALLBACK_AFTER_SECONDS,
+  SPARK_PRESET_INTENTS,
   type SparkIntent,
   type SparkMode,
   type SparkView,
 } from '@/services/sparkApi';
-import { DASHBOARD_INTENTS, useDashboard } from '@/hooks/useDashboard';
+import { getMyIntents, intentDaysLeft, type MyIntent } from '@/services/intentsApi';
+import { POINTS_CHANGED_EVENT } from '@/services/pointsApi';
+import { useDashboard } from '@/hooks/useDashboard';
+import MyCustomIntents from '@/components/intents/MyCustomIntents';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
 import { useCallContext } from '@/context/CallContext';
 import { usePresence } from '@/context/SocketContext';
@@ -22,12 +27,38 @@ import { CallControls, CallMedia } from '@/components/call/CallStage';
 import './match.css';
 
 const POLL_MS = 2000;
-const INTENT_COPY: Record<SparkIntent, { blurb: string; icon: string }> = {
+type IntentCopy = { blurb: string; icon: string };
+const DEFAULT_INTENT_COPY: IntentCopy = { blurb: 'Your custom intent', icon: 'sparkles' };
+const INTENT_COPY: Partial<Record<string, IntentCopy>> = {
   'Light chat': { blurb: 'Easy talk, no agenda', icon: 'chat' },
   Brainstorm: { blurb: 'Bounce ideas around', icon: 'spark' },
   Motivation: { blurb: 'Get or give a push', icon: 'star' },
   Collaborate: { blurb: 'Find someone to build with', icon: 'people' },
 };
+
+/** Copy for any intent name; unknown (custom / purchased) intents fall back to a generic blurb. */
+function intentCopyFor(intent: SparkIntent): IntentCopy {
+  return INTENT_COPY[intent] ?? DEFAULT_INTENT_COPY;
+}
+
+const PRESET_SET = new Set<string>(SPARK_PRESET_INTENTS);
+
+/** Active custom / purchased intents only (presets are rendered from SPARK_PRESET_INTENTS). */
+function pickOwnIntents(intents: MyIntent[]): MyIntent[] {
+  const seen = new Set<string>();
+  return intents.filter((i) => {
+    if (i.kind === 'preset' || PRESET_SET.has(i.name) || seen.has(i.name)) return false;
+    seen.add(i.name);
+    return true;
+  });
+}
+
+function daysLeftLabel(expiresAt: string | null): string | null {
+  const days = intentDaysLeft(expiresAt);
+  if (days === null) return null;
+  if (days <= 0) return 'Expires today';
+  return days === 1 ? '1 day left' : `${days} days left`;
+}
 
 type Matched = Extract<SparkView, { status: 'matched' }>;
 type ChatLine = { id: string; mine: boolean; text: string; at: string };
@@ -52,7 +83,32 @@ function ChooseStep({
   error: string | null;
   lookingNow: number | null;
 }) {
-  const intentCopy = INTENT_COPY[intent];
+  const intentCopy = intentCopyFor(intent);
+  const [myIntents, setMyIntents] = useState<MyIntent[]>([]);
+  const [intentsState, setIntentsState] = useState<'loading' | 'ok' | 'error'>('loading');
+
+  const loadMyIntents = useCallback(async () => {
+    try {
+      const list = await getMyIntents();
+      setMyIntents(pickOwnIntents(list));
+      setIntentsState('ok');
+    } catch {
+      setIntentsState('error');
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMyIntents();
+    // A purchase in <MyCustomIntents> emits a points change; creating one is free, so refresh on focus too.
+    const refresh = () => void loadMyIntents();
+    window.addEventListener(POINTS_CHANGED_EVENT, refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.removeEventListener(POINTS_CHANGED_EVENT, refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [loadMyIntents]);
+
   return (
     <div className="spark-choose rd-stagger">
       <header className="spark-choose-head">
@@ -90,22 +146,71 @@ function ChooseStep({
           <span className="spark-label" id="spark-intent-label">
             Intent
           </span>
-          <div className="spark-chips" role="radiogroup" aria-labelledby="spark-intent-label">
-            {DASHBOARD_INTENTS.map((i) => (
-              <button
-                key={i}
-                type="button"
-                role="radio"
-                aria-checked={intent === i}
-                className={`rd-chip spark-chip ${intent === i ? 'rd-chip--on' : ''}`}
-                onClick={() => setIntent(i as SparkIntent)}
-              >
-                <Icon name={INTENT_COPY[i as SparkIntent].icon} size={14} />
-                {i}
-              </button>
-            ))}
+          <div className="spark-intent-groups" role="radiogroup" aria-labelledby="spark-intent-label">
+            <div className="spark-intent-group">
+              <span className="spark-intent-group-title">Presets</span>
+              <div className="spark-chips">
+                {SPARK_PRESET_INTENTS.map((i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    role="radio"
+                    aria-checked={intent === i}
+                    className={`rd-chip spark-chip ${intent === i ? 'rd-chip--on' : ''}`}
+                    onClick={() => setIntent(i)}
+                  >
+                    <Icon name={intentCopyFor(i).icon} size={14} />
+                    {i}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="spark-intent-group">
+              <span className="spark-intent-group-title">My intents</span>
+              {intentsState === 'loading' ? (
+                <div className="spark-chips" aria-busy>
+                  <span className="rd-chip spark-chip spark-chip--skeleton" aria-hidden />
+                  <span className="rd-chip spark-chip spark-chip--skeleton" aria-hidden />
+                </div>
+              ) : myIntents.length === 0 ? (
+                <p className="spark-help spark-intent-empty">
+                  {intentsState === 'error' ? 'Could not load your intents.' : 'No custom intents yet. Buy or create one below to match on it.'}
+                </p>
+              ) : (
+                <div className="spark-chips">
+                  {myIntents.map((i) => {
+                    const left = daysLeftLabel(i.expires_at);
+                    const isPrivate = i.visibility === 'private';
+                    return (
+                      <button
+                        key={i.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={intent === i.name}
+                        className={`rd-chip spark-chip spark-chip--mine ${intent === i.name ? 'rd-chip--on' : ''}`}
+                        onClick={() => setIntent(i.name)}
+                        title={[isPrivate ? 'Private intent' : null, i.is_mine ? 'Created by you' : null, left].filter(Boolean).join(' · ') || undefined}
+                      >
+                        <Icon name={isPrivate ? 'lock' : i.kind === 'location' ? 'map-pin' : 'sparkles'} size={14} />
+                        {i.name}
+                        {left ? <span className="spark-chip-hint">{left}</span> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
           <p className="spark-help">{intentCopy.blurb}.</p>
+        </div>
+
+        <div className="spark-field spark-custom">
+          <span className="spark-label">Custom intents</span>
+          <p className="spark-help">Search an intent to buy it, or create your own, then pick it above.</p>
+          <div className="spark-custom-mount">
+            <MyCustomIntents variant="compact" />
+          </div>
         </div>
 
         {error ? (
@@ -142,7 +247,23 @@ function formatElapsed(total: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-function WaitingStep({ mode, intent, elapsed, onCancel, busy }: { mode: SparkMode; intent: SparkIntent; elapsed: number; onCancel: () => void; busy: boolean }) {
+function WaitingStep({
+  mode,
+  intent,
+  elapsed,
+  widened,
+  onCancel,
+  busy,
+}: {
+  mode: SparkMode;
+  intent: SparkIntent;
+  elapsed: number;
+  /** Backend-reported fallback flag; the UI also widens the copy by itself after SPARK_FALLBACK_AFTER_SECONDS. */
+  widened: boolean;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  const showWidened = widened || elapsed >= SPARK_FALLBACK_AFTER_SECONDS;
   return (
     <div className="spark-waiting" role="status" aria-live="polite">
       <div className="spark-radar" aria-hidden>
@@ -156,12 +277,17 @@ function WaitingStep({ mode, intent, elapsed, onCancel, busy }: { mode: SparkMod
         </span>
       </div>
       <h2 className="spark-waiting-title">Finding someone for {intent}</h2>
+      {showWidened ? (
+        <p className="spark-waiting-widen">
+          <Icon name="sparkles" size={13} /> Widening the search to anyone who shares one of your intents…
+        </p>
+      ) : null}
       <div className="spark-waiting-meta">
         <span className="rd-badge">
           <Icon name={mode === 'video' ? 'video' : 'chat'} size={12} /> {mode === 'video' ? 'Video' : 'Text first'}
         </span>
         <span className="rd-badge">
-          <Icon name={INTENT_COPY[intent].icon} size={12} /> {intent}
+          <Icon name={intentCopyFor(intent).icon} size={12} /> {intent}
         </span>
         <span className="spark-elapsed" aria-label={`${elapsed} seconds`}>
           {formatElapsed(elapsed)}
@@ -368,13 +494,15 @@ function MatchRoom({
             <h2 className="spark-match-name">You matched with {partnerName}</h2>
             <div className="spark-match-tags">
               <span className="spark-match-on">
-                Matched on <span className="rd-spectrum-text">{match.intent}</span>
+                {match.fallback ? 'Matched on a shared intent' : 'Matched on'} <span className="rd-spectrum-text">{match.intent}</span>
               </span>
               <span className="rd-badge">
                 <Icon name={match.mode === 'video' ? 'video' : 'chat'} size={12} /> {match.mode === 'video' ? 'Video' : 'Text first'}
               </span>
             </div>
-            <p className="rd-muted rd-small">Both of you picked “{match.intent}”. Say hi in the chat.</p>
+            <p className="rd-muted rd-small">
+              {match.fallback ? `You both have “${match.intent}” active. Say hi in the chat.` : `Both of you picked “${match.intent}”. Say hi in the chat.`}
+            </p>
             <button
               type="button"
               className="rd-btn rd-btn--primary"
@@ -453,6 +581,7 @@ export default function SparkPage() {
   const [intent, setIntent] = useState<SparkIntent>('Brainstorm');
   const [match, setMatch] = useState<Matched | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [widened, setWidened] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const queuedRef = useRef(false);
@@ -472,6 +601,7 @@ export default function SparkPage() {
       try {
         const view = await joinSparkQueue(m, i);
         setElapsed(0);
+        setWidened(false);
         if (view.status === 'matched') {
           onMatched(view);
           return;
@@ -496,6 +626,7 @@ export default function SparkPage() {
           setMode(v.mode);
           setIntent(v.intent);
           setElapsed(v.waited_seconds);
+          setWidened(Boolean(v.fallback));
           queuedRef.current = true;
           setPhase('waiting');
         }
@@ -511,7 +642,10 @@ export default function SparkPage() {
         const v = await getSparkStatus();
         if (stop) return;
         if (v.status === 'matched') onMatched(v);
-        else if (v.status === 'idle') {
+        else if (v.status === 'waiting') {
+          if (v.fallback) setWidened(true);
+          if (typeof v.waited_seconds === 'number') setElapsed((s) => Math.max(s, v.waited_seconds));
+        } else if (v.status === 'idle') {
           queuedRef.current = false;
           setError('You left the queue. Start again when you are ready.');
           setPhase('choose');
@@ -562,7 +696,7 @@ export default function SparkPage() {
           lookingNow={stats?.lookingForMatch ?? null}
         />
       ) : null}
-      {phase === 'waiting' ? <WaitingStep mode={mode} intent={intent} elapsed={elapsed} onCancel={cancel} busy={busy} /> : null}
+      {phase === 'waiting' ? <WaitingStep mode={mode} intent={intent} elapsed={elapsed} widened={widened} onCancel={cancel} busy={busy} /> : null}
       {phase === 'room' && match ? (
         <MatchRoom
           key={match.partner.id + match.conversation_id}
