@@ -1,0 +1,437 @@
+/* Round 3: the opening, the Rendly lockup, the composer's premium UI, the comparison chapter. */
+
+/* ---------------- Opening: macro crops ---------------- */
+.fl-lcard {
+  gap: 16px;
+}
+.fl-macro-light--blue {
+  background: radial-gradient(80% 70% at 50% 45%, #ffffff 0%, #eef2fb 55%, #dfe6f6 100%);
+}
+.fl-mcard {
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 26px 18px 18px;
+  border-radius: 26px;
+  background: #fff;
+  color: #17181b;
+  box-shadow: 0 30px 70px -30px rgba(40, 52, 80, 0.45), 0 0 0 1px rgba(20, 30, 60, 0.06);
+}
+.fl-mcard-avatar {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #c9d8fb, #e7d4fb);
+  color: #2b3550;
+  font-size: 26px;
+  font-weight: 600;
+}
+.fl-mcard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fl-mcard-name {
+  font-size: 26px;
+  font-weight: 600;
+}
+.fl-mcard-why {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  color: #4b5160;
+}
+.fl-mcard-score {
+  margin-left: 18px;
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  background: linear-gradient(100deg, #3c6fd6, #9b5de5);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.fl-lchip--sel {
+  --sel: 0;
+  border-color: rgba(20, 30, 60, calc(0.14 * (1 - var(--sel))));
+  background: rgb(calc(255 - 229 * var(--sel)) calc(255 - 228 * var(--sel)) calc(255 - 224 * var(--sel)));
+  color: rgb(calc(58 + 197 * var(--sel)) calc(61 + 194 * var(--sel)) calc(68 + 187 * var(--sel)));
+}
+
+/* ---------------- Opening: toggle pill ---------------- */
+.fl-toggle {
+  --dark: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 64px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgb(calc(255 - 232 * var(--dark)) calc(255 - 231 * var(--dark)) calc(255 - 228 * var(--dark)));
+  box-shadow: 0 24px 50px -26px rgba(30, 40, 70, 0.5), 0 0 0 1px rgba(128, 140, 170, calc(0.2 + 0.05 * var(--dark)));
+  font-size: 22px;
+  font-weight: 500;
+}
+.fl-toggle-a,
+.fl-toggle-b {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 20px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.fl-toggle-a {
+  color: rgb(calc(30 + 180 * var(--dark)) calc(32 + 180 * var(--dark)) calc(38 + 180 * var(--dark)));
+}
+.fl-toggle-star {
+  display: inline-flex;
+}
+.fl-toggle-b {
+  --open: 0;
+  overflow: hidden;
+  max-width: calc(var(--open) * 170px);
+  padding: 0 calc(var(--open) * 20px);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.fl-toggle-mark {
+  display: inline-flex;
+}
+.fl-toggle-markimg {
+  width: 22px;
+  height: 24px;
+  color: #fff;
+}
+
+/* ---------------- Opening: gradient headline and phone ---------------- */
+.fl-gink {
+  --ink: 0;
+  display: inline-flex;
+  gap: 0.26em;
+  font-size: 104px;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+}
+.fl-root.is-portrait .fl-gink {
+  font-size: 74px;
+}
+.fl-gink-w {
+  display: inline-block;
+  background: linear-gradient(100deg, #8ab4f8 0%, #a98bf5 35%, #e58fb6 55%, #f1f1f2 75%) no-repeat;
+  background-size: 300% 100%;
+  background-position: calc((1 - var(--ink)) * 100%) 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.fl-phone {
+  width: 380px;
+  height: 760px;
+  padding: 12px;
+  border-radius: 58px;
+  background: #0c0c0e;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: -8px 0 0 -2px rgba(138, 180, 248, 0.8), 8px 0 0 -2px rgba(229, 143, 182, 0.55), 0 0 90px -10px rgba(138, 180, 248, 0.45),
+    0 60px 120px -30px rgba(0, 0, 0, 0.95);
+}
+.fl-phone-screen {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  height: 100%;
+  padding: 26px 24px;
+  border-radius: 46px;
+  background: radial-gradient(120% 80% at 50% 0%, #1b1d24 0%, #111215 60%);
+  overflow: hidden;
+}
+.fl-phone-bar {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 30px;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+.fl-phone-dots {
+  width: 46px;
+  height: 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.4);
+}
+.fl-phone-head {
+  font-size: 31px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  background: linear-gradient(100deg, #8ab4f8 0%, #a98bf5 45%, #e58fb6 75%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.fl-phone-ask {
+  min-height: 34px;
+  font-size: 26px;
+  color: var(--ink-2);
+}
+.fl-phone-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 64px;
+  padding: 0 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  font-size: 20px;
+}
+/* ---------------- Rendly lockup ---------------- */
+.fl-lock {
+  width: 0;
+  height: 0;
+}
+.fl-lock-mark {
+  --halo: 0;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 0 calc(var(--halo) * 40px) rgba(138, 180, 248, calc(var(--halo) * 0.9)));
+}
+.fl-lock-markimg {
+  display: block;
+  width: 137px;
+  height: 150px;
+  color: #fff;
+}
+.fl-lock-wordimg {
+  display: block;
+  height: 146px;
+  width: auto;
+}
+.fl-lock-ring {
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  border: 2px solid rgba(138, 180, 248, 0.8);
+  box-shadow: 0 0 40px rgba(138, 180, 248, 0.6), inset 0 0 40px rgba(197, 138, 249, 0.4);
+}
+.fl-typepill {
+  gap: 14px;
+}
+
+/* ---------------- Composer: premium UI ---------------- */
+.fl-trace {
+  position: absolute;
+  inset: -1px;
+  padding: 2px;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--trace, 1);
+  background: conic-gradient(from calc(var(--ang, 0) * 1deg), transparent 0deg, transparent 260deg, rgba(138, 180, 248, 0.2) 300deg, #8ab4f8 340deg, #fff 352deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.fl-trace--glow {
+  filter: blur(8px);
+  opacity: calc(var(--trace, 1) * 0.9);
+}
+.fl-composer {
+  position: relative;
+}
+.fl-field {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.fl-field-tools {
+  display: flex;
+  gap: 8px;
+}
+.fl-chip--loc {
+  color: var(--blue);
+  border-color: rgba(138, 180, 248, 0.4);
+}
+.fl-chip--icon {
+  width: 38px;
+  padding: 0;
+  justify-content: center;
+}
+.fl-chiprow--wrap {
+  flex-wrap: wrap;
+  height: auto;
+  gap: 8px 10px;
+}
+.fl-btn--morph {
+  --morph: 0;
+  --done: 0;
+  position: relative;
+  justify-content: center;
+  width: calc(190px - var(--morph) * 138px);
+  padding: 0;
+  overflow: visible;
+}
+.fl-btn-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  opacity: calc(1 - var(--morph) * 2.5);
+}
+.fl-btn-spin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(10, 10, 11, 0.2);
+  border-top-color: #0a0a0b;
+}
+.fl-btn-done {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: var(--done);
+}
+.fl-float {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: rgba(22, 23, 26, 0.72);
+  border: 1px solid var(--line-2);
+  color: var(--ink);
+  font-size: 18px;
+  box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.8);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.fl-badge {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #f1f1f2;
+  color: #0a0a0b;
+  box-shadow: 0 0 0 6px rgba(138, 180, 248, 0.25), 0 16px 30px -12px rgba(0, 0, 0, 0.8);
+}
+
+/* ---------------- Why Rendly is different ---------------- */
+.fl-logo {
+  --glow: 0;
+  display: grid;
+  place-items: center;
+  width: 124px;
+  height: 124px;
+  border-radius: 32px;
+  background: rgba(24, 25, 29, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 calc(10px + var(--glow) * 40px) calc(var(--glow) * 4px) color-mix(in srgb, var(--brand) calc(var(--glow) * 70%), transparent),
+    0 20px 40px -20px rgba(0, 0, 0, 0.9);
+}
+.fl-logo-svg {
+  width: 58px;
+  height: 58px;
+}
+.fl-them {
+  font-size: 38px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--ink-2);
+  text-align: center;
+  white-space: nowrap;
+}
+.fl-root.is-portrait .fl-them {
+  font-size: 32px;
+}
+.fl-us {
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  padding: 26px 30px;
+  border-color: rgba(138, 180, 248, 0.35);
+  box-shadow: 0 0 60px -14px rgba(138, 180, 248, 0.45), 0 40px 90px -24px rgba(0, 0, 0, 0.8);
+}
+.fl-us-icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  background: rgba(138, 180, 248, 0.16);
+  color: var(--blue);
+}
+.fl-us-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+}
+.fl-us-kicker {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--blue);
+}
+.fl-collabel {
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.fl-collabel--us {
+  color: var(--blue);
+}
+.fl-arrow {
+  width: 220px;
+  height: 40px;
+}
+.fl-arrow svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.fl-arrow path {
+  fill: none;
+  stroke: var(--blue);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--draw, 0));
+  filter: drop-shadow(0 0 6px rgba(138, 180, 248, 0.8));
+}
+.fl-arrow path.fl-arrow-head {
+  stroke-dashoffset: calc(1 - clamp(0, (var(--draw, 0) - 0.75) * 4, 1));
+}
+.fl-centermark {
+  --halo: 0;
+  filter: drop-shadow(0 0 calc(var(--halo) * 50px) rgba(138, 180, 248, 0.9));
+}
+.fl-centermark-img {
+  display: block;
+  width: 110px;
+  height: 120px;
+  color: #fff;
+}
+
+/* ---------------- Spark exit tilt ---------------- */
+.fl-callbg {
+  perspective: 1500px;
+}

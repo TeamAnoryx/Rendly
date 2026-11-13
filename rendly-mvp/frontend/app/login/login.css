@@ -158,6 +158,9 @@
 }
 .au-title__lead {
   display: block;
+  /* Room for descenders (g, y): background-clip text paints only inside the box */
+  padding-bottom: 0.14em;
+  margin-bottom: -0.14em;
   background: linear-gradient(180deg, #ffffff 30%, #c9ced6 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -940,7 +943,7 @@
   }
 
   .au-side {
-    flex: 0 0 clamp(460px, 40vw, 820px);
+    flex: 0 0 clamp(440px, 35vw, 720px);
     min-height: 100dvh;
     padding: 0 clamp(32px, 4vw, 112px);
   }
@@ -957,7 +960,10 @@
   }
   .au-column,
   .au-column--wide {
-    max-width: clamp(380px, 28vw, 520px);
+    max-width: clamp(360px, 24vw, 460px);
+  }
+  .au-column--wide {
+    max-width: clamp(380px, 27vw, 500px);
   }
   .au-header {
     align-items: flex-start;
@@ -986,7 +992,7 @@
   }
   .au-footer-link {
     margin-top: clamp(14px, 2.4dvh, 26px);
-    text-align: left;
+    text-align: center;
   }
   .au-signature--column {
     display: none;
@@ -996,7 +1002,7 @@
   .au-stage {
     --au-cw: min(var(--au-pw), 28.6dvh);
     --au-cpad: clamp(24px, 3.2vw, 80px);
-    --au-free: calc(100cqw - 1.45 * var(--au-cw) - var(--au-cpad) - 16px);
+    --au-free: calc(100cqw - 1.45 * var(--au-cw) - var(--au-cpad) - 48px);
     position: sticky;
     top: 0;
     z-index: 1;
@@ -1071,7 +1077,7 @@
     margin: 0;
     display: flex;
     flex-direction: column;
-    font-size: clamp(1.75rem, calc(var(--au-free) / 6.6), 7rem);
+    font-size: clamp(1.75rem, calc(var(--au-free) / 7.4), 6.25rem);
     line-height: 1.02;
     font-weight: 400;
     letter-spacing: -0.045em;

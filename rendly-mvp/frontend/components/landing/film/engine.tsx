@@ -48,6 +48,8 @@ interface Entry {
   anchor: boolean;
   range?: readonly [number, number];
   group?: Registry;
+  /** Children of a shifted group see film time minus this. */
+  shift: number;
   cache: Record<string, string>;
   hidden: boolean;
 }
@@ -107,7 +109,7 @@ export function paint(reg: Registry, t: number, L: Layout) {
       if (off) return;
     }
     if (e.fx?.current) apply(e, e.fx.current(t, L));
-    if (e.group) paint(e.group, t, L);
+    if (e.group) paint(e.group, t - e.shift, L);
   });
 }
 
@@ -120,7 +122,8 @@ function useRegister(
   fx: Animator | undefined,
   anchor: boolean,
   range?: readonly [number, number],
-  group?: Registry
+  group?: Registry,
+  shift = 0
 ) {
   const reg = useContext(Ctx);
   const fxRef = useRef(fx);
@@ -136,6 +139,7 @@ function useRegister(
       anchor,
       range: r0 === undefined || r1 === undefined ? undefined : [r0, r1],
       group,
+      shift,
       cache: {},
       hidden: false,
     };
@@ -143,7 +147,7 @@ function useRegister(
     return () => {
       reg.entries.delete(entry);
     };
-  }, [reg, ref, anchor, r0, r1, group]);
+  }, [reg, ref, anchor, r0, r1, group, shift]);
 }
 
 type FxTag = 'div' | 'span' | 'a' | 'p';
@@ -169,23 +173,34 @@ export function Fx({ fx, as = 'div', anchor = true, className = '', children, ..
   );
 }
 
+/** Seconds added to every local time inside a shifted <Shot> (read by footage clips). */
+export const ShiftCtx = createContext(0);
+
 export interface ShotProps {
   /** Visible window in film seconds (include transition overlap). */
   range: readonly [number, number];
+  /**
+   * Re-time the children: they are authored on a local clock and run here
+   * `shift` seconds later. The range stays in film seconds.
+   */
+  shift?: number;
   fx?: Animator;
   className?: string;
   children: React.ReactNode;
 }
 
 /** A layer that only exists (and only animates its children) inside `range`. */
-export function Shot({ range, fx, className = '', children }: ShotProps) {
+export function Shot({ range, shift = 0, fx, className = '', children }: ShotProps) {
   const ref = useRef<HTMLDivElement>(null);
   const groupRef = useRef<Registry>();
   if (!groupRef.current) groupRef.current = new Registry();
-  useRegister(ref, fx, false, range, groupRef.current);
+  const outer = useContext(ShiftCtx);
+  useRegister(ref, fx, false, range, groupRef.current, shift);
   return (
     <div ref={ref} className={`fl-shot ${className}`}>
-      <RegistryProvider value={groupRef.current}>{children}</RegistryProvider>
+      <ShiftCtx.Provider value={outer + shift}>
+        <RegistryProvider value={groupRef.current}>{children}</RegistryProvider>
+      </ShiftCtx.Provider>
     </div>
   );
 }

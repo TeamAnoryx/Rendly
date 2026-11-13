@@ -5,7 +5,23 @@
  * captured frame by frame.
  */
 
-export const DURATION = 40;
+/**
+ * The opening was lengthened after the rest of the film was authored, so every
+ * chapter after it runs OPEN_SHIFT seconds later than its own clock says.
+ */
+export const OPEN_SHIFT = 24;
+/** Film time where the opening hands over to the rest of the film. */
+export const OPEN_END = 9 + OPEN_SHIFT;
+/** The Spark call's last 1.5 s (story 62.2-63.7) was cut; later chapters move up by SPARK_CUT. */
+export const SPARK_CUT_AT = 62.2;
+export const SPARK_CUT = 1.5;
+export const DURATION = 120 + OPEN_SHIFT - SPARK_CUT;
+
+/** Film time for a story-clock time after the opening. */
+export function filmTime(story: number): number {
+  if (story >= SPARK_CUT_AT + SPARK_CUT) return story + OPEN_SHIFT - SPARK_CUT;
+  return Math.min(story, SPARK_CUT_AT) + OPEN_SHIFT;
+}
 /** 120 BPM: one beat every half second, one bar every two. */
 export const BEAT = 0.5;
 
@@ -94,85 +110,123 @@ export interface Shot {
   end: number;
 }
 
-export const SHOTS: readonly Shot[] = [
-  { id: 'why', label: 'Your why', start: 0, end: 5 },
-  { id: 'intent', label: 'Intent', start: 5, end: 11 },
-  { id: 'match', label: 'Matching', start: 11, end: 17 },
-  { id: 'meet', label: 'Match', start: 17, end: 22 },
-  { id: 'call', label: 'Video', start: 22, end: 29 },
-  { id: 'whispers', label: 'Whispers', start: 29, end: 34 },
-  { id: 'end', label: 'Rendly', start: 34, end: 40 },
+/** Chapters after the opening, on their own (pre-OPEN_SHIFT) clock. */
+const STORY: readonly Shot[] = [
+  { id: 'feeds', label: 'Feeds', start: 9, end: 13 },
+  { id: 'why', label: 'Your why', start: 13, end: 20.7 },
+  { id: 'rendly', label: 'Rendly', start: 20.7, end: 29 },
+  { id: 'intent', label: 'Intent', start: 29, end: 37.6 },
+  { id: 'different', label: 'Why Rendly', start: 37.6, end: 45.6 },
+  { id: 'match', label: 'Matching', start: 45.6, end: 51.6 },
+  { id: 'meet', label: 'Meet', start: 51.6, end: 55.4 },
+  { id: 'spark', label: 'Spark call', start: 55.4, end: 63.7 },
+  { id: 'whispers', label: 'Whispers', start: 63.7, end: 76 },
+  { id: 'huddles', label: 'Huddles', start: 76, end: 93 },
+  { id: 'real', label: 'Real life', start: 93, end: 104.75 },
+  { id: 'end', label: 'Get started', start: 104.75, end: 120 },
 ];
+
+/** Fourteen chapters: one person's story from feed to face to face. */
+export const SHOTS: readonly Shot[] = [
+  { id: 'open', label: 'Opening', start: 0, end: 28.7 },
+  { id: 'online', label: 'Online', start: 28.7, end: OPEN_END },
+  ...STORY.map((s) => ({ ...s, start: filmTime(s.start), end: filmTime(s.end) })),
+];
+
+/** The pre-OPEN_SHIFT clock for a film time (the opening is compressed into 0-9). */
+export function storyTime(t: number): number {
+  if (t < OPEN_END) return (t / OPEN_END) * 9;
+  const st = t - OPEN_SHIFT;
+  return st >= SPARK_CUT_AT ? st + SPARK_CUT : st;
+}
+
+/**
+ * Several chapters are authored on their own local clock (the original
+ * one-minute cut) and re-timed into the two-minute film. Film time =
+ * local time + shift. Every shifted range is used exactly once.
+ */
+export const SHIFT = {
+  feeds: 7.4,
+  why: 11.55,
+  match: 28.4,
+  meet: 28.7,
+  offline: 17.1,
+  real: 49.6,
+  end: 51.8,
+} as const;
 
 export function shotAt(t: number): number {
   const i = SHOTS.findIndex((s) => t >= s.start && t < s.end);
   return i < 0 ? SHOTS.length - 1 : i;
 }
 
-export type CueName =
-  | 'whoosh'
-  | 'whip'
-  | 'tick'
-  | 'pop'
-  | 'click'
-  | 'type'
-  | 'blip'
-  | 'chime'
-  | 'riser'
-  | 'impact'
-  | 'shimmer'
-  | 'connect'
-  | 'ping'
-  | 'send'
-  | 'thump';
+/* ---------------- Typed lines (shared by the shots and the cue sheet) ---------------- */
 
-export interface Cue {
-  t: number;
-  name: CueName;
-  /** 0..1 gain multiplier. */
-  gain?: number;
-  /** Stereo pan, -1 (left) to 1 (right). */
-  pan?: number;
+export interface TypedLine {
+  text: string;
+  /** First character appears at t0. */
+  t0: number;
+  /** Seconds per character. */
+  step: number;
 }
 
-const typing = (from: number, to: number, step: number, pan = 0.25): Cue[] => {
-  const out: Cue[] = [];
-  for (let t = from, i = 0; t < to; t += step, i++) out.push({ t, name: 'type', gain: 0.5 + rand(i) * 0.5, pan });
-  return out;
-};
+export const typedEnd = (l: TypedLine) => l.t0 + l.text.length * l.step;
 
-/** The sound design, in film seconds. Soft and sparse, mixed under the music. */
-export const CUES: readonly Cue[] = [
-  { t: 0.3, name: 'shimmer', gain: 0.35 },
-  { t: 4.7, name: 'whoosh', gain: 0.35 },
-  { t: 5.9, name: 'tick', gain: 0.45, pan: -0.2 },
-  { t: 6.6, name: 'click', gain: 0.6, pan: -0.1 },
-  ...typing(7.2, 9.4, 0.085),
-  { t: 9.8, name: 'send', gain: 0.6, pan: 0.3 },
-  { t: 11.2, name: 'shimmer', gain: 0.4 },
-  { t: 12.4, name: 'blip', gain: 0.35, pan: -0.3 },
-  { t: 13.2, name: 'blip', gain: 0.35, pan: 0.3 },
-  { t: 14.0, name: 'blip', gain: 0.35, pan: 0 },
-  { t: 14.9, name: 'chime', gain: 0.7 },
-  { t: 16.8, name: 'whoosh', gain: 0.4 },
-  { t: 17.6, name: 'pop', gain: 0.4, pan: -0.4 },
-  { t: 17.8, name: 'pop', gain: 0.4, pan: 0.4 },
-  { t: 20.6, name: 'click', gain: 0.6 },
-  { t: 22.3, name: 'connect', gain: 0.7 },
-  { t: 28.8, name: 'whoosh', gain: 0.4 },
-  { t: 29.9, name: 'ping', gain: 0.5, pan: -0.2 },
-  { t: 31.3, name: 'send', gain: 0.5, pan: 0.3 },
-  { t: 32.7, name: 'ping', gain: 0.5, pan: -0.2 },
-  { t: 33.8, name: 'whoosh', gain: 0.4 },
-  { t: 35.2, name: 'shimmer', gain: 0.5 },
-  { t: 36.4, name: 'thump', gain: 0.5 },
+/** Characters of `l` visible at time t. */
+export function typed(t: number, l: TypedLine): string {
+  const n = Math.max(0, Math.min(l.text.length, Math.floor((t - l.t0) / l.step) + 1));
+  return t < l.t0 ? '' : l.text.slice(0, n);
+}
+
+/** Her why, typed in the composer (film time). */
+export const PROMPT: TypedLine = { text: 'Meet people who care about the climate', t0: 31.6, step: 0.04 };
+/** Whispers reply (film time). */
+export const REPLY: TypedLine = { text: 'Coffee on Thursday?', t0: 67.4, step: 0.06 };
+export const CAPTIONS: readonly (TypedLine & { who: string })[] = [
+  { who: 'Jordan', text: 'So what pulled you into climate?', t0: 28.6, step: 0.036 },
+  { who: 'You', text: 'I help run a solar co-op on weekends.', t0: 30.5, step: 0.034 },
+  { who: 'Jordan', text: "No way. I've wanted to join one.", t0: 32.1, step: 0.03 },
 ];
 
-/** Cues whose time lies in (from, to], handling the loop seam. */
-export function cuesBetween(from: number, to: number): Cue[] {
-  if (to >= from) return CUES.filter((c) => c.t > from && c.t <= to);
-  return CUES.filter((c) => c.t > from || c.t <= to);
+/** Different reasons people connect, retyped in the growing pill (film time). */
+export const PILL_LINES: readonly TypedLine[] = [
+  { text: 'Find people to start a run club with', t0: 24.55, step: 0.03 },
+  { text: 'Practice Spanish with a native speaker', t0: 25.95, step: 0.028 },
+];
+/** Intents cycled in the composer before she types her own (film time). */
+export const COMPOSER_LINES: readonly TypedLine[] = [
+  { text: 'Talk startups over coffee', t0: 30.35, step: 0.03 },
+  PROMPT,
+];
+
+/**
+ * Text of a field that types each line, holds, then deletes it before the
+ * next one starts. The last line stays.
+ */
+export function retyped(t: number, lines: readonly TypedLine[], del = 0.28): string {
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const l = lines[i];
+    if (t < l.t0) continue;
+    const next = lines[i + 1];
+    const full = typed(t, l);
+    if (!next) return full;
+    const d0 = next.t0 - del;
+    if (t < d0) return full;
+    const keep = Math.round(l.text.length * (1 - clamp((t - d0) / del)));
+    return l.text.slice(0, keep);
+  }
+  return '';
 }
+
+/* ---------------- Clicks (local clocks; see SHIFT) ---------------- */
+
+export const CLICKS = {
+  /** Intent chapter, film time. */
+  chip: 34.4,
+  find: 35.65,
+  /** Meet chapter, local clock (see SHIFT.meet). */
+  hello: 26.15,
+} as const;
 
 export function formatTime(seconds: number): string {
   const s = Math.floor(seconds);

@@ -1,0 +1,247 @@
+/* Per-chapter layout for the launch film. Sizes are canvas px (1600 x 900 / 900 x 1200). */
+
+/* ---------------- 3. Intent: composer ---------------- */
+.fl-composer {
+  display: flex;
+  flex-direction: column;
+  width: 640px;
+  padding: 28px;
+}
+.fl-root.is-portrait .fl-composer {
+  width: 780px;
+}
+.fl-composer-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+}
+.fl-composer-title {
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+.fl-composer-meta {
+  margin-left: auto;
+  font-size: 15px;
+  color: var(--ink-3);
+}
+.fl-field {
+  height: 116px;
+  margin-top: 18px;
+  padding: 16px 20px;
+  border-radius: 18px;
+  border: 1px solid var(--line-2);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 25px;
+  line-height: 1.42;
+  letter-spacing: -0.01em;
+}
+.fl-label {
+  height: 22px;
+  margin-top: 22px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.fl-chiprow {
+  display: flex;
+  gap: 10px;
+  height: 44px;
+  margin-top: 12px;
+}
+.fl-composer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 52px;
+  margin-top: 26px;
+}
+.fl-hint {
+  font-size: 15px;
+  color: var(--ink-3);
+}
+.fl-btn--find {
+  height: 52px;
+  padding: 0 22px;
+  font-size: 19px;
+}
+
+/* ---------------- 4. Matching ---------------- */
+.fl-radar {
+  width: 560px;
+  height: 560px;
+}
+.fl-radar > * {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  translate: -50% -50%;
+}
+.fl-radar-ring {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.fl-radar-ring--1 {
+  width: 250px;
+  height: 250px;
+}
+.fl-radar-ring--2 {
+  width: 410px;
+  height: 410px;
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.fl-radar-ring--3 {
+  width: 560px;
+  height: 560px;
+}
+.fl-radar-sweep {
+  width: 560px;
+  height: 560px;
+  background: conic-gradient(from var(--sweep, 0deg), rgba(138, 180, 248, 0.2), transparent 70deg);
+  -webkit-mask-image: radial-gradient(closest-side, #000 60%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 60%, transparent 100%);
+}
+.fl-radar-you {
+  width: 108px;
+  height: 108px;
+  box-shadow: 0 0 0 3px #f1f1f2, 0 0 0 10px rgba(255, 255, 255, 0.06);
+}
+.fl-node {
+  display: grid;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #1b1c1f;
+  border: 1px solid var(--line-2);
+}
+.fl-node > .fl-face,
+.fl-node > .fl-avatar {
+  width: 100%;
+  height: 100%;
+}
+.fl-node-initials {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.fl-node--match {
+  overflow: visible;
+  box-shadow: 0 0 0 calc(var(--lock, 0) * 4px) #f1f1f2, 0 0 calc(var(--lock, 0) * 46px) rgba(138, 180, 248, 0.6);
+}
+.fl-node--match > .fl-avatar {
+  border-radius: 50%;
+}
+.fl-deckcard {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  width: 540px;
+  height: 152px;
+  padding: 20px;
+}
+.fl-deckcard-photo {
+  flex: none;
+  width: 110px;
+  height: 110px;
+  border-radius: 20px;
+  overflow: hidden;
+}
+.fl-deckcard-photo > * {
+  width: 100%;
+  height: 100%;
+}
+.fl-deckcard-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.fl-deckcard-name {
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+.fl-deckcard-role {
+  font-size: 17px;
+  color: var(--ink-3);
+}
+.fl-deckcard-why {
+  margin-top: 8px;
+  font-size: 17px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.fl-deckcard-score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: auto;
+  font-size: 44px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.fl-deckcard-label {
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.fl-deckcard--match {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.fl-lockring {
+  width: 560px;
+  height: 172px;
+  border-radius: 36px;
+  border: 2px solid rgba(138, 180, 248, 0.85);
+}
+
+/* ---------------- 5. Meet ---------------- */
+.fl-profile {
+  display: flex;
+  flex-direction: column;
+  width: 360px;
+  padding: 18px;
+}
+.fl-profile-photo {
+  height: 220px;
+  border-radius: 18px;
+  overflow: hidden;
+}
+.fl-profile-photo > * {
+  width: 100%;
+  height: 100%;
+}
+.fl-profile-name {
+  margin-top: 18px;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.fl-profile-role {
+  font-size: 17px;
+  color: var(--ink-3);
+}
+.fl-profile-why {
+  margin-top: 12px;
+  font-size: 18px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+.fl-link {
+  width: 140px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #f1f1f2, transparent);
+}
+.fl-btn--hello {
+  height: 64px;
+  padding: 0 30px;
+  font-size: 22px;
+}

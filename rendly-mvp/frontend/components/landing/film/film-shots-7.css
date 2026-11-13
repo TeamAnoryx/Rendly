@@ -1,0 +1,484 @@
+/* Round 4: the long opening (card rows, badge pill, star spin, traced toggle, spinning phone). */
+
+/* ---------------- A: card rows ---------------- */
+.fl-prows {
+  transform: rotate(-14deg) scale(1.08);
+}
+.fl-prow {
+  width: 0;
+  height: 0;
+}
+.fl-pcard {
+  position: absolute;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  width: 316px;
+  height: 92px;
+  padding: 0 18px;
+  margin: -46px 0 0 -158px;
+  border-radius: 24px;
+  background: #fff;
+  color: #17181b;
+  box-shadow: 0 22px 50px -26px rgba(40, 52, 80, 0.5), 0 0 0 1px rgba(20, 30, 60, 0.06);
+}
+.fl-pcard-av {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, hsl(var(--hue) 70% 86%), hsl(calc(var(--hue) + 50) 70% 80%));
+  color: #2b3550;
+  font-size: 22px;
+  font-weight: 600;
+}
+.fl-pcard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.fl-pcard-name {
+  font-size: 21px;
+  font-weight: 600;
+}
+.fl-pcard-why {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  color: #5a606d;
+  white-space: nowrap;
+}
+
+/* ---------------- B: chips inside a glass pill, black badge ---------------- */
+.fl-cwrap {
+  display: inline-flex;
+  align-items: center;
+  padding: 14px 18px 14px 96px;
+}
+.fl-cwrap-pill {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(232, 236, 245, 0.92), rgba(216, 222, 235, 0.92));
+  border: 1px solid rgba(20, 30, 60, 0.16);
+  box-shadow: 0 34px 70px -30px rgba(40, 52, 80, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -10px 24px -14px rgba(40, 52, 80, 0.25);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transform-origin: 70% 50%;
+}
+.fl-cwrap-badge {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-top: -32px;
+  border-radius: 50%;
+  background: #0b0b0c;
+  box-shadow: 0 14px 30px -12px rgba(0, 0, 0, 0.6), 0 0 0 4px rgba(255, 255, 255, 0.9);
+}
+.fl-cwrap-mark {
+  width: 28px;
+  height: 31px;
+  color: #fff;
+}
+.fl-cwrap .fl-lchips {
+  position: relative;
+}
+
+/* ---------------- C: Feeds pill with the star ---------------- */
+.fl-starpill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 64px;
+  padding: 0 28px 0 22px;
+  font-size: 22px;
+  font-weight: 500;
+  color: #1e2026;
+}
+.fl-starpill-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 24px 50px -26px rgba(30, 40, 70, 0.5), 0 0 0 1px rgba(128, 140, 170, 0.2);
+}
+.fl-gstar {
+  display: block;
+  overflow: visible;
+}
+.fl-starpill-star,
+.fl-starpill-label {
+  position: relative;
+  display: inline-flex;
+}
+
+/* ---------------- D: toggle and its traced outline ---------------- */
+.fl-toggle--wide {
+  --dark: 1;
+  width: 300px;
+  justify-content: space-between;
+}
+.fl-toggle-b--open {
+  max-width: none;
+  padding: 0 20px;
+}
+.fl-toggle--wide .fl-toggle-a {
+  color: rgba(255, 255, 255, 0.5);
+}
+.fl-otrace {
+  width: 324px;
+  height: 88px;
+}
+.fl-otrace svg {
+  display: block;
+  overflow: visible;
+}
+.fl-otrace-path {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--draw, 0));
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 12px rgba(197, 138, 249, 0.6));
+}
+
+
+/* ---------------- F: the phone in 3D ---------------- */
+.fl-phone3d {
+  width: 380px;
+  height: 760px;
+  transform-style: preserve-3d;
+}
+.fl-phone-face,
+.fl-phone-back {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  filter: blur(var(--pb, 0px));
+}
+.fl-phone-back {
+  transform: rotateY(180deg);
+  border-radius: 58px;
+  background: linear-gradient(150deg, #2a2c33 0%, #15161a 45%, #0c0d10 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 10px rgba(255, 255, 255, 0.025), 0 60px 120px -30px rgba(0, 0, 0, 0.95);
+}
+.fl-phone-cams {
+  position: absolute;
+  left: 26px;
+  top: 26px;
+  display: grid;
+  grid-template-columns: repeat(2, 54px);
+  gap: 12px;
+  padding: 14px;
+  border-radius: 40px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.fl-phone-cams span {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #3a3d48 0%, #0a0a0c 55%);
+  box-shadow: 0 0 0 4px #1c1d22;
+}
+.fl-phone-backmark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 70px;
+  height: 77px;
+  margin: -38px 0 0 -35px;
+  color: rgba(255, 255, 255, 0.85);
+}
+.fl-phone-ui {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Landscape app: laid out upright inside the rotated screen */
+.fl-land {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 736px;
+  height: 356px;
+  transform: translate(-50%, -50%) rotate(-90deg);
+}
+.fl-land-in {
+  position: absolute;
+  inset: 0;
+  padding: 22px 28px;
+  border-radius: 40px;
+  background: radial-gradient(120% 90% at 20% 0%, #1d1f26 0%, #101114 65%);
+}
+.fl-land-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  font-size: 17px;
+  font-weight: 600;
+}
+.fl-land-mark {
+  width: 20px;
+  height: 22px;
+  color: #fff;
+}
+.fl-land-me-av {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #fff;
+  color: #111;
+  font-size: 14px;
+}
+.fl-land-sec {
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  top: 66px;
+  bottom: 20px;
+}
+.fl-land-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 46px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 17px;
+}
+.fl-land-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 92px);
+  gap: 12px;
+  margin-top: 16px;
+}
+.fl-land-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+}
+.fl-land-av,
+.fl-land-dotpin {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, hsl(var(--hue) 55% 72%), hsl(calc(var(--hue) + 50) 55% 62%));
+  color: #121316;
+  font-size: 17px;
+  font-weight: 600;
+}
+.fl-land-name {
+  font-size: 16px;
+  font-weight: 500;
+}
+.fl-land-km {
+  margin-left: auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.fl-land-map {
+  border-radius: 24px;
+  overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.02);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.fl-land-lines {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 736px;
+  height: 300px;
+  margin: -150px 0 0 -368px;
+}
+.fl-land-path {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 1.6;
+  stroke-dasharray: 6 8;
+  stroke-dashoffset: var(--dash, 0);
+}
+.fl-land-you {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+.fl-land-ring {
+  position: absolute;
+  left: -18px;
+  top: -18px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+}
+.fl-land-me {
+  position: absolute;
+  left: -26px;
+  top: -16px;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 32px;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font-size: 13px;
+  font-weight: 600;
+}
+.fl-land-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.fl-land-pinlabel {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(16, 17, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.fl-land-head.fl-a {
+  top: 26px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #111;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.fl-land-notes {
+  display: flex;
+  gap: 22px;
+}
+.fl-land-left {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 250px;
+  padding: 6px 0 4px;
+}
+.fl-land-big {
+  display: flex;
+  flex-direction: column;
+  font-size: 88px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+.fl-land-bigsub {
+  margin-top: 6px;
+  font-size: 17px;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+.fl-land-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 52px;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font-size: 16px;
+  font-weight: 600;
+}
+.fl-land-btn > * {
+  grid-area: 1 / 1;
+}
+.fl-land-ripple {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+}
+.fl-land-spin {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2.5px solid #111;
+  border-right-color: transparent;
+}
+.fl-land-check {
+  display: inline-flex;
+}
+.fl-land-cursor {
+  position: relative;
+  left: 30px;
+  top: 18px;
+}
+.fl-land-toasts {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.fl-land-toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 74px;
+  padding: 0 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.8);
+}
+.fl-land-ticon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #111;
+}
+.fl-land-tbody {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.fl-land-ttitle {
+  font-size: 16px;
+  font-weight: 600;
+}
+.fl-land-tsub {
+  font-size: 13px;
+  color: var(--ink-2);
+}

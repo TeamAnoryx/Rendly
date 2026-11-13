@@ -8,11 +8,13 @@
  *    sheet in timeline.ts as the clock crosses each cue.
  */
 
-import { BEAT, DURATION, cuesBetween, env, type Cue, type CueName } from './timeline';
+import { cuesBetween, type Cue, type CueName } from './cues';
+import { BEAT, DURATION, env, storyTime } from './timeline';
 
 export const MUSIC_SRC = '/audio/film/music.mp3';
 
-const MUSIC_LEVEL = 0.55;
+/** Music sits low under everything. */
+const MUSIC_LEVEL = 0.35;
 const SFX_LEVEL = 0.75;
 const BED_LEVEL = 0.32;
 const LOOKAHEAD = 0.3;
@@ -173,8 +175,8 @@ export class FilmAudio {
     const want = (this.loops * DURATION + t) % dur;
     if (seeked || Math.abs(el.currentTime - want) > 0.3) el.currentTime = want;
     if (el.paused) void el.play().catch(() => undefined);
-    // Fade in from the top, out into the loop seam; dip under the match impact.
-    const level = MUSIC_LEVEL * env(t, 0, DURATION, 1.2, 1.4) * (1 - 0.35 * env(t, 17.3, 18.4, 0.1, 0.6));
+    // Fade in from the top, out into the loop seam; dip under the collapse into the Rendly mark.
+    const level = MUSIC_LEVEL * env(t, 0, DURATION, 1.2, 1.4) * (1 - 0.35 * env(storyTime(t), 45.0, 46.0, 0.1, 0.6));
     this.musicGain.gain.setTargetAtTime(level, ctx.currentTime, 0.06);
   }
 
@@ -198,18 +200,20 @@ export class FilmAudio {
 
   /** One eighth-note step of the bed. */
   private bedStep(step: number, ft: number, when: number) {
-    const eighth = ((step % 160) + 160) % 160;
+    const cycle = Math.round(DURATION / (BEAT / 2));
+    const eighth = ((step % cycle) + cycle) % cycle;
     const isBeat = eighth % 2 === 0;
     const beatInBar = (eighth / 2) % 4;
     const bar = Math.floor(eighth / 8);
     const chord = CHORDS[bar % 4];
-    const riser = ft >= 15 && ft < 17.5;
-    const drums = ft >= 2.5 && ft < 38.5 && !riser;
+    const st = storyTime(ft);
+    const riser = st >= 44.25 && st < 45.1;
+    const drums = ft >= 0.6 && st < 117 && !riser;
     if (isBeat && beatInBar === 0) this.pad(chord.notes, when, riser ? 0.6 : 1);
     if (drums && isBeat) this.kick(when, beatInBar === 0 ? 1 : 0.8);
     if (drums && !isBeat && ft > 5) this.hat(when);
     if (drums && (beatInBar === 0 || beatInBar === 2) && isBeat) this.bass(chord.root, when);
-    if (ft >= 20 && ft < 35 && !riser) this.pluck(chord.notes[(eighth * 3) % 4] * 2, when);
+    if (st >= 49 && st < 104 && !riser) this.pluck(chord.notes[(eighth * 3) % 4] * 2, when);
   }
 
   private pad(notes: number[], when: number, level: number) {

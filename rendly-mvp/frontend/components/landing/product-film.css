@@ -1,25 +1,19 @@
 /*
- * "From why to hello" launch film: section, stage and player controls.
- * Prefix: .pf2-*. Monochrome like the rest of the site; the film's accents
- * (--fa-blue, --fa-violet, --fa-teal) appear only as thin light.
+ * The Rendly launch film: section, stage and the player dock.
+ * Prefixes: .pf2-* (section, frame), .pf3-* (dock). Monochrome like the rest
+ * of the site; the film's accents only appear as faint light.
  */
 
 .pf2 {
   position: relative;
   isolation: isolate;
   overflow: clip;
-  --fa-blue: #8ab4f8;
-  --fa-violet: #c58af9;
-  --fa-teal: #78d9ec;
+  --pf-ease: cubic-bezier(0.2, 0, 0, 1);
+  --pf-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .pf2-container {
   width: min(100% - 32px, 1240px);
   margin-inline: auto;
-}
-@media (min-width: 1800px) {
-  .pf2-container {
-    width: min(100% - 64px, 1480px);
-  }
 }
 .pf2-head {
   margin-inline: auto;
@@ -29,181 +23,355 @@
   margin-inline: auto;
 }
 
+/* The player is capped so the whole frame and its dock fit on screen at once. */
 .pf2-player {
   position: relative;
+  width: min(100%, 1080px, calc(64dvh * 16 / 9));
+  margin: clamp(8px, 2vh, 24px) auto 0;
+}
+.pf2.is-portrait .pf2-player {
+  width: min(100%, 520px, calc(62dvh * 3 / 4));
 }
 .pf2-shell {
   position: relative;
 }
-/* Soft ambient light under the stage, never a colour wash. */
 .pf2-shell::before {
   content: '';
   position: absolute;
-  inset: 8% 10% -4%;
+  inset: 6% 8% 10%;
   z-index: -1;
   border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(138, 180, 248, 0.1), rgba(197, 138, 249, 0.05) 55%, transparent);
-  filter: blur(40px);
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.07), transparent);
+  filter: blur(50px);
   pointer-events: none;
 }
-
 .pf2-frame {
   position: relative;
-  border-radius: clamp(18px, 2vw, 28px);
+  border-radius: clamp(16px, 1.8vw, 26px);
   padding: 1px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04) 40%, rgba(255, 255, 255, 0.06));
-  box-shadow: 0 40px 120px -40px rgba(0, 0, 0, 0.9);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04) 45%, rgba(255, 255, 255, 0.08));
+  box-shadow: 0 50px 120px -50px rgba(0, 0, 0, 0.95);
 }
 .pf2-stage {
   position: relative;
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  border-radius: calc(clamp(18px, 2vw, 28px) - 1px);
-  background: radial-gradient(120% 90% at 50% 0%, #121316 0%, #0a0b0c 55%, #08090a 100%);
+  border-radius: calc(clamp(16px, 1.8vw, 26px) - 1px);
+  background: #0a0a0b;
   contain: layout paint;
 }
 .pf2.is-portrait .pf2-stage {
   aspect-ratio: 3 / 4;
 }
 .pf2-stage::after {
-  /* inner top highlight */
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
   pointer-events: none;
 }
 
-/* ---------------- Controls ---------------- */
-.pf2-controls {
+/* ---------------- Dock ---------------- */
+.pf3-dock {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-top: 18px;
-  padding: 0 4px 16px;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 8px 10px 8px 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 20px 50px -30px rgba(0, 0, 0, 0.9);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
 }
-.pf2-btn {
+.pf3-btn {
+  position: relative;
   display: inline-grid;
   place-items: center;
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 999px;
-  border: 1px solid var(--rd-border, rgba(255, 255, 255, 0.08));
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--rd-text-2, #d4d4d8);
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(241, 241, 242, 0.78);
   cursor: pointer;
-  transition: background 0.2s cubic-bezier(0.2, 0, 0, 1), color 0.2s, border-color 0.2s;
+  transition: background 0.25s var(--pf-ease), color 0.25s var(--pf-ease), transform 0.35s var(--pf-spring),
+    border-color 0.25s var(--pf-ease);
 }
-.pf2-btn:hover {
+.pf3-btn:hover {
   background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.1);
   color: #fff;
+  transform: translateY(-1px);
 }
-.pf2-btn:focus-visible,
-.pf2-scrub:focus-visible {
-  outline: 2px solid var(--fa-blue);
+.pf3-btn:active {
+  transform: scale(0.9);
+  transition-duration: 0.08s;
+}
+.pf3-btn:focus-visible,
+.pf3-scrub:focus-visible {
+  outline: 2px solid #fff;
   outline-offset: 3px;
 }
-.pf2-btn--play {
+.pf3-btn--play {
+  width: 48px;
+  height: 48px;
   background: #f1f1f2;
-  border-color: transparent;
-  color: #0a0b0c;
+  color: #0a0a0b;
+  box-shadow: 0 6px 18px -6px rgba(255, 255, 255, 0.35);
 }
-.pf2-btn--play:hover {
+.pf3-btn--play:hover {
   background: #fff;
   color: #000;
+  transform: scale(1.06);
 }
-.pf2-sound.is-on {
-  color: var(--fa-blue);
-  border-color: rgba(138, 180, 248, 0.35);
+.pf3-btn--play:active {
+  transform: scale(0.9);
 }
-.pf2-time {
-  flex: none;
-  min-width: 78px;
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  color: var(--rd-muted, #8a8f98);
-}
-.pf2-time-total {
-  opacity: 0.6;
-}
-.pf2-scrub {
+
+/* Play/pause morph: two halves of a triangle become two bars. */
+.pf3-pp {
   position: relative;
-  flex: 1;
-  height: 32px;
-  cursor: pointer;
-  touch-action: none;
-  border-radius: 6px;
+  width: 16px;
+  height: 18px;
+  margin-left: 3px;
+  transition: margin 0.35s var(--pf-ease);
 }
-.pf2-track {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 2px;
-  margin-top: -1px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.1);
-  overflow: hidden;
-}
-.pf2-fill {
-  position: absolute;
-  inset: 0;
-  transform-origin: 0 50%;
-  transform: scaleX(0);
-  background: linear-gradient(90deg, var(--fa-blue), var(--fa-violet));
-}
-.pf2-tick {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-}
-.pf2-tick::before {
+.pf3-pp::before,
+.pf3-pp::after {
   content: '';
   position: absolute;
-  left: 0;
-  top: 50%;
-  width: 1px;
-  height: 8px;
-  margin-top: -4px;
+  inset: 0;
+  background: currentColor;
+  transition: clip-path 0.38s var(--pf-ease);
+}
+.pf3-pp::before {
+  clip-path: polygon(0 0, 50% 25%, 50% 75%, 0 100%);
+}
+.pf3-pp::after {
+  clip-path: polygon(50% 25%, 100% 50%, 100% 50%, 50% 75%);
+}
+.pf3-pp.is-playing {
+  margin-left: 0;
+}
+.pf3-pp.is-playing::before {
+  clip-path: polygon(8% 0, 38% 0, 38% 100%, 8% 100%);
+}
+.pf3-pp.is-playing::after {
+  clip-path: polygon(62% 0, 92% 0, 92% 100%, 62% 100%);
+}
+
+/* Sound: waves breathe while on; a cross draws in when muted. */
+.pf3-sound path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform-box: fill-box;
+  transform-origin: 0 50%;
+  transition: opacity 0.3s var(--pf-ease), transform 0.4s var(--pf-spring), stroke-dashoffset 0.35s var(--pf-ease);
+}
+.pf3-sound .pf3-sound-body {
+  fill: currentColor;
+  fill-opacity: 0.18;
+}
+.pf3-sound-w1 {
+  animation: pf3-wave 1.4s var(--pf-ease) infinite;
+}
+.pf3-sound-w2 {
+  animation: pf3-wave 1.4s var(--pf-ease) 0.18s infinite;
+}
+.pf3-sound-x {
+  stroke-dasharray: 16;
+  stroke-dashoffset: 16;
+  opacity: 0;
+}
+.pf3-sound.is-muted .pf3-sound-w1,
+.pf3-sound.is-muted .pf3-sound-w2 {
+  animation: none;
+  opacity: 0;
+  transform: scale(0.3);
+}
+.pf3-sound.is-muted .pf3-sound-x {
+  stroke-dashoffset: 0;
+  opacity: 1;
+}
+@keyframes pf3-wave {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
+}
+.pf3-btn.is-on {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Full screen: the corners spread on hover, and turn inward when active. */
+.pf3-fs path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transition: transform 0.35s var(--pf-spring);
+}
+.pf3-btn:hover .pf3-fs-tl {
+  transform: translate(-1.5px, -1.5px);
+}
+.pf3-btn:hover .pf3-fs-tr {
+  transform: translate(1.5px, -1.5px);
+}
+.pf3-btn:hover .pf3-fs-bl {
+  transform: translate(-1.5px, 1.5px);
+}
+.pf3-btn:hover .pf3-fs-br {
+  transform: translate(1.5px, 1.5px);
+}
+.pf3-fs.is-active path {
+  transform: rotate(180deg);
+}
+
+/* Timecode and chapter label. */
+.pf3-mid {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 4px;
+}
+.pf3-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  height: 16px;
+  font-size: 12.5px;
+  line-height: 16px;
+}
+.pf3-chapter {
+  display: inline-flex;
+  gap: 8px;
+  color: #f1f1f2;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: pf3-label 0.45s var(--pf-ease);
+}
+.pf3-chapter-num {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  color: rgba(241, 241, 242, 0.42);
+}
+@keyframes pf3-label {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+    filter: blur(3px);
+  }
+}
+.pf3-time {
+  flex: none;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  color: rgba(241, 241, 242, 0.6);
+}
+.pf3-time-total {
+  opacity: 0.55;
+}
+
+/* Segmented chapter scrubber. */
+.pf3-scrub {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  cursor: pointer;
+  touch-action: none;
+  --t: 0;
+  --k: 0;
+}
+.pf3-seg {
+  position: relative;
+  flex-basis: 0;
+  min-width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  transition: height 0.25s var(--pf-ease), background 0.25s var(--pf-ease), transform 0.3s var(--pf-spring);
+}
+.pf3-seg-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #f1f1f2;
+  transform-origin: 0 50%;
+  transform: scaleX(clamp(0, calc((var(--t) - var(--s)) / var(--d)), 1));
+}
+.pf3-seg.is-on {
   background: rgba(255, 255, 255, 0.22);
 }
-.pf2-tick:first-child::before {
-  display: none;
+.pf3-scrub:hover .pf3-seg {
+  height: 6px;
 }
-.pf2-tick-label {
+.pf3-seg.is-hover {
+  height: 9px !important;
+  background: rgba(255, 255, 255, 0.28);
+  transform: translateY(-1px);
+}
+.pf3-seg-tip {
   position: absolute;
-  left: 0;
-  bottom: -14px;
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 10.5px;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f1f1f2;
+  color: #0a0a0b;
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
-  color: rgba(255, 255, 255, 0.3);
-  transition: color 0.3s;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 6px) scale(0.92);
+  transition: opacity 0.2s var(--pf-ease), transform 0.3s var(--pf-spring);
 }
-.pf2-tick:first-child .pf2-tick-label {
-  left: 0;
+.pf3-seg.is-hover .pf3-seg-tip {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
 }
-.pf2-tick.is-on .pf2-tick-label {
-  color: var(--rd-text-2, #d4d4d8);
-}
-.pf2-knob {
+.pf3-knob {
   position: absolute;
   top: 50%;
-  width: 10px;
-  height: 10px;
-  margin: -5px 0 0 -5px;
+  left: calc(var(--k) * 100%);
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 0 0 4px rgba(138, 180, 248, 0.18);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.14), 0 2px 8px rgba(0, 0, 0, 0.5);
   opacity: 0;
-  transition: opacity 0.2s;
+  transform: scale(0.4);
+  transition: opacity 0.2s var(--pf-ease), transform 0.3s var(--pf-spring);
+  pointer-events: none;
 }
-.pf2-scrub:hover .pf2-knob,
-.pf2-scrub:focus-visible .pf2-knob {
+.pf3-scrub:hover .pf3-knob,
+.pf3-scrub:focus-visible .pf3-knob {
   opacity: 1;
+  transform: scale(1);
 }
 
 /* ---------------- Full screen ---------------- */
@@ -215,40 +383,60 @@
   background: #08090a;
 }
 .pf2-shell.is-fs .pf2-frame,
-.pf2-shell.is-fs .pf2-controls {
-  width: min(100%, (100vh - 120px) * 16 / 9);
+.pf2-shell.is-fs .pf3-dock {
+  width: min(100%, (100vh - 130px) * 16 / 9);
   margin-inline: auto;
 }
 
 /* ---------------- Small screens ---------------- */
 @media (max-width: 720px) {
-  .pf2-tick-label {
+  .pf3-dock {
+    gap: 6px;
+    padding: 6px 8px 6px 6px;
+  }
+  .pf3-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .pf3-btn--play {
+    width: 42px;
+    height: 42px;
+  }
+  .pf3-chapter {
     display: none;
   }
-  .pf2-controls {
-    gap: 10px;
-    margin-top: 14px;
+  .pf3-meta {
+    justify-content: flex-end;
   }
-  .pf2-btn {
-    width: 36px;
-    height: 36px;
+  .pf3-scrub {
+    gap: 3px;
   }
-  .pf2-time {
-    min-width: 0;
+  .pf3-seg {
+    height: 5px;
   }
-  .pf2-time-total {
+  .pf3-seg-tip {
     display: none;
   }
 }
 @media (max-width: 400px) {
-  .pf2-btn--fs {
+  .pf3-btn--fs {
     display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .pf2-btn,
-  .pf2-knob,
-  .pf2-tick-label {
+  .pf3-btn,
+  .pf3-seg,
+  .pf3-seg-tip,
+  .pf3-knob,
+  .pf3-pp::before,
+  .pf3-pp::after,
+  .pf3-sound path,
+  .pf3-fs path {
     transition: none !important;
+  }
+  .pf3-sound-w1,
+  .pf3-sound-w2,
+  .pf3-chapter {
+    animation: none !important;
   }
 }

@@ -4,15 +4,39 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Reveal from './Reveal';
 import { FilmAudio } from './film/audio';
 import Controls from './film/Controls';
-import { LANDSCAPE, PORTRAIT, Registry, RegistryProvider, paint, type Layout } from './film/engine';
-import { Ambient, ShotIntent, ShotMatching, ShotWhy } from './film/shots-open';
-import { ShotCall, ShotEnd, ShotMeet, ShotWhispers } from './film/shots-close';
-import { DURATION, formatTime, shotAt } from './film/timeline';
+import { ClipBank, ClipProvider } from './film/clips';
+import { LANDSCAPE, PORTRAIT, Registry, RegistryProvider, Shot, paint, type Layout } from './film/engine';
+import { ShotOnline, ShotWhy } from './film/shots-a';
+import { ShotIntent } from './film/shots-b';
+import { ShotMatching, ShotMeet } from './film/shots-c';
+import { ShotSpark } from './film/shots-d';
+import { ShotEnd, ShotReal } from './film/shots-e';
+import { ShotOpen } from './film/shots-f';
+import { ShotIntroducing, ShotWhyScatter } from './film/shots-g';
+import { ShotWhispers } from './film/shots-h';
+import { ShotEndReasons, ShotOffline, ShotOutThere } from './film/shots-i';
+import { ShotHuddles } from './film/shots-j';
+import { ShotDifferent } from './film/shots-k';
+import { DURATION, OPEN_END, OPEN_SHIFT, SHIFT, SPARK_CUT, SPARK_CUT_AT, ease, formatTime, seg, shotAt } from './film/timeline';
+import type { Animator } from './film/engine';
 import './film/film.css';
+import './film/film-shots.css';
+import './film/film-shots-2.css';
+import './film/film-shots-3.css';
+import './film/film-shots-4.css';
+import './film/film-shots-5.css';
+import './film/film-shots-6.css';
+import './film/film-shots-7.css';
 import './product-film.css';
 
 /** Where reduced-motion viewers rest: the finished end card. */
-const STILL_T = 39;
+const STILL_T = DURATION - 1;
+
+/** Huddles hands over to the sunset: the room drifts forward, blurs and dissolves. */
+const huddlesOut: Animator = (t) => {
+  const k = seg(t, 92.3, 93.35, ease.inCubic);
+  return { s: 1 + 0.12 * k, blur: 14 * k, o: 1 - seg(t, 92.75, 93.35) };
+};
 
 /** Tracks prefers-reduced-motion, including live changes. */
 function useReducedMotion(): boolean {
@@ -71,7 +95,7 @@ declare global {
 }
 
 /**
- * "From why to hello": a 40-second launch film of the real Rendly flow,
+ * "From why to hello": a launch film of the real Rendly flow,
  * rendered live (DOM + canvas) from one clock so it scrubs, loops and stays
  * sharp at any size. Plays muted while on screen; sound is opt-in.
  */
@@ -80,12 +104,11 @@ export default function ProductFilm() {
   const shellRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const fillRef = useRef<HTMLSpanElement>(null);
-  const knobRef = useRef<HTMLSpanElement>(null);
   const timeRef = useRef<HTMLSpanElement>(null);
   const scrubRef = useRef<HTMLDivElement>(null);
 
   const registry = useMemo(() => new Registry(), []);
+  const clips = useMemo(() => new ClipBank(), []);
   const audioRef = useRef<FilmAudio | null>(null);
   const tRef = useRef(0);
   const prevRef = useRef(0);
@@ -111,14 +134,17 @@ export default function ProductFilm() {
     (t: number, seeked: boolean) => {
       const L = layoutRef.current;
       paint(registry, t, L);
-      const k = t / DURATION;
-      if (fillRef.current) fillRef.current.style.transform = `scaleX(${k.toFixed(4)})`;
-      if (knobRef.current) knobRef.current.style.left = `${(k * 100).toFixed(3)}%`;
+      clips.sync(t, playingRef.current);
+      const scrub = scrubRef.current;
+      if (scrub) {
+        scrub.style.setProperty('--t', t.toFixed(3));
+        scrub.style.setProperty('--k', (t / DURATION).toFixed(5));
+      }
       if (timeRef.current) {
         const label = formatTime(t);
         if (timeRef.current.textContent !== label) timeRef.current.textContent = label;
       }
-      scrubRef.current?.setAttribute('aria-valuenow', String(Math.round(t)));
+      scrub?.setAttribute('aria-valuenow', String(Math.round(t)));
       const s = shotAt(t);
       if (s !== shotRef.current) {
         shotRef.current = s;
@@ -127,7 +153,7 @@ export default function ProductFilm() {
       audioRef.current?.frame(prevRef.current, t, playingRef.current, seeked);
       prevRef.current = t;
     },
-    [registry]
+    [registry, clips]
   );
 
   const seek = useCallback(
@@ -145,8 +171,9 @@ export default function ProductFilm() {
     return () => {
       audio.dispose();
       audioRef.current = null;
+      clips.pauseAll();
     };
-  }, []);
+  }, [clips]);
 
   // Reduced motion rests on the finished end card until the viewer presses play.
   useEffect(() => {
@@ -251,7 +278,7 @@ export default function ProductFilm() {
       <div className="pf2-container">
         <header className="ld-section-head pf2-head">
           <Reveal as="p" className="ld-eyebrow">
-            The film · 0:40
+            The film · 2:24
           </Reveal>
           <Reveal as="h2" delay={60} className="ld-h2">
             <span id="pf2-title">From why to hello, in one flow.</span>
@@ -271,14 +298,45 @@ export default function ProductFilm() {
                   style={{ width: layout.W, height: layout.H }}
                 >
                   <RegistryProvider value={registry}>
-                    <Ambient />
-                    <ShotWhy />
-                    <ShotIntent />
-                    <ShotMatching />
-                    <ShotMeet />
-                    <ShotCall />
-                    <ShotWhispers />
-                    <ShotEnd />
+                    <ClipProvider value={clips}>
+                      <ShotOpen />
+                      <Shot range={[OPEN_END - 0.1, SPARK_CUT_AT + OPEN_SHIFT + 0.45]} shift={OPEN_SHIFT}>
+                      <Shot range={[9, 13.1]} shift={SHIFT.feeds}>
+                        <ShotOnline />
+                      </Shot>
+                      <ShotWhyScatter />
+                      <Shot range={[16.6, 20.75]} shift={SHIFT.why}>
+                        <ShotWhy />
+                      </Shot>
+                      <ShotIntroducing />
+                      <ShotIntent />
+                      <ShotDifferent />
+                      <Shot range={[45.3, 51.75]} shift={SHIFT.match}>
+                        <ShotMatching />
+                      </Shot>
+                      <Shot range={[51.6, 64.1]} shift={SHIFT.meet}>
+                        <ShotMeet />
+                        <ShotSpark />
+                      </Shot>
+                      </Shot>
+                      <Shot range={[SPARK_CUT_AT + OPEN_SHIFT - 0.1, DURATION]} shift={OPEN_SHIFT - SPARK_CUT}>
+                      <ShotWhispers />
+                      <Shot range={[76, 93.4]} fx={huddlesOut}>
+                        <ShotHuddles />
+                      </Shot>
+                      <Shot range={[92.8, 95.6]} shift={SHIFT.offline}>
+                        <ShotOffline />
+                      </Shot>
+                      <Shot range={[95.4, 102.95]} shift={SHIFT.real}>
+                        <ShotReal />
+                      </Shot>
+                      <ShotOutThere />
+                      <Shot range={[104.7, 120]} shift={SHIFT.end}>
+                        <ShotEnd />
+                      </Shot>
+                      <ShotEndReasons />
+                      </Shot>
+                    </ClipProvider>
                   </RegistryProvider>
                 </div>
               </div>
@@ -293,16 +351,19 @@ export default function ProductFilm() {
               onFullscreen={toggleFullscreen}
               onSeek={seek}
               now={() => tRef.current}
-              fillRef={fillRef}
-              knobRef={knobRef}
               timeRef={timeRef}
               scrubRef={scrubRef}
             />
           </div>
           <p className="sr-only">
-            A 40-second film of Rendly. Marco picks Co-founder as his intent and writes his why. Rendly matches him with
-            Elena, who shares it. They see each other's profiles, meet on a video call with live captions, and keep
-            talking in Whispers. It ends on the Rendly logo and the line: Find your who.{' '}
+            A film of Rendly that follows one person. Cities and feeds are full of people, but nobody
+            is really meeting. Rendly is introduced: people tell it why they are here, from starting a run club to
+            practising Spanish or meeting designers in Berlin. She types her own why, to meet people who care about
+            the climate, and picks Friends. The film contrasts apps built around feeds, chats and profiles with
+            Rendly, built around meeting. Rendly matches her with Jordan, who shares that why. They say hello on a
+            Spark video call with live captions, keep talking in Whispers, then join a Huddle, a small live room of up
+            to six, where they plan a Saturday meetup. They meet in person, and the film ends on the Rendly logo and
+            the line: Know your why. Find your who.{' '}
             <a href="/auth/sign-up">Get started with Rendly</a>
           </p>
         </Reveal>
