@@ -58,6 +58,27 @@ export class ClipBank {
     this.entries.forEach((c) => syncClip(c, t, playing));
   }
 
+  /** Resolves once every on-screen clip shows its exact frame (frame export). */
+  async settle(): Promise<void> {
+    const waits: Promise<void>[] = [];
+    this.entries.forEach((c) => {
+      const el = c.el;
+      if (el.closest('[style*="display: none"]') || !el.getAttribute('src')) return;
+      waits.push(
+        new Promise<void>((resolve) => {
+          const done = () => resolve();
+          const check = () => {
+            if (el.readyState >= 2 && !el.seeking) done();
+            else setTimeout(check, 10);
+          };
+          check();
+          setTimeout(done, 5000);
+        })
+      );
+    });
+    await Promise.all(waits);
+  }
+
   /** Pause everything (film unmounted, off screen). */
   pauseAll() {
     this.entries.forEach((c) => {
@@ -104,7 +125,7 @@ function syncClip(c: ClipEntry, t: number, playing: boolean) {
     if (el.paused) void el.play().catch(() => undefined);
   } else {
     if (!el.paused) el.pause();
-    if (Math.abs(el.currentTime - v) > 0.04) seekTo(c, v);
+    if (Math.abs(el.currentTime - v) > 0.01) seekTo(c, v);
   }
 }
 

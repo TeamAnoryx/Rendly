@@ -8,16 +8,18 @@
  *    sheet in timeline.ts as the clock crosses each cue.
  */
 
-import { cuesBetween, type Cue, type CueName } from './cues';
+import { CUES, cuesBetween, type Cue, type CueName } from './cues';
 import { BEAT, DURATION, env, storyTime } from './timeline';
 
 export const MUSIC_SRC = '/audio/film/music.mp3';
 
 /** Music sits low under everything. */
-const MUSIC_LEVEL = 0.35;
+const MUSIC_LEVEL = 0.45;
 const SFX_LEVEL = 0.75;
 const BED_LEVEL = 0.32;
 const LOOKAHEAD = 0.3;
+/** Seconds of drift tolerated before the music is re-seeked to the film clock. */
+const MUSIC_RESYNC = 1.5;
 
 type MusicState = 'idle' | 'loading' | 'ok' | 'missing';
 
@@ -42,6 +44,8 @@ export class FilmAudio {
   private enabled = false;
   private loops = 0;
   private bedCursor = -1;
+  /** Fixed clock for offline rendering; null when live. */
+  private clockAt: number | null = null;
 
   get isEnabled(): boolean {
     return this.enabled;
@@ -94,6 +98,38 @@ export class FilmAudio {
     if (playing && !seeked) for (const cue of cuesBetween(prev, t)) this.play(cue);
     this.syncMusic(t, playing, seeked);
     if (this.musicState === 'missing') this.scheduleBed(t, playing, seeked);
+  }
+
+  /**
+   * Renders the whole film's soundtrack (music + every cue) offline, with the
+   * same levels and envelopes as live playback. For exporting the film as a file.
+   */
+  async renderOffline(sampleRate = 48000): Promise<AudioBuffer> {
+    const ctx = new OfflineAudioContext(2, Math.ceil(sampleRate * DURATION), sampleRate);
+    this.build(ctx as unknown as AudioContext);
+    if (!this.master || !this.musicGain) throw new Error('audio graph not built');
+    this.master.gain.value = 0.9;
+    const res = await fetch(MUSIC_SRC);
+    if (!res.ok) throw new Error(`music fetch failed: ${res.status}`);
+    const music = await ctx.decodeAudioData(await res.arrayBuffer());
+    const src = ctx.createBufferSource();
+    src.buffer = music;
+    src.connect(this.musicGain);
+    src.start(0);
+    const step = 0.02;
+    for (let t = 0; t < DURATION; t += step) {
+      const level = MUSIC_LEVEL * env(t, 0, DURATION, 1.2, 1.4) * (1 - 0.35 * env(storyTime(t), 45.0, 46.0, 0.1, 0.6));
+      this.musicGain.gain.setValueAtTime(level, t);
+    }
+    for (const cue of CUES) {
+      if (cue.t < 0 || cue.t >= DURATION) continue;
+      this.clockAt = cue.t;
+      this.play(cue);
+    }
+    this.clockAt = null;
+    const out = await ctx.startRendering();
+    this.ctx = null;
+    return out;
   }
 
   /* ---------------- graph ---------------- */
@@ -172,8 +208,10 @@ export class FilmAudio {
       return;
     }
     const dur = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : DURATION;
-    const want = (this.loops * DURATION + t) % dur;
-    if (seeked || Math.abs(el.currentTime - want) > 0.3) el.currentTime = want;
+    const want = t % dur;
+    // Let the track play on its own clock: re-seeking every small drift makes it stutter.
+    // Only jump on a user seek, a film loop, or a real desync (tab was hidden, buffering).
+    if (seeked || Math.abs(el.currentTime - want) > MUSIC_RESYNC) el.currentTime = want;
     if (el.paused) void el.play().catch(() => undefined);
     // Fade in from the top, out into the loop seam; dip under the collapse into the Rendly mark.
     const level = MUSIC_LEVEL * env(t, 0, DURATION, 1.2, 1.4) * (1 - 0.35 * env(storyTime(t), 45.0, 46.0, 0.1, 0.6));
@@ -306,7 +344,7 @@ export class FilmAudio {
   /* ---------------- effects ---------------- */
 
   private now(): number {
-    return this.ctx?.currentTime ?? 0;
+    return this.clockAt ?? this.ctx?.currentTime ?? 0;
   }
 
   private out(pan = 0, send = 0): AudioNode | null {

@@ -90,7 +90,13 @@ function usePortrait(): boolean {
 
 declare global {
   interface Window {
-    __rendlyFilm?: { seek: (t: number) => void; pause: () => void; play: () => void };
+    __rendlyFilm?: {
+      seek: (t: number) => void;
+      pause: () => void;
+      play: () => void;
+      settle: () => Promise<void>;
+      renderAudio: () => Promise<AudioBuffer>;
+    };
   }
 }
 
@@ -232,11 +238,13 @@ export default function ProductFilm() {
         setUserPaused(false);
         setUserPlayed(true);
       },
+      settle: () => clips.settle(),
+      renderAudio: () => new FilmAudio().renderOffline(),
     };
     return () => {
       delete window.__rendlyFilm;
     };
-  }, [seek]);
+  }, [seek, clips]);
 
   const togglePlay = () => {
     if (playing) {
