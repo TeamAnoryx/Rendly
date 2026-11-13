@@ -7,6 +7,7 @@ import { useCurrentUser } from '@/context/CurrentUserContext';
 import { auth } from '@/services/auth';
 import { getMyPoints } from '@/services/pointsApi';
 import { RendlyLockup, RendlyMark } from '@/components/brand/Brand';
+import { TokenCoin } from '@/components/brand/TokenCoin';
 import { Icon } from './Icon';
 import { NotificationBell } from './NotificationBell';
 import { Toasts } from './Toasts';
@@ -201,8 +202,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="shell-crumb-current">{titleFor(pathname)}</span>
           </div>
           <div className="rd-topbar-actions">
-            <Link href="/dashboard/profile#rankings" className="rd-points" title="Your points">
-              <Icon name="star" size={13} />
+            <Link href="/dashboard/profile#rankings" className="rd-points" title="Your Rendly Tokens">
+              <TokenCoin size={14} />
               <span>{points === null ? '—' : points.toLocaleString('en-IN')}</span>
             </Link>
             <NotificationBell />

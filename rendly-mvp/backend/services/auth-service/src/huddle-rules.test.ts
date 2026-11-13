@@ -1,4 +1,5 @@
 import {
+  hotReason,
   buildInviteUrl,
   canAccessHuddle,
   validateIntents,
@@ -99,6 +100,7 @@ describe("validateCreateHuddleInput", () => {
         invitee_ids: [],
         allow_self_exit: true,
         rewards_enabled: false,
+        rewards_receive_enabled: false,
       },
     });
   });
@@ -360,7 +362,13 @@ describe("huddle settings and display names", () => {
 
   test("self-exit defaults on and rewards default off", () => {
     const r = validateCreateHuddleInput(base, NOW);
-    expect(r.ok && r.value).toMatchObject({ allow_self_exit: true, rewards_enabled: false });
+    expect(r.ok && r.value).toMatchObject({ allow_self_exit: true, rewards_enabled: false, rewards_receive_enabled: false });
+  });
+
+  test("the host can enable paid token sends independently of minted rewards", () => {
+    const r = validateCreateHuddleInput({ ...base, rewards_receive_enabled: true }, NOW);
+    expect(r.ok && r.value).toMatchObject({ rewards_enabled: false, rewards_receive_enabled: true });
+    expect(validateCreateHuddleInput({ ...base, rewards_receive_enabled: "on" }, NOW).ok).toBe(false);
   });
 
   test("the host can lock exits and turn rewards on", () => {
@@ -382,5 +390,20 @@ describe("huddle settings and display names", () => {
   test("display names over 40 characters or not text are rejected", () => {
     expect(validateDisplayName("x".repeat(41)).ok).toBe(false);
     expect(validateDisplayName(42).ok).toBe(false);
+  });
+});
+
+describe("hotReason", () => {
+  const base = { is_live: false, starts_in_seconds: 7200, invites_count: 0, visits_24h: 0 };
+  test("live wins over everything", () => {
+    expect(hotReason({ ...base, is_live: true, starts_in_seconds: null, invites_count: 9 })).toBe("live");
+  });
+  test("starting within an hour is starting_soon", () => {
+    expect(hotReason({ ...base, starts_in_seconds: 3600 })).toBe("starting_soon");
+    expect(hotReason({ ...base, starts_in_seconds: 3601 })).toBe("upcoming");
+  });
+  test("five or more invites plus visits is buzz", () => {
+    expect(hotReason({ ...base, invites_count: 3, visits_24h: 2 })).toBe("buzz");
+    expect(hotReason({ ...base, invites_count: 2, visits_24h: 2 })).toBe("upcoming");
   });
 });

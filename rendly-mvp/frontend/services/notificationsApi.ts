@@ -62,6 +62,8 @@ export function notificationHref(n: AppNotification): string | null {
       return huddleId ? `/dashboard/huddles/${encodeURIComponent(huddleId)}` : '/dashboard/huddles';
     case 'huddle_cancelled':
       return '/dashboard/huddles';
+    case 'tokens_received':
+      return convId ? `/dashboard/chat?conv=${encodeURIComponent(convId)}` : '/dashboard/profile';
     case 'connection_request':
     case 'connection_accepted':
     case 'profile_updated':
@@ -79,7 +81,7 @@ export function notificationIcon(type: string): string {
   if (type === 'call') return 'phone';
   if (type.startsWith('huddle') || type === 'breakout') return 'huddle';
   if (type.startsWith('connection')) return 'people';
-  if (type === 'points_awarded') return 'star';
+  if (type === 'points_awarded' || type === 'tokens_received') return 'coin';
   if (type === 'group_invite') return 'group';
   return 'bell';
 }

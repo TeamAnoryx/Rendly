@@ -16,7 +16,14 @@ export type ConversationListItem = {
   lastMessageSenderId?: string | null;
 };
 
-export type ChatMessage = {
+/** Extra fields carried by a `content_type: 'token_transfer'` message (Rendly Tokens sent in a whisper). */
+export type TokenTransferMessageFields = {
+  transfer_id?: string | null;
+  amount?: number | null;
+  note?: string | null;
+};
+
+export type ChatMessage = TokenTransferMessageFields & {
   id: string;
   sender_id: string;
   content: string;
@@ -235,6 +242,8 @@ export const chat = {
       reply_to_content?: string;
       reply_to_sender_id?: string;
       reply_to_sender_username?: string;
+      /** Required with content_type 'token_transfer': the ledger transfer this bubble represents. */
+      transfer_id?: string;
     }
   ): Promise<ChatMessage | null> {
     const token = getStoredAuthToken();
@@ -244,6 +253,7 @@ export const chat = {
       content,
       content_type: options?.content_type ?? 'text',
       ...(options?.bucket_ref != null && { bucket_ref: options.bucket_ref }),
+      ...(options?.transfer_id && { transfer_id: options.transfer_id }),
     };
     if (options?.reply_to_message_id) {
       body.reply_to_message_id = options.reply_to_message_id;

@@ -24,9 +24,15 @@ export type HuddleListItem = {
   thumbnail_url?: string | null;
   thumbnail_type?: 'image' | 'video' | null;
   allow_self_exit?: boolean;
+  /** Host can mint free awards (trophy). */
   rewards_enabled?: boolean;
+  /** Host can send Rendly Tokens from their own balance (coin). */
+  rewards_receive_enabled?: boolean;
   cancelled_at?: string | null;
   ends_at?: string | null;
+  /** Only on /api/huddles/active: the viewer is already admitted. */
+  is_participant?: boolean;
+  started_at?: string | null;
 };
 
 export type HuddleMode = 'open' | 'seminar' | 'hackathon' | 'launch';
@@ -34,8 +40,20 @@ export type HuddleMode = 'open' | 'seminar' | 'hackathon' | 'launch';
 export const HUDDLE_MODE_LABELS: Record<HuddleMode, string> = {
   open: 'Open',
   seminar: 'Seminar',
-  hackathon: 'Hackathon',
-  launch: 'App launch',
+  hackathon: 'Build',
+  launch: 'Brand/Market',
+};
+
+export type HotReason = 'live' | 'starting_soon' | 'upcoming' | 'buzz';
+
+/** A row of /api/huddles/hot: the public huddle plus ranking signals. */
+export type HotHuddle = HuddleListItem & {
+  hot_score: number;
+  hot_reason: HotReason;
+  is_live: boolean;
+  invites_count: number;
+  starts_in_seconds: number | null;
+  host: { username: string | null; avatar_url: string | null } | null;
 };
 
 export type HuddlesListResponse = {
@@ -80,6 +98,7 @@ export type CreateHuddlePayload = {
   invitee_ids?: string[];
   allow_self_exit?: boolean;
   rewards_enabled?: boolean;
+  rewards_receive_enabled?: boolean;
 };
 
 export type CreateHuddleResponse = HuddleListItem & {
@@ -137,6 +156,16 @@ export async function listActiveHuddles(): Promise<HuddleListItem[]> {
   return Array.isArray(data) ? data : [];
 }
 
+/** Top hot huddles: live first, then upcoming ones by interest. */
+export async function getHotHuddles(limit = 5): Promise<HotHuddle[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  const res = await authFetch(`/api/huddles/hot?${params.toString()}`);
+  const data = await parseOrThrow<unknown>(res, 'Failed to load hot huddles');
+  if (Array.isArray(data)) return data as HotHuddle[];
+  const list = (data as { huddles?: unknown } | null)?.huddles;
+  return Array.isArray(list) ? (list as HotHuddle[]) : [];
+}
+
 export async function createHuddle(payload: CreateHuddlePayload): Promise<CreateHuddleResponse> {
   const res = await authFetch('/api/huddles', {
     method: 'POST',
@@ -153,6 +182,9 @@ export async function createHuddle(payload: CreateHuddlePayload): Promise<Create
       waiting_room: payload.waiting_room ?? false,
       intents: payload.intents ?? [],
       invitee_ids: payload.invitee_ids ?? [],
+      ...(payload.allow_self_exit !== undefined && { allow_self_exit: payload.allow_self_exit }),
+      ...(payload.rewards_enabled !== undefined && { rewards_enabled: payload.rewards_enabled }),
+      ...(payload.rewards_receive_enabled !== undefined && { rewards_receive_enabled: payload.rewards_receive_enabled }),
     }),
   });
   return parseOrThrow<CreateHuddleResponse>(res, 'Failed to create huddle');
@@ -247,7 +279,12 @@ export async function uploadHuddleMedia(id: string, file: File): Promise<{ media
   return parseOrThrow<{ media_type: string; media_url: string }>(res, 'Failed to upload media');
 }
 
-export type HuddleSettingsPatch = Partial<{ waiting_room: boolean; allow_self_exit: boolean; rewards_enabled: boolean }>;
+export type HuddleSettingsPatch = Partial<{
+  waiting_room: boolean;
+  allow_self_exit: boolean;
+  rewards_enabled: boolean;
+  rewards_receive_enabled: boolean;
+}>;
 
 export async function updateHuddleSettings(id: string, patch: HuddleSettingsPatch): Promise<HuddleSettingsPatch> {
   const res = await authFetch(`/api/huddles/${encodeURIComponent(id)}/settings`, {

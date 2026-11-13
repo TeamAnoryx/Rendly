@@ -12,10 +12,26 @@ describe("validateMatchRequest", () => {
     expect(validateMatchRequest({ mode: "video", intent: "Collaborate" }).ok).toBe(true);
   });
 
+  test("accepts a custom intent and trims it", () => {
+    expect(validateMatchRequest({ mode: "text", intent: "  Rock  &  Roll " })).toEqual({
+      ok: true,
+      value: { mode: "text", intent: "Rock & Roll" },
+    });
+    expect(validateMatchRequest({ mode: "video", intent: "Gaming" }).ok).toBe(true);
+  });
+
+  test("accepts the 2 and 40 character boundaries", () => {
+    expect(validateMatchRequest({ mode: "text", intent: "ab" }).ok).toBe(true);
+    expect(validateMatchRequest({ mode: "text", intent: "a".repeat(40) }).ok).toBe(true);
+  });
+
   test.each([
     [{ mode: "audio", intent: "Brainstorm" }, "mode"],
     [{ mode: "text" }, "intent"],
-    [{ mode: "text", intent: "Gaming" }, "intent"],
+    [{ mode: "text", intent: "a" }, "intent"],
+    [{ mode: "text", intent: "a".repeat(41) }, "intent"],
+    [{ mode: "text", intent: "   " }, "intent"],
+    [{ mode: "text", intent: 42 }, "intent"],
     [null, "mode"],
     [["text"], "mode"],
   ])("rejects %j", (body, field) => {

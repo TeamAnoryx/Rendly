@@ -53,6 +53,8 @@ export type HuddleRow = {
   /** false: the host controls exits too, so participants cannot leave on their own. */
   allow_self_exit?: boolean;
   rewards_enabled?: boolean;
+  /** Host may send Rendly Tokens from their own balance to participants. */
+  rewards_receive_enabled?: boolean;
   cancelled_at?: string | null;
 };
 
@@ -70,6 +72,7 @@ export type CreateHuddleInput = {
   invitee_ids: string[];
   allow_self_exit: boolean;
   rewards_enabled: boolean;
+  rewards_receive_enabled: boolean;
 };
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; message: string };
@@ -216,7 +219,7 @@ export function validateCreateHuddleInput(body: unknown, now: number = Date.now(
     }
     mode = input.mode as HuddleMode;
   }
-  for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled"] as const) {
+  for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled", "rewards_receive_enabled"] as const) {
     if (input[key] != null && typeof input[key] !== "boolean") {
       return { ok: false, message: `${key} must be true or false` };
     }
@@ -242,6 +245,7 @@ export function validateCreateHuddleInput(body: unknown, now: number = Date.now(
       invitee_ids: invitees.value,
       allow_self_exit: input.allow_self_exit !== false,
       rewards_enabled: input.rewards_enabled === true,
+      rewards_receive_enabled: input.rewards_receive_enabled === true,
     },
   };
 }
@@ -398,4 +402,21 @@ export function validateDisplayName(raw: unknown): ValidationResult<string | nul
   // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f\u007f]/.test(name)) return { ok: false, message: "display_name has invalid characters" };
   return { ok: true, value: name };
+}
+
+export type HotReason = "live" | "starting_soon" | "upcoming" | "buzz";
+export const HOT_STARTING_SOON_SECONDS = 3600;
+export const HOT_BUZZ_THRESHOLD = 5;
+
+/** Why a huddle is on the hot list: live beats starting soon, which beats buzz, else plain upcoming. */
+export function hotReason(row: {
+  is_live: boolean;
+  starts_in_seconds: number | null;
+  invites_count: number;
+  visits_24h: number;
+}): HotReason {
+  if (row.is_live) return "live";
+  if (row.starts_in_seconds != null && row.starts_in_seconds <= HOT_STARTING_SOON_SECONDS) return "starting_soon";
+  if (row.invites_count + row.visits_24h >= HOT_BUZZ_THRESHOLD) return "buzz";
+  return "upcoming";
 }
