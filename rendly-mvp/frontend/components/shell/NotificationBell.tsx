@@ -55,6 +55,30 @@ function GroupInviteActions({ n, onDone }: { n: AppNotification; onDone: () => v
   );
 }
 
+/** Matches the `max-width: 767px` breakpoint in shell.css where the panel spans the viewport. */
+const MOBILE_MAX_WIDTH = 767;
+const PANEL_MAX_WIDTH = 380;
+const PANEL_GUTTER = 24;
+const EDGE_MARGIN = 8;
+
+interface PanelPos {
+  top: number;
+  right: number;
+  mobile: boolean;
+}
+
+/** Anchor the panel under the bell, clamped so its left edge stays >= EDGE_MARGIN. */
+function computePanelPos(button: HTMLElement): PanelPos {
+  const rect = button.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const top = rect.bottom + EDGE_MARGIN;
+  if (vw <= MOBILE_MAX_WIDTH) return { top, right: EDGE_MARGIN, mobile: true };
+  const panelWidth = Math.min(PANEL_MAX_WIDTH, vw - PANEL_GUTTER);
+  const maxRight = vw - panelWidth - EDGE_MARGIN;
+  const right = Math.min(Math.max(EDGE_MARGIN, vw - rect.right), Math.max(EDGE_MARGIN, maxRight));
+  return { top, right, mobile: false };
+}
+
 export function NotificationBell() {
   const router = useRouter();
   const { items, unreadCount, loading, error, markRead, markAllRead, clearAll } = useNotifications();
@@ -63,7 +87,7 @@ export function NotificationBell() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const [panelPos, setPanelPos] = useState({ top: 0, right: 0, mobile: false });
+  const [panelPos, setPanelPos] = useState<PanelPos>({ top: 0, right: 0, mobile: false });
 
   useEffect(() => {
     if (!open) {
@@ -76,26 +100,23 @@ export function NotificationBell() {
     const onDown = (e: MouseEvent) => {
       if (!isInside(e.target as Node)) setOpen(false);
     };
-    const onResize = () => setOpen(false);
+    const reposition = () => {
+      if (buttonRef.current) setPanelPos(computePanelPos(buttonRef.current));
+    };
     document.addEventListener('keydown', onKey);
     document.addEventListener('mousedown', onDown);
-    window.addEventListener('resize', onResize);
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
     return () => {
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('mousedown', onDown);
-      window.removeEventListener('resize', onResize);
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
     };
   }, [open]);
 
   const togglePanel = () => {
-    if (!open && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setPanelPos({
-        top: rect.bottom + 8,
-        right: Math.max(8, window.innerWidth - rect.right),
-        mobile: window.innerWidth <= 1024,
-      });
-    }
+    if (!open && buttonRef.current) setPanelPos(computePanelPos(buttonRef.current));
     setOpen((o) => !o);
   };
 
