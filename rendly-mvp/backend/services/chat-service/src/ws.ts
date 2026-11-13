@@ -54,7 +54,16 @@ function removePresence(userId: string, socketId: string): boolean {
 export function attachSocketIo(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
     path: "/socket.io",
-    cors: { origin: "*" },
+    // Same ALLOWED_ORIGINS list as the REST API; unset = any origin (local dev).
+    cors: {
+      origin: (() => {
+        const list = (process.env.ALLOWED_ORIGINS || "")
+          .split(",")
+          .map((o) => o.trim().replace(/\/$/, ""))
+          .filter(Boolean);
+        return list.length ? list : "*";
+      })(),
+    },
   });
 
   io.use(async (socket, next) => {

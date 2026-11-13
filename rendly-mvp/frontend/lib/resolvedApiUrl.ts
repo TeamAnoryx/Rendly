@@ -58,10 +58,12 @@ function checkHealth(baseUrl: string): Promise<boolean> {
 export async function getResolvedApiUrl(): Promise<string> {
   if (cached) return cached;
 
-  const override = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL?.trim();
+  // Must be the literal `process.env.NEXT_PUBLIC_*` form: Next.js only inlines that exact
+  // expression into browser code (optional chaining like `process.env?.X` is left undefined).
+  const override = (process.env.NEXT_PUBLIC_API_URL || "").trim();
   if (override) {
+    // Configured URL (production): use it directly, no health-probe round trip.
     const base = override.replace(/\/$/, "");
-    const ok = await checkHealth(base);
     cached = base;
     setStoredAuthApiUrl(base);
     return cached;
@@ -136,12 +138,9 @@ async function checkChatHealth(baseUrl: string): Promise<boolean> {
 export async function getChatApiUrl(): Promise<string> {
   if (chatCached) return chatCached;
 
-  const override =
-    typeof process !== "undefined" && process.env?.NEXT_PUBLIC_CHAT_API_URL?.trim();
+  const override = (process.env.NEXT_PUBLIC_CHAT_API_URL || "").trim();
   if (override) {
-    const base = override.replace(/\/$/, "");
-    const ok = await checkChatHealth(base);
-    chatCached = ok ? base : base;
+    chatCached = override.replace(/\/$/, "");
     return chatCached;
   }
 
@@ -162,8 +161,7 @@ export async function getChatApiUrl(): Promise<string> {
  * Uses the same host as chat-service so one backend serves both REST and WS.
  */
 export async function getCcsWsUrl(): Promise<string> {
-  const url =
-    typeof process !== "undefined" && process.env?.NEXT_PUBLIC_CCS_WS_URL?.trim();
+  const url = (process.env.NEXT_PUBLIC_CCS_WS_URL || "").trim();
   if (url) {
     const base = url.replace(/\/$/, "");
     return Promise.resolve(base.startsWith("ws") ? base : base.replace(/^http/, "ws"));

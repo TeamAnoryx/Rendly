@@ -206,7 +206,13 @@ function getClientIp(req: express.Request, body?: { client_ip?: string | null })
 }
 
 app.set("trust proxy", 1);
-app.use(cors({ origin: true, credentials: true }));
+// ALLOWED_ORIGINS (comma-separated, e.g. "https://rendly.vercel.app") locks CORS in production.
+// Unset = reflect any origin (local dev).
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+app.use(cors({ origin: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : true, credentials: true }));
 app.use(express.json());
 
 const tooMany = (_req: express.Request, res: express.Response) => {

@@ -1,0 +1,85 @@
+# Render Blueprint for the Rendly backend.
+# Deploy: Render dashboard -> New -> Blueprint -> pick this repo.
+# Only auth-service and chat-service are needed in production; the frontend
+# never calls the other (stub) services.
+#
+# Secrets use `sync: false`: Render asks for their values on first deploy and
+# never reads them from git. JWT_SECRET and the SUPABASE_* values MUST be the
+# same on both services.
+
+services:
+  - type: web
+    name: rendly-auth
+    runtime: node
+    plan: free
+    rootDir: rendly-mvp/backend/services/auth-service
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # Comma-separated frontend origins, e.g. https://rendly.vercel.app
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # https://<your-vercel-domain>/auth/callback
+      - key: OAUTH_REDIRECT_URI
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: LINKEDIN_CLIENT_ID
+        sync: false
+      - key: LINKEDIN_CLIENT_SECRET
+        sync: false
+      # Optional: password-reset email. Leave blank to skip.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+
+  - type: web
+    name: rendly-chat
+    runtime: node
+    plan: free
+    # Holds Socket.IO and call-room state in memory: keep it at ONE instance.
+    numInstances: 1
+    rootDir: rendly-mvp/backend/services/chat-service
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Supabase Postgres pooler connection string
+      - key: DATABASE_URL
+        sync: false

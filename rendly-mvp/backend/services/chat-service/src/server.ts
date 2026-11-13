@@ -71,7 +71,12 @@ const chatLog = (section: "Whispers" | "Group" | "Archive", action: string, deta
 const app = express();
 const PORT = Number(process.env.CHAT_SERVICE_PORT || process.env.PORT || 4002);
 
-app.use(cors());
+// ALLOWED_ORIGINS (comma-separated) locks CORS in production; unset = allow any origin (local dev).
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+app.use(cors({ origin: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : "*" }));
 app.use(express.json({ limit: '15mb' }));
 
 app.get("/health", (_req, res) => {
