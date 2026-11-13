@@ -1,6 +1,13 @@
 import path from "path";
 import dotenv from "dotenv";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import {
+  normalizeEmail as normalizeEmailValue,
+  escapeLikePattern,
+  resolveOAuthSignIn,
+  type LinkCandidate,
+  type OAuthProvider,
+} from "./account-linking";
 
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config();
@@ -33,17 +40,31 @@ export type UserRow = {
   profession?: string | null;
   password_reset_token_hash?: string | null;
   password_reset_expires_at?: string | null;
+  email_verified?: boolean | null;
 };
 
-/** Insert row; if user_ip column is missing, retry without user_ip so data is still saved. */
+/** Columns added by later migrations; dropped and retried if the DB does not have them yet. */
+const OPTIONAL_COLUMNS = ["user_ip", "email_verified"] as const;
+
+function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const msg = String(error.message || "");
+  return error.code === "42703" || OPTIONAL_COLUMNS.some((c) => msg.includes(c));
+}
+
+function withoutOptionalColumns(row: Record<string, unknown>): Record<string, unknown> {
+  const copy = { ...row };
+  for (const c of OPTIONAL_COLUMNS) delete copy[c];
+  return copy;
+}
+
+/** Insert row; if an optional column (user_ip, email_verified) is missing, retry without it. */
 async function insertUserRow(row: Record<string, unknown>): Promise<{ id: string } | null> {
   if (!supabase) return null;
   const { data, error } = await supabase.from("users").insert(row).select("id").single();
   if (error) {
-    const msg = String(error.message || error.code || "");
-    if (error.code === "42703" || msg.includes("user_ip") || msg.includes("column")) {
-      const { user_ip: _u, ...rowWithoutIp } = row;
-      const retry = await supabase.from("users").insert(rowWithoutIp).select("id").single();
+    if (isMissingColumnError(error)) {
+      const retry = await supabase.from("users").insert(withoutOptionalColumns(row)).select("id").single();
       if (retry.error) throw retry.error;
       return retry.data as { id: string };
     }
@@ -52,93 +73,173 @@ async function insertUserRow(row: Record<string, unknown>): Promise<{ id: string
   return data as { id: string };
 }
 
-/** Create an email + password user (company email sign-up). Email must already be validated and lowercased. */
+async function updateUserRow(userId: string, row: Record<string, unknown>): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("users").update(row).eq("id", userId);
+  if (!error) return;
+  if (isMissingColumnError(error)) {
+    const retry = await supabase.from("users").update(withoutOptionalColumns(row)).eq("id", userId);
+    if (retry.error) throw retry.error;
+    return;
+  }
+  throw error;
+}
+
+/** Create an email + password user. The email is normalised (trim + lowercase) here as well. */
 export async function insertUserWithPassword(payload: {
   email: string;
   password_hash: string;
 }): Promise<{ id: string } | null> {
-  return insertUserRow({ email: payload.email, password_hash: payload.password_hash });
+  const email = normalizeEmailValue(payload.email);
+  if (!email) throw new Error("Invalid email");
+  return insertUserRow({ email, password_hash: payload.password_hash, email_verified: false });
 }
 
-/** Upsert user by GitHub id. Single-provider: no merge with LinkedIn. */
-export async function upsertUserByGitHub(
-  payload: {
-    github_id: string;
-    github_url: string;
-    email: string | null;
-    avatar_url: string | null;
-  },
-  userIp: string | null
-): Promise<string | null> {
-  if (!supabase) return null;
-  const { data: byGithub } = await supabase.from("users").select("id").eq("github_id", payload.github_id).maybeSingle();
-  const { data: byEmail } =
-    payload.email != null ? await supabase.from("users").select("id, email, avatar_url").eq("email", payload.email).maybeSingle() : { data: null };
-  const existing = byGithub ?? byEmail;
-  const row: Record<string, unknown> = {
-    github_id: payload.github_id,
-    github_url: payload.github_url,
-    email: payload.email ?? byEmail?.email ?? null,
-    avatar_url: payload.avatar_url ?? byEmail?.avatar_url ?? null,
-    updated_at: new Date().toISOString(),
-  };
-  if (userIp && userIp.trim()) row.user_ip = userIp.trim();
-
-  if (existing?.id) {
-    const { error } = await supabase.from("users").update(row).eq("id", existing.id);
-    if (error) {
-      if (error.code === "42703" || String(error.message).includes("user_ip")) {
-        const { user_ip: _u, ...rowWithoutIp } = row;
-        const err2 = await supabase.from("users").update(rowWithoutIp).eq("id", existing.id);
-        if (err2.error) throw err2.error;
-      } else throw error;
-    }
-    return existing.id;
-  }
-
-  const data = await insertUserRow(row);
-  return data?.id ?? null;
+/** Up to `limit` users whose email equals `email` case-insensitively (exact match, wildcards escaped). */
+export async function findUsersByEmail(email: string, limit = 2): Promise<UserRow[]> {
+  const normalized = normalizeEmailValue(email);
+  if (!supabase || !normalized) return [];
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .ilike("email", escapeLikePattern(normalized))
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as UserRow[];
 }
 
-/** Upsert user by LinkedIn id. Single-provider: no link to GitHub. */
-export async function upsertUserByLinkedIn(
-  payload: {
-    linkedin_id: string;
-    linkedin_url: string | null;
-    email: string | null;
-    avatar_url: string | null;
-  },
-  userIp: string | null
-): Promise<string | null> {
-  if (!supabase) return null;
-
-  const { data: byLinkedIn } = await supabase.from("users").select("id").eq("linkedin_id", payload.linkedin_id).maybeSingle();
-  const { data: byEmail } =
-    payload.email != null ? await supabase.from("users").select("id, email, avatar_url").eq("email", payload.email).maybeSingle() : { data: null };
-  const existing = byLinkedIn ?? byEmail;
-  const row: Record<string, unknown> = {
-    linkedin_id: payload.linkedin_id,
-    linkedin_url: payload.linkedin_url,
-    email: payload.email ?? byEmail?.email ?? null,
-    avatar_url: payload.avatar_url ?? byEmail?.avatar_url ?? null,
-    updated_at: new Date().toISOString(),
+function toLinkCandidate(row: UserRow): LinkCandidate {
+  return {
+    id: String(row.id),
+    email: row.email ?? null,
+    github_id: row.github_id ?? null,
+    linkedin_id: row.linkedin_id ?? null,
+    has_password: !!row.password_hash,
+    email_verified: row.email_verified === true,
   };
-  if (userIp && userIp.trim()) row.user_ip = userIp.trim();
+}
 
-  if (existing?.id) {
-    const { error } = await supabase.from("users").update(row).eq("id", existing.id);
-    if (error) {
-      if (error.code === "42703" || String(error.message).includes("user_ip")) {
-        const { user_ip: _u, ...rowWithoutIp } = row;
-        const err2 = await supabase.from("users").update(rowWithoutIp).eq("id", existing.id);
-        if (err2.error) throw err2.error;
-      } else throw error;
+export type OAuthSignInParams = {
+  provider: OAuthProvider;
+  providerId: string;
+  providerUrl: string | null;
+  /** Provider-verified email or null. Never pass an unverified email. */
+  verifiedEmail: string | null;
+  avatarUrl: string | null;
+};
+
+export type OAuthSignInResult =
+  | { ok: true; userId: string | null; action: "login" | "link" | "create" }
+  | { ok: false; status: 409; message: string };
+
+const UNIQUE_VIOLATION = "23505";
+
+function isUniqueViolation(err: unknown): boolean {
+  return (err as { code?: string })?.code === UNIQUE_VIOLATION;
+}
+
+/**
+ * One person = one account. Resolves (provider id -> verified email -> create) and applies the
+ * result. Throws on DB errors; returns { ok: false } on a linking conflict.
+ */
+export async function signInWithOAuth(params: OAuthSignInParams, userIp: string | null): Promise<OAuthSignInResult> {
+  if (!supabase) return { ok: true, userId: null, action: "create" };
+  const idCol = params.provider === "github" ? "github_id" : "linkedin_id";
+  const urlCol = params.provider === "github" ? "github_url" : "linkedin_url";
+  const verifiedEmail = normalizeEmailValue(params.verifiedEmail);
+  const ip = userIp && userIp.trim() ? userIp.trim() : null;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { data: byIdRow, error: byIdErr } = await supabase
+      .from("users")
+      .select("*")
+      .eq(idCol, params.providerId)
+      .maybeSingle();
+    if (byIdErr) throw byIdErr;
+    const byEmailRows = verifiedEmail ? await findUsersByEmail(verifiedEmail, 2) : [];
+    const decision = resolveOAuthSignIn({
+      provider: params.provider,
+      providerId: params.providerId,
+      verifiedEmail,
+      byProviderId: byIdRow ? toLinkCandidate(byIdRow as UserRow) : null,
+      byEmail: byEmailRows.map(toLinkCandidate),
+    });
+    const now = new Date().toISOString();
+
+    if (decision.action === "conflict") {
+      console.warn(`[auth-service] OAuth ${params.provider} sign-in refused (conflict) for provider id ${params.providerId}`);
+      return { ok: false, status: decision.status, message: decision.message };
     }
-    return existing.id;
-  }
 
-  const data = await insertUserRow(row);
-  return data?.id ?? null;
+    if (decision.action === "login") {
+      const existing = byIdRow as UserRow;
+      const row: Record<string, unknown> = {
+        [urlCol]: params.providerUrl,
+        avatar_url: existing.avatar_url ?? params.avatarUrl ?? null,
+        updated_at: now,
+      };
+      if (decision.markEmailVerified) row.email_verified = true;
+      // Fill a missing email only with a provider-verified one that no other account uses.
+      if (!existing.email && verifiedEmail && byEmailRows.length === 0) {
+        row.email = verifiedEmail;
+        row.email_verified = true;
+      }
+      if (ip) row.user_ip = ip;
+      await updateUserRow(decision.userId, row);
+      return { ok: true, userId: decision.userId, action: "login" };
+    }
+
+    if (decision.action === "link") {
+      const existing = byEmailRows.find((r) => String(r.id) === decision.userId);
+      const row: Record<string, unknown> = {
+        [idCol]: params.providerId,
+        [urlCol]: params.providerUrl,
+        email: verifiedEmail,
+        email_verified: true,
+        avatar_url: existing?.avatar_url ?? params.avatarUrl ?? null,
+        updated_at: now,
+      };
+      if (decision.clearPassword) {
+        row.password_hash = null;
+        row.password_reset_token_hash = null;
+        row.password_reset_expires_at = null;
+      }
+      if (ip) row.user_ip = ip;
+      try {
+        await updateUserRow(decision.userId, row);
+      } catch (err) {
+        if (isUniqueViolation(err) && attempt === 0) continue;
+        throw err;
+      }
+      if (decision.clearPassword) {
+        console.warn(
+          `[auth-service] Account ${decision.userId}: linked ${params.provider} by verified email and cleared an unverified password (pre-account-takeover guard).`
+        );
+      } else {
+        console.log(`[auth-service] Account ${decision.userId}: linked ${params.provider} identity by verified email.`);
+      }
+      return { ok: true, userId: decision.userId, action: "link" };
+    }
+
+    const row: Record<string, unknown> = {
+      [idCol]: params.providerId,
+      [urlCol]: params.providerUrl,
+      email: decision.email,
+      email_verified: decision.email !== null,
+      avatar_url: params.avatarUrl,
+      updated_at: now,
+    };
+    if (ip) row.user_ip = ip;
+    try {
+      const created = await insertUserRow(row);
+      return { ok: true, userId: created?.id ?? null, action: "create" };
+    } catch (err) {
+      // A concurrent sign-in created the row (unique provider id / lower(email)): resolve again.
+      if (isUniqueViolation(err) && attempt === 0) continue;
+      throw err;
+    }
+  }
+  throw new Error("OAuth sign-in could not be resolved");
 }
 
 /** Get user by database id (for password login JWT). */
@@ -154,8 +255,9 @@ export async function getUserByEmailOrUsername(identifier: string): Promise<User
   const raw = identifier.trim().toLowerCase();
   if (!raw) return null;
   if (raw.includes("@")) {
-    const { data } = await supabase.from("users").select("*").eq("email", raw).maybeSingle();
-    return data as UserRow | null;
+    // Case-insensitive; ambiguous legacy duplicates resolve to null (no guessing which account).
+    const rows = await findUsersByEmail(raw, 2);
+    return rows.length === 1 ? rows[0] : null;
   }
   const username = raw.replace(/^@/, "");
   if (username.length < 3) return null;
@@ -166,8 +268,9 @@ export async function getUserByEmailOrUsername(identifier: string): Promise<User
 /** Get user by email only (for LinkedIn guard, forgot-password). */
 export async function getUserByEmail(email: string): Promise<UserRow | null> {
   if (!supabase || !email || typeof email !== "string" || !email.trim()) return null;
-  const { data } = await supabase.from("users").select("*").eq("email", email.trim().toLowerCase()).maybeSingle();
-  return data as UserRow | null;
+  // Case-insensitive; ambiguous legacy duplicates resolve to null (no guessing which account).
+  const rows = await findUsersByEmail(email, 2);
+  return rows.length === 1 ? rows[0] : null;
 }
 
 /** Get user by github_id or linkedin_id (for /api/users/me). */
@@ -197,7 +300,7 @@ export async function updateUserById(
 ): Promise<boolean> {
   if (!supabase) return false;
   const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (payload.email !== undefined) row.email = payload.email;
+  if (payload.email !== undefined) row.email = payload.email === null ? null : normalizeEmailValue(payload.email);
   if (payload.avatar_url !== undefined) row.avatar_url = payload.avatar_url;
   if (payload.github_url !== undefined) row.github_url = payload.github_url;
   if (payload.linkedin_url !== undefined) row.linkedin_url = payload.linkedin_url;

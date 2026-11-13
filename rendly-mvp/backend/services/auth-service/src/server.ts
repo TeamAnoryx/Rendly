@@ -10,9 +10,10 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import multer from "multer";
 import sharp from "sharp";
-import { upsertUserByGitHub, upsertUserByLinkedIn, getUserByProviderId, getUserById, getUserByEmailOrUsername, getUserByEmail, insertUserWithPassword, updateUserById, checkUsernameAvailable, getUsersWithActiveResetToken, getUserByUsername, getUsersByUsernameSearch, supabase } from "./supabase-users";
+import { signInWithOAuth, findUsersByEmail, getUserByProviderId, getUserById, getUserByEmailOrUsername, getUserByEmail, insertUserWithPassword, updateUserById, checkUsernameAvailable, getUsersWithActiveResetToken, getUserByUsername, getUsersByUsernameSearch, supabase } from "./supabase-users";
 import { sendPasswordResetEmail } from "./send-reset-email";
 import { isCompanyEmail, normalizeEmail } from "./company-email";
+import { pickVerifiedGitHubEmail, pickVerifiedLinkedInEmail, resolvePasswordSignup, SIGNUP_EMAIL_TAKEN_MESSAGE } from "./account-linking";
 import {
   listInvitesForUser,
   createInvite,
@@ -424,12 +425,14 @@ app.post("/api/auth/register", async (req, res) => {
       res.status(503).json({ message: "Auth service temporarily unavailable" });
       return;
     }
-    const normalized = normalizeEmail(email);
-    const existing = await getUserByEmail(normalized);
-    if (existing) {
-      res.status(409).json({ message: "An account with this email already exists. Log in instead.", field: "email" });
+    // One person = one account: any existing row with this email (any provider, any case) blocks sign-up.
+    const existingRows = await findUsersByEmail(normalizeEmail(email), 1);
+    const signup = resolvePasswordSignup(email, existingRows.length);
+    if (signup.action !== "create") {
+      res.status(signup.status).json({ message: signup.message, field: "email" });
       return;
     }
+    const normalized = signup.email;
     const password_hash = await bcrypt.hash(password, 10);
     let created: { id: string } | null;
     try {
@@ -437,7 +440,7 @@ app.post("/api/auth/register", async (req, res) => {
     } catch (insertErr) {
       const code = (insertErr as { code?: string })?.code;
       if (code === "23505") {
-        res.status(409).json({ message: "An account with this email already exists. Log in instead.", field: "email" });
+        res.status(409).json({ message: SIGNUP_EMAIL_TAKEN_MESSAGE, field: "email" });
         return;
       }
       throw insertErr;
@@ -614,27 +617,40 @@ app.post("/api/auth/github/callback", async (req, res) => {
         console.error("[auth-service] GitHub /user error:", msg ?? userErr);
         throw Object.assign(new Error(String(msg ?? "Failed to load GitHub profile")), { status: 500 });
       }
+      if (profile.id === undefined || profile.id === null) {
+        throw Object.assign(new Error("Failed to load GitHub profile"), { status: 502 });
+      }
       const githubId = String(profile.id);
       const login = profile.login ?? "";
-      const email = profile.email ?? null;
       const avatarUrl = profile.avatar_url ?? null;
       const githubUrl = login ? `https://github.com/${login}` : "";
       const userIp = getClientIp(req, req.body);
 
+      // Only a GitHub-verified primary email may be used to link accounts (scope user:email).
+      let verifiedEmail: string | null = null;
       try {
-        const userId = await upsertUserByGitHub(
-          {
-            github_id: githubId,
-            github_url: githubUrl,
-            email: email ?? null,
-            avatar_url: avatarUrl ?? null,
-          },
+        const emailsRes = await axios.get<unknown>("https://api.github.com/user/emails", { headers, timeout: 10000 });
+        verifiedEmail = pickVerifiedGitHubEmail(emailsRes.data);
+      } catch (emailErr) {
+        const status = (emailErr as { response?: { status?: number } })?.response?.status;
+        console.warn(`[auth-service] GitHub /user/emails unavailable (status ${status ?? "n/a"}); not linking by email.`);
+      }
+      const email = verifiedEmail;
+
+      let result;
+      try {
+        result = await signInWithOAuth(
+          { provider: "github", providerId: githubId, providerUrl: githubUrl, verifiedEmail, avatarUrl },
           userIp
         );
-        console.log(`[auth-service] GitHub verified: ${login} (id=${githubId}). User data ${userId ? "saved" : "skipped (no DB)"} in Supabase users table.`);
       } catch (dbErr) {
-        console.error("[auth-service] Supabase upsert (GitHub) failed:", dbErr);
+        console.error("[auth-service] Supabase sign-in (GitHub) failed:", dbErr);
+        throw Object.assign(new Error("Could not save your account. Please try again."), { status: 500 });
       }
+      if (!result.ok) {
+        throw Object.assign(new Error(result.message), { status: result.status });
+      }
+      console.log(`[auth-service] GitHub verified: ${login} (id=${githubId}); account ${result.action} (${result.userId ?? "no DB"}).`);
 
       const user = {
         id: githubId,
@@ -720,7 +736,9 @@ app.post("/api/auth/linkedin/callback", async (req, res) => {
       return;
     }
     const name = profile?.name ?? profile?.given_name ?? "User";
-    const email = profile?.email ?? null;
+    // Only use the email for account linking when LinkedIn says it is verified.
+    const verifiedEmail = pickVerifiedLinkedInEmail(profile);
+    const email = verifiedEmail;
     const picture = profile?.picture ?? null;
 
     let linkedinUrl: string | null = null;
@@ -738,31 +756,29 @@ app.post("/api/auth/linkedin/callback", async (req, res) => {
       linkedinUrl = `https://www.linkedin.com/in/id-${linkedinId}`;
     }
 
-    if (email && typeof email === "string" && email.trim()) {
-      const existingByEmail = await getUserByEmail(email.trim());
-      if (existingByEmail && (existingByEmail as { github_id?: string | null }).github_id && !(existingByEmail as { linkedin_id?: string | null }).linkedin_id) {
-        return res.status(403).json({
-          message: "Sign in with GitHub or username. Add LinkedIn in your profile to use LinkedIn sign-in.",
-          code: "LINKEDIN_NOT_IN_PROFILE",
-        });
-      }
-    }
-
     const userIp = getClientIp(req, req.body);
+    let result;
     try {
-      const userId = await upsertUserByLinkedIn(
+      result = await signInWithOAuth(
         {
-          linkedin_id: linkedinId,
-          linkedin_url: linkedinUrl,
-          email: email ?? null,
-          avatar_url: picture ?? null,
+          provider: "linkedin",
+          providerId: linkedinId,
+          providerUrl: linkedinUrl,
+          verifiedEmail,
+          avatarUrl: typeof picture === "string" ? picture : null,
         },
         userIp
       );
-      console.log(`[auth-service] LinkedIn verified: ${name} (id=${linkedinId}). User data ${userId ? "saved" : "skipped (no DB)"} in Supabase users table.`);
     } catch (dbErr) {
-      console.error("[auth-service] Supabase upsert (LinkedIn) failed:", dbErr);
+      console.error("[auth-service] Supabase sign-in (LinkedIn) failed:", dbErr);
+      res.status(500).json({ message: "Could not save your account. Please try again." });
+      return;
     }
+    if (!result.ok) {
+      res.status(result.status).json({ message: result.message });
+      return;
+    }
+    console.log(`[auth-service] LinkedIn verified: ${name} (id=${linkedinId}); account ${result.action} (${result.userId ?? "no DB"}).`);
 
     const user = {
       id: linkedinId,
