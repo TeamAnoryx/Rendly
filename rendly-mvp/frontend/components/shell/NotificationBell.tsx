@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/context/NotificationsContext';
 import { notificationHref, notificationIcon, type AppNotification } from '@/services/notificationsApi';
@@ -60,38 +61,69 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelPos, setPanelPos] = useState({ top: 0, right: 0, mobile: false });
 
   useEffect(() => {
     if (!open) {
       setConfirmClear(false);
       return;
     }
+    const isInside = (target: Node) =>
+      Boolean(wrapRef.current?.contains(target) || panelRef.current?.contains(target));
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
     const onDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      if (!isInside(e.target as Node)) setOpen(false);
     };
+    const onResize = () => setOpen(false);
     document.addEventListener('keydown', onKey);
     document.addEventListener('mousedown', onDown);
+    window.addEventListener('resize', onResize);
     return () => {
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('resize', onResize);
     };
   }, [open]);
+
+  const togglePanel = () => {
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setPanelPos({
+        top: rect.bottom + 8,
+        right: Math.max(8, window.innerWidth - rect.right),
+        mobile: window.innerWidth <= 1024,
+      });
+    }
+    setOpen((o) => !o);
+  };
 
   return (
     <div ref={wrapRef} style={{ position: 'static' }}>
       <button
+        ref={buttonRef}
         type="button"
         className="rd-icon-btn"
         aria-label={unreadCount ? `Notifications, ${unreadCount} unread` : 'Notifications'}
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={togglePanel}
       >
         <Icon name="bell" size={19} />
         {unreadCount > 0 ? <span className="rd-count">{unreadCount > 99 ? '99+' : unreadCount}</span> : null}
       </button>
-      {open && (
-        <div className="rd-notif-panel" role="dialog" aria-label="Notifications">
+      {open && createPortal(
+        <div
+          ref={panelRef}
+          className="rd-notif-panel"
+          role="dialog"
+          aria-label="Notifications"
+          style={{
+            position: 'fixed',
+            top: panelPos.top,
+            ...(panelPos.mobile ? { left: 8, right: 8 } : { right: panelPos.right }),
+          }}
+        >
           <div className="rd-notif-head">
             <strong>Notifications</strong>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -156,7 +188,8 @@ export function NotificationBell() {
             )}
             {error ? <p className="rd-small" style={{ color: 'var(--rd-danger)', padding: 12 }}>{error}</p> : null}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

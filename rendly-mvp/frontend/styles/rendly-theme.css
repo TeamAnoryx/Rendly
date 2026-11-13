@@ -671,7 +671,7 @@ a {
   position: fixed;
   right: 18px;
   bottom: 18px;
-  z-index: 400;
+  z-index: 10000;
   display: flex;
   flex-direction: column-reverse;
   gap: 10px;
@@ -723,7 +723,7 @@ a {
   position: absolute;
   top: calc(var(--rd-topbar) - 6px);
   right: 16px;
-  z-index: 300;
+  z-index: 10000;
   width: min(420px, calc(100vw - 32px));
   max-height: min(70dvh, 620px);
   display: flex;

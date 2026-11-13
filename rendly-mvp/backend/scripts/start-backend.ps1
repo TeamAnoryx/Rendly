@@ -168,7 +168,9 @@ try {
                 continue
             }
             try {
-                $resp = Invoke-WebRequest -Uri ("http://localhost:{0}/health" -f $ports[$name]) -UseBasicParsing -TimeoutSec 2
+                # 127.0.0.1, not localhost: Windows PowerShell tries IPv6 (::1) first for
+                # localhost, and auth-service binds IPv4 only, so the check would time out.
+                $resp = Invoke-WebRequest -Uri ("http://127.0.0.1:{0}/health" -f $ports[$name]) -UseBasicParsing -TimeoutSec 2
                 if ($resp.StatusCode -eq 200) {
                     $status[$name] = 'RUNNING'
                     Write-Host ("[{0,-18}] RUNNING OK  http://localhost:{1}" -f $name, $ports[$name]) -ForegroundColor Green
