@@ -9,6 +9,7 @@ import { requireAuth, type CurrentUser } from "./auth";
 import { attachSocketIo, broadcastMessageReceived, broadcastMessageDeleted, emitToUser, getOnlineUserIds } from "./ws";
 import { getUserById, getUsersByIds, supabase } from "./supabase-users";
 import { markMessageNotificationsRead, notifyMessage, notifyUsers } from "./notify";
+import { isUuid, verifyTransferForMessage } from "./tokens";
 import {
   whisperConversationId,
   parseConversationId,
@@ -208,6 +209,14 @@ app.patch("/api/conversations/:id/read", requireAuth, async (req: express.Reques
 });
 
 // ---------- Messages ----------
+/** Message kinds a client may post. 'token_transfer' is whisper-only and must reference a verified ledger transfer. */
+const MESSAGE_CONTENT_TYPES = ["text", "image", "audio", "token_transfer"] as const;
+type MessageContentType = (typeof MESSAGE_CONTENT_TYPES)[number];
+const isMessageContentType = (v: unknown): v is MessageContentType =>
+  typeof v === "string" && (MESSAGE_CONTENT_TYPES as readonly string[]).includes(v);
+/** Optional string body field: non-strings and empty strings are treated as absent. */
+const optionalString = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
+
 app.get("/api/conversations/:id/messages", requireAuth, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
   const user = req.currentUser!;
   const convId = req.params.id;
@@ -264,17 +273,65 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req: express.Req
     res.status(400).json({ message: "Cannot send messages to yourself" });
     return;
   }
-  const content = (req.body?.content as string) ?? "";
-  const contentType = (req.body?.content_type as string) || "text";
-  const bucketRef = req.body?.bucket_ref as string | undefined;
-  const replyToMessageId = (req.body?.reply_to_message_id as string) || undefined;
-  const replyToContent = (req.body?.reply_to_content as string) || undefined;
-  const replyToSenderId = (req.body?.reply_to_sender_id as string) || undefined;
-  const replyToSenderUsername = (req.body?.reply_to_sender_username as string) || undefined;
+  let content = (req.body?.content as string) ?? "";
+  const rawContentType = req.body?.content_type ?? "text";
+  if (!isMessageContentType(rawContentType)) {
+    res.status(400).json({ message: "Invalid content_type" });
+    return;
+  }
+  const contentType: MessageContentType = rawContentType;
+  const bucketRef = optionalString(req.body?.bucket_ref);
+  const replyToMessageId = optionalString(req.body?.reply_to_message_id);
+  const replyToContent = optionalString(req.body?.reply_to_content);
+  const replyToSenderId = optionalString(req.body?.reply_to_sender_id);
+  const replyToSenderUsername = optionalString(req.body?.reply_to_sender_username);
+  // Message and user ids are server-generated UUIDs; anything else cannot name a real reply target.
+  if ((replyToMessageId && !isUuid(replyToMessageId)) || (replyToSenderId && !isUuid(replyToSenderId))) {
+    res.status(400).json({ message: "Invalid reply reference" });
+    return;
+  }
   const parsed = parseConversationId(convId, user.userId);
   if (!parsed) {
     res.status(400).json({ message: "Invalid conversation id" });
     return;
+  }
+
+  // Token transfer bubble: the tokens already moved in auth-service; here we only prove the
+  // ledger row is this sender's, for this partner and conversation, and not yet used.
+  let transferFields: { transfer_id: string; amount: number; note: string | null } | null = null;
+  if (contentType === "token_transfer") {
+    if (parsed.type !== "whisper") {
+      res.status(400).json({ message: "Token transfers are only available in whispers" });
+      return;
+    }
+    const transferId = req.body?.transfer_id;
+    if (!isUuid(transferId)) {
+      res.status(400).json({ message: "transfer_id must be a UUID" });
+      return;
+    }
+    let verification: Awaited<ReturnType<typeof verifyTransferForMessage>>;
+    try {
+      verification = await verifyTransferForMessage(transferId, user.userId, parsed.otherUserId, convId);
+    } catch (err) {
+      console.error("[Chat] Token transfer verification failed (sender=" + user.userId + "):", err);
+      res.status(500).json({ message: "Could not verify token transfer" });
+      return;
+    }
+    if (verification.status === "not_found") {
+      res.status(404).json({ message: "Transfer not found" });
+      return;
+    }
+    if (verification.status === "mismatch") {
+      res.status(403).json({ message: "Transfer does not belong to this conversation" });
+      return;
+    }
+    if (verification.status !== "ok") {
+      res.status(409).json({ message: "Transfer already posted" });
+      return;
+    }
+    transferFields = { transfer_id: transferId, amount: verification.amount, note: verification.note };
+    // The bubble shows the ledger amount, never client-supplied text.
+    content = String(verification.amount);
   }
   const replyToFields = replyToMessageId
     ? {
@@ -306,6 +363,7 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req: express.Req
       bucket_ref: bucketRef,
       created_at: now.toISOString(),
       ...replyToFields,
+      ...(transferFields ?? {}),
     };
     front = toFrontendMessage(msg);
     const whisperPayload: import("./ws").MessageReceivedPayload = {
@@ -325,13 +383,18 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req: express.Req
       whisperPayload.reply_to_sender_id = front.reply_to_sender_id;
       whisperPayload.reply_to_sender_username = front.reply_to_sender_username;
     }
+    if (transferFields) {
+      whisperPayload.transfer_id = transferFields.transfer_id;
+      whisperPayload.amount = transferFields.amount;
+      whisperPayload.note = transferFields.note;
+    }
     emitToUser(parsed.otherUserId, "message:received", whisperPayload);
     broadcastMessageReceived(convId, whisperPayload);
     void notifyMessage([parsed.otherUserId], {
       conversationId: convId,
       senderId: user.userId,
       title: `${user.username ? `@${user.username}` : "New message"} sent you a message`,
-      text: String(content),
+      text: transferFields ? `Sent you ${transferFields.amount} Rendly Tokens` : String(content),
     });
     try {
       await appendWhisperMessage(user.userId, msg);

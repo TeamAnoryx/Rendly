@@ -17,6 +17,10 @@ export type MessageReceivedPayload = {
   reply_to_content?: string;
   reply_to_sender_id?: string;
   reply_to_sender_username?: string;
+  /** Rendly Tokens transfer (content_type 'token_transfer'): ledger transfer_id, amount sent, optional note. */
+  transfer_id?: string;
+  amount?: number;
+  note?: string | null;
 };
 
 let io: Server | null = null;

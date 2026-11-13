@@ -68,6 +68,10 @@ export type WhisperMessage = {
   reply_to_content?: string;
   reply_to_sender_id?: string;
   reply_to_sender_username?: string;
+  /** Only on content_type 'token_transfer': points_ledger transfer_id, amount sent, optional note. */
+  transfer_id?: string;
+  amount?: number;
+  note?: string | null;
 };
 
 export type CallLogEntry = {
@@ -604,6 +608,9 @@ export function toFrontendMessage(m: WhisperMessage & { deleted_for_everyone?: b
   reply_to_sender_username?: string;
   sender_username?: string | null;
   deleted_for_everyone?: boolean;
+  transfer_id?: string;
+  amount?: number;
+  note?: string | null;
 } {
   const created = (m as { created_at?: string }).created_at || `${(m as { date?: string }).date || ""}T${(m as { time?: string }).time || ""}`;
   const deleted = !!(m as { deleted_for_everyone?: boolean }).deleted_for_everyone;
@@ -619,6 +626,9 @@ export function toFrontendMessage(m: WhisperMessage & { deleted_for_everyone?: b
     reply_to_sender_username?: string;
     sender_username?: string | null;
     deleted_for_everyone?: boolean;
+    transfer_id?: string;
+    amount?: number;
+    note?: string | null;
   } = {
     id: m.id,
     sender_id: (m as { sent_by_id?: string }).sent_by_id || (m as { sender_id?: string }).sender_id || (m as { sent_by?: string }).sent_by || "",
@@ -632,6 +642,13 @@ export function toFrontendMessage(m: WhisperMessage & { deleted_for_everyone?: b
   if (m.reply_to_content != null && !deleted) out.reply_to_content = m.reply_to_content;
   if (m.reply_to_sender_id && !deleted) out.reply_to_sender_id = m.reply_to_sender_id;
   if (m.reply_to_sender_username && !deleted) out.reply_to_sender_username = m.reply_to_sender_username;
+  // Token transfer bubbles carry the ledger reference; other content types never expose these fields.
+  if (out.content_type === "token_transfer" && !deleted) {
+    if (typeof m.transfer_id === "string" && m.transfer_id) out.transfer_id = m.transfer_id;
+    if (typeof m.amount === "number" && Number.isFinite(m.amount)) out.amount = m.amount;
+    if (typeof m.note === "string") out.note = m.note;
+    else if (m.note === null) out.note = null;
+  }
   return out;
 }
 
