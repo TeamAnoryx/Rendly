@@ -30,6 +30,7 @@ import {
 } from '@/services/intentsApi';
 import IntentPickerDialog from './IntentPickerDialog';
 import CreateIntentDialog from './CreateIntentDialog';
+import '@/styles/intents.css';
 
 const SEARCH_DEBOUNCE_MS = 250;
 const SEARCH_LIMIT = 5;

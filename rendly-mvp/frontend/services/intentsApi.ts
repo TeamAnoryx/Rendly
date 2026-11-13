@@ -194,6 +194,19 @@ export async function createIntent(input: CreateIntentInput): Promise<MyIntent> 
   return intent;
 }
 
+export type LocationIntentScope = 'city' | 'country';
+
+/** Create (or reuse) a city/country location intent. The server answers 201 { intent }. */
+export async function createLocationIntent(scope: LocationIntentScope, name: string): Promise<Intent> {
+  const res = await authFetch('/api/intents/location', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ scope, name: name.trim() }),
+  });
+  const data = await readJson<{ intent?: Intent } | Intent>(res, 'Could not create that location intent');
+  return (data as { intent?: Intent })?.intent ?? (data as Intent);
+}
+
 export async function removeMyIntent(intentId: string): Promise<void> {
   const res = await authFetch(`/api/intents/mine/${encodeURIComponent(intentId)}`, { method: 'DELETE' });
   await readJson<unknown>(res, 'Could not remove that intent');

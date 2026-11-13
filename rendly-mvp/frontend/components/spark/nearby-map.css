@@ -1,0 +1,100 @@
+.nbm-wrap { display: flex; flex-direction: column; gap: 12px; }
+
+.nbm-card {
+  position: relative;
+  height: clamp(260px, 38vh, 420px);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--rd-surface);
+  border: 1px solid var(--rd-border);
+  box-shadow: var(--rd-shadow);
+  backdrop-filter: blur(14px);
+}
+.nbm-loading { display: grid; place-items: center; color: var(--rd-muted); }
+.nbm-map { width: 100%; height: 100%; background: var(--rd-bg); }
+
+/* Pin */
+.nbm-pin { background: transparent; border: 0; }
+.nbm-pin-bob { position: relative; display: block; width: 36px; height: 36px; transition: transform 0.2s var(--rd-ease, ease); }
+.nbm-pin:hover .nbm-pin-bob { animation: nbm-bob 1.2s ease-in-out infinite; }
+.nbm-pin-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: color-mix(in srgb, var(--rd-primary) 22%, transparent);
+  animation: nbm-pulse 2s ease-out infinite;
+}
+.nbm-pin-dot {
+  position: absolute; left: 50%; top: 50%; width: 14px; height: 14px;
+  margin: -7px 0 0 -7px; border-radius: 50%;
+  background: var(--rd-primary);
+  border: 2px solid var(--rd-text);
+  box-shadow: 0 0 12px var(--rd-primary), 0 0 24px var(--rd-glow, var(--rd-primary));
+}
+@keyframes nbm-pulse {
+  0% { transform: scale(0.5); opacity: 0.9; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+@keyframes nbm-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nbm-pin-ring, .nbm-pin:hover .nbm-pin-bob { animation: none; }
+}
+
+/* Search overlay */
+.nbm-search { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 1000; }
+.nbm-search-input {
+  width: 100%; padding: 10px 14px; border-radius: 12px;
+  background: var(--rd-surface-solid, var(--rd-surface-2));
+  color: var(--rd-text); border: 1px solid var(--rd-border-strong, var(--rd-border));
+  font: inherit; outline: none;
+}
+.nbm-search-input:focus { border-color: var(--rd-primary); }
+.nbm-results {
+  list-style: none; margin: 6px 0 0; padding: 4px;
+  border-radius: 12px; background: var(--rd-surface-solid, var(--rd-surface-2));
+  border: 1px solid var(--rd-border); box-shadow: var(--rd-shadow-lg, var(--rd-shadow));
+}
+.nbm-result {
+  display: block; width: 100%; text-align: left; padding: 8px 10px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--rd-text);
+  cursor: pointer; font: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nbm-result:hover, .nbm-result:focus-visible { background: var(--rd-hover); }
+.nbm-result-empty { padding: 8px 10px; color: var(--rd-muted); }
+
+.nbm-geo-msg {
+  position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 1000;
+  padding: 8px 12px; border-radius: 10px; font-size: 0.85rem;
+  background: var(--rd-surface-solid, var(--rd-surface-2)); color: var(--rd-text-2);
+  border: 1px solid var(--rd-border);
+}
+
+/* Footer */
+.nbm-footer { display: flex; flex-direction: column; gap: 8px; }
+.nbm-label { color: var(--rd-text-2); font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nbm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.nbm-btn {
+  padding: 8px 14px; border-radius: 10px; cursor: pointer; font: inherit;
+  background: var(--rd-surface-2); color: var(--rd-text); border: 1px solid var(--rd-border);
+}
+.nbm-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.nbm-btn-primary { background: var(--rd-primary); color: var(--rd-on-primary); border-color: transparent; }
+.nbm-error { margin: 0; color: var(--rd-danger); font-size: 0.85rem; }
+.nbm-note { margin: 0; color: var(--rd-muted); font-size: 0.9rem; }
+
+/* Chips */
+.nbm-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.nbm-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 0.85rem;
+  background: var(--rd-surface-2); color: var(--rd-text); border: 1px solid var(--rd-border);
+}
+.nbm-chip:hover:not(:disabled) { border-color: var(--rd-primary); }
+.nbm-chip:disabled { opacity: 0.55; cursor: not-allowed; }
+.nbm-chip.is-selected { border-color: var(--rd-primary); opacity: 1; }
+.nbm-chip-count { color: var(--rd-muted); font-size: 0.75rem; }
+.nbm-chip-price {
+  padding: 1px 6px; border-radius: 999px; font-size: 0.72rem; font-weight: 600;
+  background: var(--rd-coin-gold); color: var(--rd-coin-ink);
+}
