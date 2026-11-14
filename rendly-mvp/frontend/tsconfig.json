@@ -40,7 +40,8 @@
     "types",
     "styles",
     "config",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    ".next-3011/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

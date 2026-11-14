@@ -14,7 +14,8 @@ import {
 } from '@/services/sparkApi';
 import { useDashboard } from '@/hooks/useDashboard';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
-import SparkSetup from '@/components/spark/SparkSetup';
+import SparkSetup, { type SetupSnapshot } from '@/components/spark/SparkSetup';
+import MatchPreview from '@/components/spark/MatchPreview';
 import { SparkRoom } from '@/components/spark/SparkRoom';
 import { hashtagLabel } from '@/components/spark/setupUtils';
 import PovOrbit from '@/components/motion/PovOrbit';
@@ -31,6 +32,10 @@ const NOT_ENOUGH = 'Not enough tokens';
 
 function insufficientMessage(cost: number, balance: number): string {
   return `${NOT_ENOUGH}: this Spark costs ${cost} and you have ${balance}.`;
+}
+
+function waitingSnapshot(info: WaitingInfo, anonymous: boolean): SetupSnapshot {
+  return { labels: info.intents.map(hashtagLabel), mode: info.mode, anonymous, cost: info.cost };
 }
 
 function WaitingScreen({ info, onCancel }: { info: WaitingInfo; onCancel: () => void }) {
@@ -83,6 +88,7 @@ export default function SparkPage() {
   const [match, setMatch] = useState<SparkMatched | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState<SetupSnapshot | null>(null);
   const lastInputRef = useRef<JoinSparkInput | null>(null);
   const phaseRef = useRef<Phase>(phase);
   phaseRef.current = phase;
@@ -197,14 +203,23 @@ export default function SparkPage() {
               </div>
             )}
             {phase === 'choose' && (
-              <SparkSetup busy={busy} error={error} initial={lastInputRef.current} onStart={(i) => void join(i)} />
+              <SparkSetup
+                busy={busy}
+                error={error}
+                initial={lastInputRef.current}
+                onStart={(i) => void join(i)}
+                onSnapshot={setSnapshot}
+              />
             )}
             {phase === 'waiting' && waiting && <WaitingScreen info={waiting} onCancel={() => void cancel()} />}
           </section>
-          <aside className="spark-orbit-panel" aria-hidden="true">
-            <PovOrbit className="spark-orbit" parallax />
-            <div className="spark-orbit-panel__veil" />
-            <p className="spark-orbit-panel__caption">People who share your why</p>
+          <aside className="spark-orbit-panel" aria-label="Match preview">
+            <div className="spark-orbit-panel__glow" aria-hidden="true" />
+            <PovOrbit className="spark-orbit" parallax burst burstDelayMs={250} />
+            <div className="spark-orbit-panel__veil" aria-hidden="true" />
+            <div className="spark-orbit-panel__overlay">
+              <MatchPreview snapshot={phase === 'waiting' && waiting ? waitingSnapshot(waiting, lastInputRef.current?.anonymous ?? false) : snapshot} />
+            </div>
           </aside>
         </>
       )}

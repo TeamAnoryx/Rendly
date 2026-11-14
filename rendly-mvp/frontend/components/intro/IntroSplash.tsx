@@ -18,6 +18,11 @@ interface IntroSplashProps {
   onLeave?: () => void;
   /** Called once the exit transition has finished. */
   onDone: () => void;
+  /**
+   * Optional hand-over: when set, Proceed shows a spinner and awaits this instead of fading out
+   * (the caller navigates; the intro stays on screen until the next page replaces it).
+   */
+  onProceed?: () => Promise<void>;
 }
 
 function ArrowRight() {
@@ -36,7 +41,8 @@ export function markIntroSeen(): void {
   }
 }
 
-export default function IntroSplash({ onLeave, onDone }: IntroSplashProps) {
+export default function IntroSplash({ onLeave, onDone, onProceed }: IntroSplashProps) {
+  const [busy, setBusy] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const proceedRef = useRef<HTMLButtonElement>(null);
   const timers = useRef<number[]>([]);
@@ -107,12 +113,17 @@ export default function IntroSplash({ onLeave, onDone }: IntroSplashProps) {
   }, [step]);
 
   const leave = useCallback(() => {
-    if (leaving) return;
+    if (leaving || busy) return;
     markIntroSeen();
+    if (onProceed) {
+      setBusy(true);
+      onProceed().catch(() => setBusy(false));
+      return;
+    }
     setLeaving(true);
     onLeave?.();
     window.setTimeout(onDone, LEAVE_MS);
-  }, [leaving, onLeave, onDone]);
+  }, [leaving, busy, onProceed, onLeave, onDone]);
 
   const skip = useCallback(() => {
     const v = videoRef.current;
@@ -182,13 +193,15 @@ export default function IntroSplash({ onLeave, onDone }: IntroSplashProps) {
           <button
             ref={proceedRef}
             type="button"
-            className="intro-proceed"
+            className={`intro-proceed${busy ? ' is-busy' : ''}`}
             onClick={leave}
             tabIndex={step >= 5 ? 0 : -1}
             aria-hidden={step < 5}
+            aria-busy={busy}
+            disabled={busy}
           >
             Proceed
-            <ArrowRight />
+            {busy ? <span className="intro-spinner" aria-hidden /> : <ArrowRight />}
           </button>
         </div>
 

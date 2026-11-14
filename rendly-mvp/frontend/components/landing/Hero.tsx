@@ -191,33 +191,58 @@ function SparkMock() {
   );
 }
 
-export default function Hero() {
+/**
+ * Hero entrance, one beat at a time: (1) the pill, (2) the headline, (3) the copy and buttons
+ * together with the photo cards flowing in from the top right, then the product mock.
+ */
+/** Each headline line takes LINE_MS (see .ho-line); the second follows the first after a 0.5s pause. */
+const LINE_MS = 1300;
+const LINE_PAUSE_MS = 500;
+const TITLE_MS = 700;
+const TITLE2_MS = TITLE_MS + LINE_MS + LINE_PAUSE_MS;
+const STEP_MS = {
+  pill: 100,
+  title: TITLE_MS,
+  title2: TITLE2_MS,
+  copy: TITLE2_MS + LINE_MS - 300,
+  mock: TITLE2_MS + LINE_MS + 400,
+} as const;
+
+interface HeroProps {
+  /** False holds every entrance (hidden) until the welcome film hands over; true plays it. */
+  play?: boolean;
+}
+
+export default function Hero({ play = true }: HeroProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   useScrollTilt(stageRef);
 
   return (
-    <section className="ld-hero" aria-labelledby="ld-hero-title">
-      <PovOrbit className="ho-orbit" />
+    <section className={`ld-hero${play ? '' : ' ld-hero--hold'}`} aria-labelledby="ld-hero-title">
+      <PovOrbit className="ho-orbit" burst={play} burstDelayMs={STEP_MS.copy} />
       <div className="ld-container ld-hero-copy">
-        <a href="#product" className="ld-pill ld-enter" style={{ animationDelay: '60ms' }}>
+        <a href="#product" className="ld-pill ld-enter ld-hero-step" style={{ animationDelay: `${STEP_MS.pill}ms` }}>
           <span className="ld-pill-strong">Introducing Rendly</span>
           <span className="ld-pill-sep" aria-hidden="true" />
           <span className="ld-pill-muted">Intent-based networking</span>
           <IconArrowRight size={13} className="ld-pill-arrow" />
         </a>
 
-        <h1 id="ld-hero-title" className="ld-hero-title ld-enter" style={{ animationDelay: '120ms' }}>
-          Know your why.
-          <br />
-          Find your <span className="rd-spectrum-text ld-hero-accent">who.</span>
+        <h1 id="ld-hero-title" className="ld-hero-title">
+          <span className="ho-line" style={{ animationDelay: `${STEP_MS.title}ms` }}>
+            Know your why.
+          </span>
+          <span className="ho-line" style={{ animationDelay: `${STEP_MS.title2}ms` }}>
+            Find your <span className="rd-spectrum-text ld-hero-accent">who.</span>
+          </span>
         </h1>
 
-        <p className="ld-hero-sub ld-enter" style={{ animationDelay: '200ms' }}>
+        <p className="ld-hero-sub ld-enter ld-hero-step" style={{ animationDelay: `${STEP_MS.copy}ms` }}>
           Rendly matches you with people who want the same thing you do, whether that is a co-founder, a mentor or
           your next hire, then puts you face to face in seconds.
         </p>
 
-        <div className="ld-hero-ctas ld-enter" style={{ animationDelay: '270ms' }}>
+        <div className="ld-hero-ctas ld-enter ld-hero-step" style={{ animationDelay: `${STEP_MS.copy}ms` }}>
           <Link href="/auth/sign-up" className="rd-btn rd-btn--primary rd-btn--lg">
             Get started
             <IconArrowRight size={15} className="rd-btn-arrow" />
@@ -228,7 +253,7 @@ export default function Hero() {
         </div>
       </div>
 
-      <div className="ld-container ld-hero-visual ld-enter ld-enter--slow" style={{ animationDelay: '380ms' }}>
+      <div className="ld-container ld-hero-visual ld-enter ld-enter--slow" style={{ animationDelay: `${STEP_MS.mock}ms` }}>
         <div className="ld-hero-light" aria-hidden="true" />
         <div ref={stageRef} className="ld-hero-stage ho-stage">
           <div className="ld-frame">

@@ -277,3 +277,21 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Proceed while Home loads: a small spinner takes the arrow's place */
+.intro-proceed.is-busy {
+  cursor: progress;
+}
+.intro-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: intro-spin 0.7s linear infinite;
+}
+@keyframes intro-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -14,6 +14,7 @@ import {
 } from '@/services/intentsApi';
 import { newIdempotencyKey } from '@/services/pointsApi';
 import { compactCount } from '@/utils/formatCount';
+import PagedList from './setup/PagedList';
 
 type Props = {
   selected: string[];
@@ -257,16 +258,18 @@ export default function NearbyLeaflet({ selected, onSelect, maxReached }: Props)
       </div>
 
       <div className="nbm-footer">
-        <div className="nbm-label" title={label}>
-          {label || 'Drag the pin or search to choose a spot'}
-        </div>
-        <div className="nbm-actions">
-          <button type="button" className="nbm-btn nbm-btn-primary" onClick={confirm} disabled={busy}>
-            {busy ? 'Saving…' : 'Confirm location'}
-          </button>
-          <button type="button" className="nbm-btn" onClick={clear} disabled={busy}>
-            Clear location
-          </button>
+        <div className="nbm-bar">
+          <div className="nbm-label" title={label}>
+            {label || 'Drag the pin or search to choose a spot'}
+          </div>
+          <div className="nbm-actions">
+            <button type="button" className="nbm-btn nbm-btn-primary" onClick={confirm} disabled={busy}>
+              {busy ? 'Saving…' : 'Confirm location'}
+            </button>
+            <button type="button" className="nbm-btn" onClick={clear} disabled={busy}>
+              Clear location
+            </button>
+          </div>
         </div>
         {error && <p className="nbm-error" role="alert">{error}</p>}
 
@@ -281,12 +284,15 @@ export default function NearbyLeaflet({ selected, onSelect, maxReached }: Props)
             <p className="nbm-note">
               Near you: {nearby.user.city || nearby.user.distance || 'close by'}
             </p>
-            <div className="nbm-chips">
-              {nearby.intents.map((it) => {
+            <PagedList
+              className="nbm-paged"
+              items={nearby.intents}
+              label="intents near you"
+              getKey={(it) => it.id}
+              renderItem={(it) => {
                 const isSelected = selected.includes(it.name);
                 return (
                   <button
-                    key={it.id}
                     type="button"
                     className={`nbm-chip${isSelected ? ' is-selected' : ''}`}
                     disabled={maxReached || isSelected || pendingId !== null}
@@ -297,8 +303,8 @@ export default function NearbyLeaflet({ selected, onSelect, maxReached }: Props)
                     {!it.owned && <span className="nbm-chip-price">{NEARBY_PRICE}</span>}
                   </button>
                 );
-              })}
-            </div>
+              }}
+            />
           </div>
         )}
       </div>

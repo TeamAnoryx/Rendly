@@ -11,6 +11,8 @@ import { emitPointsChanged } from '@/services/pointsApi';
 import { Icon } from '@/components/shell/Icon';
 import { compactCount } from '@/utils/formatCount';
 import { LOCATION_NAME_MAX, intentKey, normalizeLocationName, validateLocationName } from './setupUtils';
+import PagedList from './setup/PagedList';
+import Segmented, { type SegmentOption } from './setup/Segmented';
 
 export type LocationIntentPickerProps = {
   selected: string[];
@@ -18,9 +20,9 @@ export type LocationIntentPickerProps = {
   onSelect: (name: string) => void;
 };
 
-const SCOPES: { id: LocationIntentScope; label: string }[] = [
-  { id: 'city', label: 'City' },
-  { id: 'country', label: 'Country' },
+const SCOPES: readonly SegmentOption<LocationIntentScope>[] = [
+  { value: 'city', label: 'City' },
+  { value: 'country', label: 'Country' },
 ];
 const MAX_SUGGESTIONS = 6;
 
@@ -91,20 +93,15 @@ export default function LocationIntentPicker({ selected, maxReached, onSelect }:
 
   return (
     <div className="ss-loc">
-      <div className="ss-seg ss-seg--sm" role="tablist" aria-label="Location type">
-        {SCOPES.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            role="tab"
-            aria-selected={scope === s.id}
-            className={`ss-seg__btn${scope === s.id ? ' ss-seg__btn--on' : ''}`}
-            onClick={() => setScope(s.id)}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        options={SCOPES}
+        value={scope}
+        onChange={setScope}
+        label="Location type"
+        inkId="ss-scope-ink"
+        kind="tab"
+        size="sm"
+      />
 
       <form
         className="ss-loc__form"
@@ -140,27 +137,29 @@ export default function LocationIntentPicker({ selected, maxReached, onSelect }:
       {loadError && <p className="ss-hint">Suggestions are unavailable right now.</p>}
 
       {suggestions.length > 0 && (
-        <div className="ss-list">
-          {suggestions.map((s) => {
-            const on = selectedKeys.includes(intentKey(s.name));
+        <PagedList
+          items={suggestions}
+          label="location suggestions"
+          getKey={(item) => item.id}
+          renderItem={(item) => {
+            const on = selectedKeys.includes(intentKey(item.name));
             return (
               <button
-                key={s.id}
                 type="button"
                 className={`ss-row${on ? ' ss-row--on' : ''}`}
                 aria-pressed={on}
                 disabled={busy || (!on && maxReached)}
-                onClick={() => (on ? onSelect(s.name) : void add(s.name))}
+                onClick={() => (on ? onSelect(item.name) : void add(item.name))}
               >
-                <span className="ss-count">{compactCount(s.usage_count)}</span>
+                <span className="ss-count">{compactCount(item.usage_count)}</span>
                 <span className="ss-row__label">
-                  <Icon name="map-pin" size={14} /> {s.name}
+                  <Icon name="map-pin" size={14} /> {item.name}
                 </span>
                 {on && <Icon name="check" size={16} />}
               </button>
             );
-          })}
-        </div>
+          }}
+        />
       )}
     </div>
   );

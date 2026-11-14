@@ -11,8 +11,13 @@ import { FinalCta, Footer } from './Closing';
 import { useHashScroll } from './useHashScroll';
 import './landing.css';
 
-/** Rendly marketing landing page. Mounted by app/page.tsx beneath the intro splash. */
-export default function Landing() {
+interface LandingProps {
+  /** False holds the hero entrance (the welcome film is still on top); true plays it. */
+  heroPlay?: boolean;
+}
+
+/** Rendly marketing landing page (Home). Mounted by HomeEntry, under the welcome film when it shows. */
+export default function Landing({ heroPlay = true }: LandingProps) {
   useHashScroll();
   return (
     <div className="ld-root">
@@ -21,7 +26,7 @@ export default function Landing() {
       </a>
       <Nav />
       <main id="ld-main">
-        <Hero />
+        <Hero play={heroPlay} />
         <Features />
         <HowItWorks />
         <ProductBands />

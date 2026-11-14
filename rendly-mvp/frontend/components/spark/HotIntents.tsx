@@ -7,6 +7,7 @@ import { compactCount } from '@/utils/formatCount';
 import { TokenCoin } from '@/components/brand/TokenCoin';
 import { Icon } from '@/components/shell/Icon';
 import { hashtagLabel, intentKey } from './setupUtils';
+import PagedList from './setup/PagedList';
 
 /** Per-match price of a non-preset intent (the Spark cost, not the purchase price). */
 const HOT_MATCH_PRICE = 10;
@@ -68,7 +69,7 @@ export default function HotIntents({ selected, heldNames = [], maxReached, onSel
 
   if (state === 'loading') {
     return (
-      <div className="ss-list" aria-busy="true">
+      <div className="ss-paged__viewport ss-list" aria-busy="true">
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="ss-row ss-row--skeleton" />
         ))}
@@ -88,39 +89,43 @@ export default function HotIntents({ selected, heldNames = [], maxReached, onSel
   if (items.length === 0) return <div className="ss-empty">Nothing is trending yet.</div>;
 
   return (
-    <div className="ss-list">
+    <div className="ss-panel-stack">
       {error && (
         <p className="ss-error" role="alert">
           {error}
         </p>
       )}
-      {items.map((intent) => {
-        const on = selectedKeys.includes(intentKey(intent.name));
-        const disabled = busyId !== null || (!on && maxReached);
-        return (
-          <button
-            key={intent.id}
-            type="button"
-            className={`ss-row${on ? ' ss-row--on' : ''}`}
-            onClick={() => void pick(intent)}
-            disabled={disabled}
-            aria-pressed={on}
-          >
-            <span className="ss-count">{compactCount(intent.usage_count)}</span>
-            <span className="ss-row__label">{hashtagLabel(intent.name)}</span>
-            {busyId === intent.id ? (
-              <span className="ss-spinner" aria-label="Adding" />
-            ) : on ? (
-              <Icon name="check" size={16} />
-            ) : (
-              <span className="ss-price">
-                <TokenCoin size={14} />
-                {HOT_MATCH_PRICE}
-              </span>
-            )}
-          </button>
-        );
-      })}
+      <PagedList
+        items={items}
+        label="trending intents"
+        getKey={(intent) => intent.id}
+        renderItem={(intent) => {
+          const on = selectedKeys.includes(intentKey(intent.name));
+          const disabled = busyId !== null || (!on && maxReached);
+          return (
+            <button
+              type="button"
+              className={`ss-row${on ? ' ss-row--on' : ''}`}
+              onClick={() => void pick(intent)}
+              disabled={disabled}
+              aria-pressed={on}
+            >
+              <span className="ss-count">{compactCount(intent.usage_count)}</span>
+              <span className="ss-row__label">{hashtagLabel(intent.name)}</span>
+              {busyId === intent.id ? (
+                <span className="ss-spinner" aria-label="Adding" />
+              ) : on ? (
+                <Icon name="check" size={16} />
+              ) : (
+                <span className="ss-coin">
+                  <TokenCoin size={13} />
+                  {HOT_MATCH_PRICE}
+                </span>
+              )}
+            </button>
+          );
+        }}
+      />
     </div>
   );
 }

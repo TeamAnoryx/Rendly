@@ -1,9 +1,9 @@
 # Test Rendly service health endpoints (Windows)
 
 $services = @(
-    @{ Port = 3011; Name = "Auth" },
-    @{ Port = 3012; Name = "User" },
-    @{ Port = 3013; Name = "Matching" },
+    @{ Port = 4001; Name = "Auth" },
+    @{ Port = 3002; Name = "User" },
+    @{ Port = 3003; Name = "Matching" },
     @{ Port = 3004; Name = "CCS (Chat)" },
     @{ Port = 3005; Name = "Video" },
     @{ Port = 3006; Name = "Moderation" },
@@ -15,7 +15,7 @@ Write-Host "Testing Rendly Services..." -ForegroundColor Cyan
 
 foreach ($s in $services) {
     try {
-        $r = Invoke-WebRequest -Uri "http://localhost:$($s.Port)/health" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+        $r = Invoke-WebRequest -Uri "http://localhost:$($s.Port)/health" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
         if ($r.StatusCode -eq 200) {
             Write-Host "OK $($s.Name) ($($s.Port))" -ForegroundColor Green
         } else {
@@ -27,5 +27,5 @@ foreach ($s in $services) {
 }
 
 Write-Host ""
-Write-Host "Frontend: http://localhost:3000" -ForegroundColor Yellow
+Write-Host "Frontend: http://localhost:3001" -ForegroundColor Yellow
 Write-Host "API Gateway: http://localhost:80" -ForegroundColor Yellow

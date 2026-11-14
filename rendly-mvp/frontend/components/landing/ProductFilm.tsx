@@ -100,12 +100,21 @@ declare global {
   }
 }
 
+interface ProductFilmProps {
+  /** `section`: the landing section with its header. `player`: the bare player (welcome overlay). */
+  variant?: 'section' | 'player';
+  /** When set, drives the sound from outside (true turns it on, false mutes); the button still works. */
+  sound?: boolean;
+  /** True keeps the film paused (e.g. while its overlay is still fading in, or handing over). */
+  hold?: boolean;
+}
+
 /**
  * "From why to hello": a launch film of the real Rendly flow,
  * rendered live (DOM + canvas) from one clock so it scrubs, loops and stays
  * sharp at any size. Plays muted while on screen; sound is opt-in.
  */
-export default function ProductFilm() {
+export default function ProductFilm({ variant = 'section', sound, hold = false }: ProductFilmProps = {}) {
   const rootRef = useRef<HTMLElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -132,7 +141,7 @@ export default function ProductFilm() {
   const [muted, setMuted] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [shot, setShot] = useState(0);
-  const playing = onScreen && !userPaused && (!still || userPlayed);
+  const playing = onScreen && !hold && !userPaused && (!still || userPlayed);
   const playingRef = useRef(playing);
   playingRef.current = playing;
 
@@ -180,6 +189,22 @@ export default function ProductFilm() {
       clips.pauseAll();
     };
   }, [clips]);
+
+  // Sound driven from outside (the welcome overlay): on when it opens, muted on "Get started".
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (sound === undefined || !audio) return;
+    if (sound) {
+      setMuted(false);
+      audio
+        .enable()
+        .then(() => render(tRef.current, true))
+        .catch(() => setMuted(true)); // no audio device / blocked: show the film as muted
+    } else {
+      setMuted(true);
+      audio.disable();
+    }
+  }, [sound, render]);
 
   // Reduced motion rests on the finished end card until the viewer presses play.
   useEffect(() => {
@@ -276,27 +301,10 @@ export default function ProductFilm() {
     else void el.requestFullscreen?.().catch(() => undefined);
   };
 
-  return (
-    <section
-      ref={rootRef}
-      id="flow"
-      className={`ld-section ld-section--bordered pf2${playing ? ' is-playing' : ''}${portrait ? ' is-portrait' : ''}`}
-      aria-labelledby="pf2-title"
-    >
-      <div className="pf2-container">
-        <header className="ld-section-head pf2-head">
-          <Reveal as="p" className="ld-eyebrow">
-            The film · 2:24
-          </Reveal>
-          <Reveal as="h2" delay={60} className="ld-h2">
-            <span id="pf2-title">From why to hello, in one flow.</span>
-          </Reveal>
-          <Reveal as="p" delay={120} className="ld-lede">
-            Set your why, get matched on it, meet face to face, then keep the conversation going.
-          </Reveal>
-        </header>
+  const stateCls = `pf2${playing ? ' is-playing' : ''}${portrait ? ' is-portrait' : ''}`;
 
-        <Reveal delay={160} className="pf2-player">
+  const player = (
+    <>
           <div ref={shellRef} className={`pf2-shell${fullscreen ? ' is-fs' : ''}`}>
             <div className="pf2-frame">
               <div ref={stageRef} className="pf2-stage" aria-hidden="true">
@@ -374,6 +382,39 @@ export default function ProductFilm() {
             the line: Know your why. Find your who.{' '}
             <a href="/auth/sign-up">Get started with Rendly</a>
           </p>
+    </>
+  );
+
+  if (variant === 'player') {
+    return (
+      <div ref={rootRef as React.RefObject<HTMLDivElement>} className={`${stateCls} pf2-bare`}>
+        <div className="pf2-player">{player}</div>
+      </div>
+    );
+  }
+
+  return (
+    <section
+      ref={rootRef}
+      id="flow"
+      className={`ld-section ld-section--bordered ${stateCls}`}
+      aria-labelledby="pf2-title"
+    >
+      <div className="pf2-container">
+        <header className="ld-section-head pf2-head">
+          <Reveal as="p" className="ld-eyebrow">
+            The film · 2:24
+          </Reveal>
+          <Reveal as="h2" delay={60} className="ld-h2">
+            <span id="pf2-title">From why to hello, in one flow.</span>
+          </Reveal>
+          <Reveal as="p" delay={120} className="ld-lede">
+            Set your why, get matched on it, meet face to face, then keep the conversation going.
+          </Reveal>
+        </header>
+
+        <Reveal delay={160} className="pf2-player">
+          {player}
         </Reveal>
       </div>
     </section>

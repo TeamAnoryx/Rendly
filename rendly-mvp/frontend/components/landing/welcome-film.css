@@ -1,0 +1,270 @@
+/*
+ * Welcome film: the product film over Home, right after the intro, with an animated
+ * "Get started" pill. Leaving fades and lifts the overlay off the page (see LEAVE_MS).
+ */
+
+.wf {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 4vh, 48px) 20px;
+  overflow-y: auto;
+  background: radial-gradient(120% 80% at 50% 0%, rgba(124, 92, 255, 0.08), transparent 60%), #08090a;
+  animation: wf-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.wf-inner {
+  width: 100%;
+  max-width: 1120px;
+  animation: wf-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
+}
+.wf .pf2-bare .pf2-player {
+  margin-top: 0;
+}
+
+/* ---------- Get started pill ---------- */
+.wf-cta-slot {
+  display: flex;
+  justify-content: center;
+  margin-top: clamp(18px, 3.4vh, 34px);
+}
+.wf-cta {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 26px 0 30px;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  color: #08090a;
+  background: #f7f8f8;
+  font: 600 16px/1 var(--font-sans, Inter, system-ui, sans-serif);
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 12px 32px -10px rgba(124, 92, 255, 0.55);
+  animation: wf-cta-in 800ms cubic-bezier(0.16, 1, 0.3, 1) 900ms both, wf-cta-breathe 3.2s ease-in-out 1.8s infinite;
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 220ms ease;
+}
+/* light sweep across the pill */
+.wf-cta::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(110deg, transparent 30%, rgba(124, 92, 255, 0.28) 48%, rgba(255, 106, 160, 0.22) 54%, transparent 70%);
+  transform: translateX(-120%);
+  animation: wf-sweep 2.8s cubic-bezier(0.45, 0, 0.2, 1) 1.9s infinite;
+}
+/* soft ring that pulses out */
+.wf-cta::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 0 rgba(176, 140, 255, 0.55);
+  animation: wf-ring 2.4s ease-out 1.8s infinite;
+  pointer-events: none;
+}
+.wf-cta-arrow {
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: wf-nudge 1.6s ease-in-out 2s infinite;
+}
+.wf-cta:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 18px 40px -10px rgba(124, 92, 255, 0.7);
+}
+.wf-cta:hover .wf-cta-arrow {
+  transform: translateX(4px);
+}
+.wf-cta:active {
+  transform: translateY(0) scale(0.98);
+}
+.wf-cta:focus-visible {
+  outline: 2px solid #b08cff;
+  outline-offset: 4px;
+}
+
+/* ---------- Leaving: sound already muted; fade, lift and blur away ---------- */
+.wf--leaving {
+  pointer-events: none;
+  animation: wf-out 900ms cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+.wf--leaving .wf-inner {
+  animation: wf-inner-out 900ms cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+
+@keyframes wf-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes wf-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 28px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes wf-cta-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes wf-cta-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 12px 32px -10px rgba(124, 92, 255, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28), 0 16px 44px -8px rgba(255, 106, 160, 0.55);
+  }
+}
+@keyframes wf-sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  60%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+@keyframes wf-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(176, 140, 255, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 14px rgba(176, 140, 255, 0);
+  }
+}
+@keyframes wf-nudge {
+  0%,
+  60%,
+  100% {
+    transform: translateX(0);
+  }
+  30% {
+    transform: translateX(4px);
+  }
+}
+@keyframes wf-out {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes wf-inner-out {
+  0% {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -36px, 0) scale(0.94);
+    filter: blur(10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wf,
+  .wf-inner,
+  .wf-cta,
+  .wf-cta::before,
+  .wf-cta::after,
+  .wf-cta-arrow,
+  .wf--leaving,
+  .wf--leaving .wf-inner {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+  }
+}
+
+/* Get started while the page settles: spinner in place of the arrow, effects calmed */
+.wf-cta.is-busy {
+  cursor: progress;
+  animation: wf-cta-in 800ms cubic-bezier(0.16, 1, 0.3, 1) 900ms both;
+}
+.wf-cta.is-busy::before,
+.wf-cta.is-busy::after {
+  animation: none;
+  opacity: 0;
+}
+.wf-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: wf-spin 0.7s linear infinite;
+}
+@keyframes wf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Get started pill: size per screen ---------- */
+/* Phones */
+@media (max-width: 639px) {
+  .wf-cta-slot {
+    margin-top: 16px;
+  }
+  .wf-cta {
+    height: 46px;
+    padding: 0 20px 0 24px;
+    font-size: 15px;
+    gap: 8px;
+  }
+}
+/* Very narrow phones: never wider than the screen */
+@media (max-width: 359px) {
+  .wf-cta {
+    width: 100%;
+    justify-content: center;
+  }
+}
+/* Short screens (phones in landscape): keep the pill clear of the bottom edge */
+@media (max-height: 480px) {
+  .wf-cta-slot {
+    margin-top: 10px;
+  }
+  .wf-cta {
+    height: 40px;
+    font-size: 14px;
+  }
+}
+/* Large desktops */
+@media (min-width: 1440px) {
+  .wf-cta {
+    height: 58px;
+    padding: 0 30px 0 34px;
+    font-size: 17px;
+  }
+}
+/* 4K / very large */
+@media (min-width: 1920px) {
+  .wf-cta {
+    height: 64px;
+    padding: 0 34px 0 38px;
+    font-size: 18px;
+    gap: 12px;
+  }
+}

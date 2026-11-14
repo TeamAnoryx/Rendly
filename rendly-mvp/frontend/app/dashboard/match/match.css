@@ -1,17 +1,22 @@
-/* Spark page shell: setup / waiting on the left, decorative orbit on the right (wide screens). */
+/* Spark page shell: setup / waiting on the left, orbit + live match preview on the right (wide landscape).
+   The shell fills .rd-main. On narrow / portrait screens it is the single scroll container. */
 
 .spark-shell {
   position: relative;
   display: flex;
   flex-direction: column;
+  height: 100%;
   min-height: 0;
   width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .spark-main {
   position: relative;
+  flex: 1 0 auto;
   min-width: 0;
-  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -24,14 +29,13 @@
   color: var(--rd-muted);
 }
 
-/* Orbit panel: hidden on small screens */
+/* Orbit panel: hidden unless there is room for it */
 .spark-orbit-panel {
   display: none;
 }
 
 /* Room fills the whole shell */
 .spark-shell--room {
-  height: calc(100dvh - var(--rd-topbar, 64px));
   overflow: hidden;
 }
 .spark-room-slot {
@@ -45,24 +49,24 @@
   min-height: 0;
 }
 
-@media (min-width: 1025px), (min-width: 768px) and (orientation: landscape) {
+/* Fit mode: nothing scrolls */
+@media (orientation: landscape) and (min-width: 900px) and (min-height: 560px) {
   .spark-shell:not(.spark-shell--room) {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 0.9fr);
-    height: calc(100vh - var(--rd-topbar, 64px));
-    height: calc(100dvh - var(--rd-topbar, 64px));
+    grid-template-columns: minmax(0, 1fr);
     overflow: hidden;
   }
   .spark-main {
     height: 100%;
+    min-height: 0;
     overflow: hidden;
   }
-  .spark-main .ss-body {
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: thin;
-  }
+}
 
+@media (orientation: landscape) and (min-width: 1180px) and (min-height: 560px) {
+  .spark-shell:not(.spark-shell--room) {
+    grid-template-columns: minmax(0, 1.75fr) minmax(340px, 1fr);
+  }
   .spark-orbit-panel {
     position: relative;
     display: block;
@@ -71,41 +75,55 @@
     overflow: hidden;
     container-type: inline-size;
     border-left: 1px solid var(--rd-border-faint);
-    background: radial-gradient(55% 70% at 92% 50%, rgba(255, 255, 255, 0.045), transparent 70%),
-      var(--rd-bg);
+    background: radial-gradient(60% 50% at 60% 40%, rgba(124, 92, 255, 0.12), transparent 70%),
+      radial-gradient(50% 40% at 80% 85%, rgba(240, 139, 208, 0.08), transparent 70%), var(--rd-bg);
+  }
+  .spark-orbit-panel__glow {
+    position: absolute;
+    inset: 20% 10% 30%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(183, 139, 255, 0.18), transparent 65%);
+    filter: blur(30px);
+    pointer-events: none;
+    animation: spark-glow 8s ease-in-out infinite alternate;
   }
   .spark-orbit-panel .spark-orbit {
     inset: 0;
     --po-gap: 40;
     opacity: 0;
-    animation: spark-orbit-in 1600ms var(--rd-ease) 200ms forwards;
+    animation: spark-orbit-in 1400ms var(--rd-ease) 150ms forwards;
   }
   .spark-orbit-panel__veil {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: linear-gradient(90deg, var(--rd-bg) 0%, rgba(8, 9, 10, 0.55) 22%, rgba(8, 9, 10, 0) 48%),
-      linear-gradient(180deg, rgba(8, 9, 10, 0.6) 0%, rgba(8, 9, 10, 0) 16%, rgba(8, 9, 10, 0) 78%, rgba(8, 9, 10, 0.85) 100%);
+    background: linear-gradient(90deg, var(--rd-bg) 0%, rgba(8, 9, 10, 0.5) 20%, rgba(8, 9, 10, 0) 46%),
+      linear-gradient(180deg, rgba(8, 9, 10, 0.55) 0%, rgba(8, 9, 10, 0) 18%, rgba(8, 9, 10, 0) 55%, rgba(8, 9, 10, 0.92) 100%);
   }
-  .spark-orbit-panel__caption {
+  .spark-orbit-panel__overlay {
     position: absolute;
-    left: 28px;
-    bottom: 28px;
+    left: clamp(16px, 2vw, 28px);
+    right: clamp(16px, 2vw, 28px);
+    bottom: clamp(16px, 3vh, 28px);
     z-index: 2;
-    margin: 0;
-    font-size: clamp(18px, 2vw, 24px);
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    background: var(--rd-grad);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    display: flex;
+    justify-content: flex-start;
   }
 }
 
 @keyframes spark-orbit-in {
   to {
     opacity: 1;
+  }
+}
+@keyframes spark-glow {
+  from {
+    opacity: 0.6;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.06);
   }
 }
 
@@ -235,6 +253,9 @@
   }
   .spark-orbit-panel .spark-orbit {
     opacity: 1;
+    animation: none;
+  }
+  .spark-orbit-panel__glow {
     animation: none;
   }
 }

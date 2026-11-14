@@ -28,7 +28,15 @@ interface PovOrbitProps {
   visible?: number;
   /** Follow the pointer with a few pixels of parallax. */
   parallax?: boolean;
+  /** Turning true starts an entrance burst: the cards sweep down fast, then ease to their cruise speed. */
+  burst?: boolean;
+  /** Delay before the burst starts, in ms (to line up with a CSS entrance). */
+  burstDelayMs?: number;
 }
+
+/** Entrance burst: peak speed multiple and how long it takes to ease back to 1x. */
+const BURST_BOOST = 7;
+const BURST_MS = 2600;
 
 const ASPECT = 4 / 3;
 /** Vertical centre spacing between neighbouring cards, as a share of card height (each lower card
@@ -70,8 +78,16 @@ export default function PovOrbit({
   speed = 11,
   visible = 7,
   parallax = false,
+  burst = false,
+  burstDelayMs = 0,
 }: PovOrbitProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  /** performance.now() at which the current burst starts; 0 when none is running. */
+  const burstAtRef = useRef(0);
+
+  useEffect(() => {
+    burstAtRef.current = burst ? performance.now() + burstDelayMs : 0;
+  }, [burst, burstDelayMs]);
   const cardsRef = useRef<(HTMLDivElement | null)[]>([]);
   const shadesRef = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -149,7 +165,14 @@ export default function PovOrbit({
       frame = 0;
       const dt = last ? Math.min(now - last, MAX_DT) : 0;
       last = now;
-      phase = (phase - dt / 1000 / speed + n) % n;
+      let boost = 1;
+      if (burstAtRef.current) {
+        const k = (now - burstAtRef.current) / BURST_MS;
+        if (k >= 1) burstAtRef.current = 0;
+        else boost = 1 + (BURST_BOOST - 1) * (1 - Math.max(0, k)) ** 2;
+      }
+      // Decreasing phase carries every card down the left arc: anticlockwise around the hub.
+      phase = (phase - (dt / 1000 / speed) * boost + n) % n;
       pointer.x += (pointer.tx - pointer.x) * 0.06;
       pointer.y += (pointer.ty - pointer.y) * 0.06;
       paint();
