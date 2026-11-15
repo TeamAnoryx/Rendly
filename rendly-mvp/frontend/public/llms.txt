@@ -1,0 +1,29 @@
+# Rendly
+
+> Rendly is an intent-based networking app by Anoryx Tech Solutions. People say why they want to meet someone (find a co-founder, a collaborator, a study partner, a friend) and Rendly connects them with people who share that intent. Tagline: "Know your why. Find your who."
+
+Rendly lives at https://anoryxtechsolutions.com/rendly.app and is part of Anoryx (https://anoryxtechsolutions.com).
+
+## Product
+
+- Spark: pick one or more intents and get matched 1:1 with someone who shares one. The match opens a room with video and chat. Members can stay anonymous until they choose to connect. Each Spark match costs tokens.
+- Whispers: private 1:1 and group chat between connections.
+- Huddles: live group video rooms around a topic. Hosts admit people from a waiting room (one at a time or all at once), split the room into breakout rooms of up to 12 people with a leader each, appoint admins, run a private admin room and record the session.
+- Connections: people you met on Spark or in Huddles, with calls and messages.
+- Tokens and rewards: earned by taking part, spent on Spark matches and rewards in Huddles.
+
+## Key pages
+
+- [Home](https://anoryxtechsolutions.com/rendly.app): what Rendly is and how it works
+- [About](https://anoryxtechsolutions.com/rendly.app/about): mission and features
+- [Sign up](https://anoryxtechsolutions.com/rendly.app/auth/sign-up): create an account
+- [Privacy](https://anoryxtechsolutions.com/rendly.app/privacy)
+- [Terms](https://anoryxtechsolutions.com/rendly.app/terms)
+
+## FAQ
+
+- What is Rendly? An intent-based networking app that connects people who share a reason to meet.
+- How does a Spark match work? Choose intents, press Spark, and Rendly pairs you with someone who shares one in a 1:1 video and chat room.
+- What are Huddles? Live group rooms with waiting room, breakout rooms, room leaders, admins and recording.
+- Is Rendly free? Profiles and Huddles are free. Spark matches use tokens earned in the community.
+- Who makes Rendly? Anoryx Tech Solutions.

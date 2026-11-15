@@ -45,6 +45,9 @@ Notes:
 | `NEXT_PUBLIC_GITHUB_CLIENT_ID` | Same as backend `GITHUB_CLIENT_ID` |
 | `NEXT_PUBLIC_LINKEDIN_CLIENT_ID` | Same as backend `LINKEDIN_CLIENT_ID` |
 | `NEXT_PUBLIC_OAUTH_REDIRECT_URI` | `https://<your-vercel-domain>/auth/callback` |
+| `NEXT_PUBLIC_SITE_URL` | `https://anoryxtechsolutions.com/rendly.app` (canonical URL for SEO, sitemap and share cards) |
+| `NEXT_PUBLIC_ANORYX_URL` | `https://anoryxtechsolutions.com` |
+| `NEXT_BASE_PATH` | `/rendly.app` when the app is served under that path on the Anoryx domain (the Anoryx site rewrites `/rendly.app/*` to this Vercel project). Leave empty on a root domain. |
 
    Do **not** set `NEXT_DIST_DIR` on Vercel. `NEXT_PUBLIC_*` values are baked in at build time: after changing one, **redeploy**.
 4. Deploy.

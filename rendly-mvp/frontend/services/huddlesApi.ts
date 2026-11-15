@@ -239,6 +239,13 @@ export async function admitHuddleMember(id: string, userId: string): Promise<voi
   await parseOrThrow<unknown>(res, 'Failed to admit');
 }
 
+/** Admits everyone in the waiting room at once. Resolves with how many could not be admitted. */
+export async function admitAllHuddleMembers(id: string, userIds: string[]): Promise<{ admitted: number; failed: number }> {
+  const results = await Promise.allSettled(userIds.map((userId) => admitHuddleMember(id, userId)));
+  const failed = results.filter((r) => r.status === 'rejected').length;
+  return { admitted: results.length - failed, failed };
+}
+
 export type MemberPatch = Partial<{
   role: 'co_host' | 'participant';
   can_speak: boolean;

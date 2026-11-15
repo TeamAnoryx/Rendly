@@ -646,3 +646,12 @@
 }
 @keyframes is-dock-hint { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .is-dock, .is-dock-hint { animation-duration: .01s; } }
+
+/* The panel scrolls as a whole, so the custom-intent form and its Add button stay
+   reachable when the sheet is taller than the screen (tablet landscape, phones). */
+.is-sheet .is-sheet-panel {
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}

@@ -3,6 +3,9 @@ const nextConfig = {
   // Each dev server needs its own build folder when several run from this project.
   // Set NEXT_DIST_DIR (e.g. .next-3011) per server; defaults to .next.
   distDir: process.env.NEXT_DIST_DIR || '.next',
+  // Serve under a sub-path in production, e.g. NEXT_BASE_PATH=/rendly.app for
+  // https://anoryxtechsolutions.com/rendly.app. Empty (root) in development.
+  basePath: process.env.NEXT_BASE_PATH || '',
   reactStrictMode: true,
   swcMinify: true,
   compress: true,
@@ -19,6 +22,21 @@ const nextConfig = {
       { source: '/audio/:path*', headers: immutable },
       { source: '/sounds/:path*', headers: immutable },
       { source: '/video/:path*', headers: immutable },
+      // Signed-in and private areas never belong in search or AI answer indexes.
+      ...['/dashboard/:path*', '/admin/:path*', '/profile-setup', '/auth/callback'].map((source) => ({
+        source,
+        headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+      })),
+      // Baseline security headers for every page.
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Permissions-Policy', value: 'camera=(self), microphone=(self), geolocation=(self), display-capture=(self)' },
+        ],
+      },
     ];
   },
   experimental: {

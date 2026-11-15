@@ -1064,3 +1064,15 @@
   .hr-admin-pill { padding: 0 10px; }
   .hr-rec { padding: 0 8px; }
 }
+
+/* Waiting list header: count on the left, "Admit all" on the right. */
+.hr-waiting-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hr-waiting-head .hr-subhead {
+  margin: 0;
+}

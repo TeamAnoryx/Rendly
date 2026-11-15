@@ -1,3 +1,4 @@
+import { siteConfig } from '@/lib/site';
 import React from 'react';
 import Link from 'next/link';
 import { AnoryxSignature, RendlyLockup } from '@/components/brand/Brand';
@@ -87,7 +88,12 @@ export function Footer() {
           </nav>
         </div>
         <div className="ld-footer-bottom">
-          <span className="ld-footer-copy">© 2026 Anoryx</span>
+          <span className="ld-footer-copy">
+            © 2026{' '}
+            <a href={siteConfig.anoryxUrl} className="ld-footer-link" rel="noopener">
+              Anoryx Tech Solutions
+            </a>
+          </span>
           <AnoryxSignature />
         </div>
       </div>

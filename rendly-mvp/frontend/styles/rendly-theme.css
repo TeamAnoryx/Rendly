@@ -1278,3 +1278,14 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Tablet and phone safety net: a page that does not fit the screen scrolls instead
+   of clipping. Pages that already fit are unaffected (no scrollbar appears). */
+@media (max-width: 1180px), (max-height: 820px) {
+  .rd-page {
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+}

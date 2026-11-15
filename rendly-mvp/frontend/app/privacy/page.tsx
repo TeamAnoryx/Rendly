@@ -3,6 +3,7 @@ import LegalPage from '@/components/landing/LegalPage';
 import { PRIVACY_EFFECTIVE, PRIVACY_LAST_UPDATED, PRIVACY_SECTIONS } from '@/content/legalContent';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/privacy' },
   title: 'Privacy Policy | Rendly',
   description: 'How Rendly collects, uses and protects your information.',
 };

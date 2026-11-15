@@ -6,6 +6,7 @@ import websocket from '@/services/websocket';
 import { useHasVideo } from '@/components/call/VideoTile';
 import {
   admitHuddleMember,
+  admitAllHuddleMembers,
   listHuddleMembers,
   removeHuddleMember,
   updateHuddleMember,
@@ -950,7 +951,27 @@ function PeoplePanel({
       {err ? <p className="hr-err">{err}</p> : null}
       {isManager && waiting.length > 0 ? (
         <>
-          <h4 className="hr-subhead">Waiting ({waiting.length})</h4>
+          <div className="hr-waiting-head">
+            <h4 className="hr-subhead">Waiting ({waiting.length})</h4>
+            {waiting.length > 1 ? (
+              <button
+                type="button"
+                className="rd-btn rd-btn--primary rd-btn--sm"
+                disabled={busy !== null}
+                onClick={() =>
+                  act('__all__', async () => {
+                    const { failed } = await admitAllHuddleMembers(huddle.id, waiting.map((m) => m.user_id));
+                    if (failed > 0) {
+                      await onChanged(); // show who did get in before reporting the rest
+                      throw new Error(`${failed} ${failed === 1 ? 'person' : 'people'} could not be admitted. Try again.`);
+                    }
+                  })
+                }
+              >
+                {busy === '__all__' ? 'Admitting…' : `Admit all (${waiting.length})`}
+              </button>
+            ) : null}
+          </div>
           {waiting.map((m) => (
             <div key={m.user_id} className="hr-person">
               <Avatar url={m.avatar_url} name={m.username} size="sm" />
