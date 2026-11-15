@@ -27,6 +27,17 @@ export type Huddle = ActiveHuddle & {
   intent?: string;
 };
 
+/** A scheduled huddle that has not started yet (shown under "Upcoming"). */
+export type UpcomingHuddle = {
+  id: string;
+  title: string;
+  scheduledAt: string;
+  durationMinutes: number | null;
+  thumbnailUrl: string | null;
+  isOwner: boolean;
+  rescheduled: boolean;
+};
+
 /** How often the dashboard refreshes stats and live huddles. */
 export const DASHBOARD_REFRESH_MS = 15_000;
 
@@ -35,6 +46,7 @@ export function useDashboard() {
   // null until the first successful load, so the UI can show a placeholder instead of fake numbers.
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [huddles, setHuddles] = useState<Huddle[]>([]);
+  const [upcoming, setUpcoming] = useState<UpcomingHuddle[]>([]);
   const [selectedIntent, setSelectedIntent] = useState<DashboardIntent>('Brainstorm');
   const [loading, setLoading] = useState(true);
   /** Last live-huddles load failure, shown by the dashboard; cleared on the next successful load. */
@@ -58,7 +70,34 @@ export function useDashboard() {
     }
   }, []);
 
+  const fetchUpcoming = useCallback(async () => {
+    try {
+      const res = await authFetch('/api/huddles?category=all');
+      if (!res.ok) throw new Error(`Failed to load upcoming huddles (${res.status})`);
+      const data = (await res.json()) as { trendy?: Record<string, unknown>[] };
+      const now = Date.now();
+      const list = (Array.isArray(data?.trendy) ? data.trendy : [])
+        .filter((h) => h.is_active === true && !h.cancelled_at && typeof h.scheduled_at === 'string' && Date.parse(h.scheduled_at as string) > now)
+        .sort((a, b) => Date.parse(a.scheduled_at as string) - Date.parse(b.scheduled_at as string))
+        .slice(0, 4)
+        .map((h) => ({
+          id: String(h.id),
+          title: String(h.title ?? 'Huddle'),
+          scheduledAt: h.scheduled_at as string,
+          durationMinutes: typeof h.duration_minutes === 'number' ? h.duration_minutes : null,
+          thumbnailUrl: typeof h.thumbnail_url === 'string' ? h.thumbnail_url : null,
+          isOwner: h.is_owner === true,
+          rescheduled: typeof h.rescheduled_at === 'string',
+        }));
+      setUpcoming(list);
+    } catch (err) {
+      // Upcoming is a secondary list; keep the last good one.
+      console.warn('[dashboard] upcoming huddles unavailable', err);
+    }
+  }, []);
+
   const fetchHuddles = useCallback(async () => {
+    void fetchUpcoming();
     try {
       const res = await authFetch('/api/huddles/active');
       if (!res.ok) throw new Error(`Failed to load live huddles (${res.status})`);
@@ -75,7 +114,7 @@ export function useDashboard() {
       // Surface the failure to the UI; keep the last good list so a blip does not blank the panel.
       setError(err instanceof Error ? err.message : 'Failed to load live huddles');
     }
-  }, []);
+  }, [fetchUpcoming]);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +157,7 @@ export function useDashboard() {
     user,
     stats,
     huddles,
+    upcoming,
     selectedIntent,
     setSelectedIntent,
     loading,

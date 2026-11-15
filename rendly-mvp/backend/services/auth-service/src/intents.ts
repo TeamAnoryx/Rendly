@@ -8,8 +8,9 @@
  */
 
 import { supabase } from "./supabase-users";
-import { intentPrice, intentSlug, type IntentKind, type IntentSource, type IntentVisibility } from "./intents-rules";
+import { intentPrice, intentSlug, type IntentKind, type IntentSort, type IntentSource, type IntentVisibility } from "./intents-rules";
 import { isUuid } from "./huddle-rules";
+import { isMissingSchemaError } from "./spark-rules";
 
 const HOT_INTENTS_LIMIT = 10;
 const SEARCH_DEFAULT_LIMIT = 5;
@@ -168,16 +169,40 @@ export async function getNearbyIntents(userId: string): Promise<NearbyIntents> {
   };
 }
 
-/** Public intents whose slug starts with the query (search_intents RPC). Empty query returns nothing. */
-export async function searchIntents(userId: string, q: string, limit = SEARCH_DEFAULT_LIMIT): Promise<IntentCard[]> {
+/** A search hit with the count for the requested sort (recent adds, holders or usage). */
+export type SearchIntentCard = IntentCard & { count: number };
+
+/** search_intents(_sorted) row: owned = the caller created it, active = the caller holds it. */
+type SearchRow = IntentRow & { active?: boolean | null; count?: number | null };
+
+function toSearchCard(row: SearchRow, userId: string, count: number): SearchIntentCard {
+  const card = toCard({ ...row, is_mine: row.owned === true }, userId, "search", row.active === true);
+  return { ...card, count };
+}
+
+/**
+ * Visible intents whose slug starts with the query, ordered by the sort's count
+ * (search_intents_sorted RPC). An empty query lists every visible intent. Falls back to the
+ * older search_intents RPC (count = usage_count, empty query = nothing) until the migration runs.
+ */
+export async function searchIntents(
+  userId: string,
+  q: string,
+  limit = SEARCH_DEFAULT_LIMIT,
+  sort: IntentSort = "trending",
+): Promise<SearchIntentCard[]> {
   const prefix = intentSlug(q);
-  if (!prefix) return [];
   const size = Math.min(Math.max(Math.floor(limit) || SEARCH_DEFAULT_LIMIT, 1), SEARCH_MAX_LIMIT);
   const client = requireClient();
-  const { data, error } = await client.rpc("search_intents", { p_user_id: userId, p_q: prefix, p_limit: size });
-  if (error) throw new IntentsStoreError("search intents", error);
-  const rows = (data ?? []) as IntentRow[];
-  return rows.map((r) => toCard(r, userId, "search", r.owned === true));
+  const { data, error } = await client.rpc("search_intents_sorted", { p_user_id: userId, p_q: prefix, p_limit: size, p_sort: sort });
+  if (!error) {
+    return ((data ?? []) as SearchRow[]).map((r) => toSearchCard(r, userId, Number(r.count ?? 0)));
+  }
+  if (!isMissingSchemaError(error)) throw new IntentsStoreError("search intents", error);
+  if (!prefix) return [];
+  const legacy = await client.rpc("search_intents", { p_user_id: userId, p_q: prefix, p_limit: size });
+  if (legacy.error) throw new IntentsStoreError("search intents", legacy.error);
+  return ((legacy.data ?? []) as SearchRow[]).map((r) => toSearchCard(r, userId, Number(r.usage_count ?? 0)));
 }
 
 export type PurchaseFailure = "not_found" | "private" | "bad_source" | "bad_input" | "insufficient" | "duplicate";

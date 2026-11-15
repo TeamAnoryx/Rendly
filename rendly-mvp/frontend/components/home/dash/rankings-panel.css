@@ -1,0 +1,531 @@
+/* RankingsPanel — monochrome, restrained metallic accents for the top three. */
+
+.rk-panel {
+  --rk-gold: linear-gradient(135deg, #f3e3b5 0%, #b8955a 45%, #f6e7bf 70%, #8c6d3a 100%);
+  --rk-silver: linear-gradient(135deg, #f2f2f2 0%, #9c9ea3 45%, #e8e9ec 70%, #6f7175 100%);
+  --rk-bronze: linear-gradient(135deg, #e9c6a6 0%, #9a6a45 45%, #e2b996 70%, #6e4a2f 100%);
+  --rk-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 16px 16px;
+  border-radius: var(--rd-radius-lg, 18px);
+  border: 1px solid var(--rd-border, rgba(255, 255, 255, 0.08));
+  background:
+    radial-gradient(120% 60% at 50% 0%, rgba(255, 255, 255, 0.05), transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.005)),
+    var(--rd-surface, #121214);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Header */
+.rk-head {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+}
+.rk-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rk-eyebrow {
+  font-size: 0.625rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--rd-faint, rgba(255, 255, 255, 0.4));
+}
+.rk-title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--rd-text, #f4f4f5);
+}
+.rk-details {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--rd-border, rgba(255, 255, 255, 0.08));
+  font-size: 0.75rem;
+  color: var(--rd-muted, rgba(255, 255, 255, 0.6));
+  text-decoration: none;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.rk-details svg {
+  transition: transform 0.25s var(--rk-ease);
+}
+.rk-details:hover,
+.rk-details:focus-visible {
+  color: var(--rd-text, #fff);
+  border-color: var(--rd-border-strong, rgba(255, 255, 255, 0.2));
+  background: rgba(255, 255, 255, 0.04);
+}
+.rk-details:hover svg {
+  transform: translateX(2px);
+}
+.rk-details:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 2px;
+}
+
+/* List fills the remaining height; rows share it. */
+.rk-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.rk-list::-webkit-scrollbar {
+  display: none;
+}
+
+.rk-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.rk-you {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #0b0b0c;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+/* Entrance */
+@keyframes rk-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes rk-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(var(--pct, 0));
+  }
+}
+@keyframes rk-sheen {
+  0%,
+  65% {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(220%) skewX(-18deg);
+  }
+}
+@keyframes rk-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Champion (#1) */
+.rk-champ {
+  position: relative;
+  flex: 1.6 1 0;
+  min-height: 92px;
+  max-height: 168px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: var(--rd-radius, 14px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(90% 120% at 0% 50%, rgba(214, 186, 128, 0.09), transparent 60%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+  overflow: hidden;
+  animation: rk-rise 0.7s var(--rk-ease) both;
+}
+.rk-champ::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg, rgba(243, 227, 181, 0.45), rgba(255, 255, 255, 0.04) 40%, rgba(184, 149, 90, 0.25));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.rk-champ::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+  animation: rk-sheen 6s ease-in-out 1.2s infinite;
+  pointer-events: none;
+}
+.rk-champ-halo {
+  position: absolute;
+  left: -30px;
+  top: 50%;
+  width: 160px;
+  height: 160px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(243, 227, 181, 0.12), transparent);
+  pointer-events: none;
+}
+.rk-champ-avatar {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+}
+.rk-champ-avatar .rd-avatar {
+  width: 56px;
+  height: 56px;
+  font-size: 1rem;
+}
+.rk-champ-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #f3e3b5, #8c6d3a, #f6e7bf, #b8955a, #f3e3b5);
+  -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  animation: rk-spin 14s linear infinite;
+  opacity: 0.9;
+}
+.rk-champ-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #2a1f0d;
+  background: var(--rk-gold);
+  box-shadow: 0 0 0 2px var(--rd-surface-solid, #121214), 0 4px 10px rgba(0, 0, 0, 0.45);
+}
+.rk-champ-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.rk-champ-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rk-champ-rank {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  background: var(--rk-gold);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rk-champ-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--rd-text, #f4f4f5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rk-champ-points {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.rk-champ-points .rk-num {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--rd-text, #fff);
+}
+.rk-unit {
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--rd-faint, rgba(255, 255, 255, 0.42));
+}
+
+/* Rows (#2..#5) */
+.rk-row {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 48px;
+  max-height: 86px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--rd-radius-sm, 10px);
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.018);
+  transition: background 0.25s, border-color 0.25s;
+  animation: rk-rise 0.6s var(--rk-ease) both;
+  animation-delay: calc(var(--i, 0) * 80ms + 120ms);
+}
+.rk-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.rk-rank {
+  flex: none;
+  width: 22px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--rd-faint, rgba(255, 255, 255, 0.38));
+}
+.rk-tier-silver .rk-rank {
+  background: var(--rk-silver);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rk-tier-bronze .rk-rank {
+  background: var(--rk-bronze);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rk-row .rd-avatar {
+  width: 30px;
+  height: 30px;
+  font-size: 0.6875rem;
+}
+.rk-tier-silver .rd-avatar {
+  box-shadow: 0 0 0 1px rgba(232, 233, 236, 0.45);
+}
+.rk-tier-bronze .rd-avatar {
+  box-shadow: 0 0 0 1px rgba(226, 185, 150, 0.4);
+}
+.rk-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.rk-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.rk-name {
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--rd-text-2, rgba(255, 255, 255, 0.86));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rk-points {
+  margin-left: auto;
+  flex: none;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--rd-text, #f4f4f5);
+}
+.rk-bar {
+  position: relative;
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+.rk-bar-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  transform-origin: left center;
+  transform: scaleX(var(--pct, 0));
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.62));
+  animation: rk-grow 1.1s var(--rk-ease) both;
+  animation-delay: calc(var(--i, 0) * 90ms + 320ms);
+}
+.rk-tier-silver .rk-bar-fill {
+  background: linear-gradient(90deg, rgba(156, 158, 163, 0.25), rgba(242, 242, 242, 0.8));
+}
+.rk-tier-bronze .rk-bar-fill {
+  background: linear-gradient(90deg, rgba(154, 106, 69, 0.25), rgba(233, 198, 166, 0.75));
+}
+
+/* Viewer highlight */
+.rk-row.rk-is-me {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.025));
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.rk-row.rk-is-me::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 22%;
+  bottom: 22%;
+  width: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.85);
+}
+.rk-row.rk-is-me .rk-name {
+  color: var(--rd-text, #fff);
+}
+.rk-champ.rk-is-me {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Skeleton */
+.rk-champ--skel,
+.rk-row--skel {
+  animation: none;
+}
+.rk-champ--skel::after {
+  display: none;
+}
+.rk-skel-avatar {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+}
+.rk-skel-stack {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rk-skel-line {
+  display: block;
+  flex: 1;
+  height: 10px;
+}
+.rk-skel-line--short {
+  flex: none;
+  width: 40%;
+}
+.rk-skel-dot {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+
+/* Empty */
+.rk-empty {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--rd-muted, rgba(255, 255, 255, 0.55));
+  font-size: 0.8125rem;
+}
+.rk-empty p {
+  margin: 0;
+  max-width: 22ch;
+  line-height: 1.5;
+}
+.rk-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.08), transparent 70%);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rk-champ,
+  .rk-row,
+  .rk-bar-fill,
+  .rk-champ-ring,
+  .rk-champ::after {
+    animation: none !important;
+  }
+  .rk-champ::after {
+    display: none;
+  }
+  .rk-details svg,
+  .rk-row {
+    transition: none;
+  }
+}
+
+/* ---------- Top 10 fit (no spinning, compact rows so ten fit the column) ---------- */
+.rk-champ-ring,
+.rk-champ-halo { animation: none !important; }
+.rk-champ::after { animation: none !important; }
+.rk-list { overflow: hidden !important; }
+.rk-champ {
+  min-height: 0 !important;
+  max-height: none !important;
+  flex: 0 0 auto !important;
+  padding-block: clamp(8px, 1.2dvh, 12px) !important;
+}
+.rk-row {
+  min-height: 34px !important;
+  max-height: 52px !important;
+  flex: 1 1 0 !important;
+  padding-block: 4px !important;
+}
+.rk-bar { margin-top: 3px !important; }
+/* Rows never squash below 34px: whole rows that do not fit the column are hidden instead.
+   Only in the fixed one-screen layout; the scrolling layout (narrow or short screens) shows every row. */
+@media (min-width: 900px) and (min-height: 600px) {
+  .rk-list { container: rk-list / size; }
+}
+@container rk-list (max-height: 131px) { .rk-list > :nth-child(n+2) { display: none; } }
+@container rk-list (max-height: 173px) { .rk-list > :nth-child(n+3) { display: none; } }
+@container rk-list (max-height: 215px) { .rk-list > :nth-child(n+4) { display: none; } }
+@container rk-list (max-height: 257px) { .rk-list > :nth-child(n+5) { display: none; } }
+@container rk-list (max-height: 299px) { .rk-list > :nth-child(n+6) { display: none; } }
+@container rk-list (max-height: 341px) { .rk-list > :nth-child(n+7) { display: none; } }
+@container rk-list (max-height: 383px) { .rk-list > :nth-child(n+8) { display: none; } }
+@container rk-list (max-height: 425px) { .rk-list > :nth-child(n+9) { display: none; } }
+@container rk-list (max-height: 467px) { .rk-list > :nth-child(n+10) { display: none; } }
+

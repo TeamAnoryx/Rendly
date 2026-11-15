@@ -1,4 +1,5 @@
 import {
+  validateEditHuddleInput,
   hotReason,
   buildInviteUrl,
   canAccessHuddle,
@@ -101,6 +102,7 @@ describe("validateCreateHuddleInput", () => {
         allow_self_exit: true,
         rewards_enabled: false,
         rewards_receive_enabled: false,
+        show_waitlist_count: false,
       },
     });
   });
@@ -405,5 +407,32 @@ describe("hotReason", () => {
   test("five or more invites plus visits is buzz", () => {
     expect(hotReason({ ...base, invites_count: 3, visits_24h: 2 })).toBe("buzz");
     expect(hotReason({ ...base, invites_count: 2, visits_24h: 2 })).toBe("upcoming");
+  });
+});
+
+describe("validateEditHuddleInput", () => {
+  const now = Date.parse("2026-11-15T10:00:00Z");
+
+  it("rejects an empty body", () => {
+    expect(validateEditHuddleInput({}, now)).toEqual({ ok: false, message: "Nothing to change" });
+  });
+
+  it("accepts description, intents and a new time", () => {
+    const result = validateEditHuddleInput(
+      { description: "  New plan  ", intents: ["ai", "design"], scheduled_at: "2026-11-16T10:00:00Z", duration_minutes: 20 },
+      now
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.description).toBe("New plan");
+      expect(result.value.intents).toEqual(["ai", "design"]);
+      expect(result.value.duration_minutes).toBe(20);
+      expect(result.value.scheduled_at).not.toBeNull();
+    }
+  });
+
+  it("rejects a blank title and a time far in the past", () => {
+    expect(validateEditHuddleInput({ title: "   " }, now).ok).toBe(false);
+    expect(validateEditHuddleInput({ scheduled_at: "2026-11-14T10:00:00Z" }, now).ok).toBe(false);
   });
 });

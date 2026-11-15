@@ -3,6 +3,7 @@ import crypto from "crypto";
 import http from "http";
 import express from "express";
 import cors from "cors";
+import compression from "compression";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
 import axios from "axios";
@@ -12,6 +13,7 @@ import multer from "multer";
 import sharp from "sharp";
 import { signInWithOAuth, findUsersByEmail, getUserByProviderId, getUserById, getUserByEmailOrUsername, getUserByEmail, insertUserWithPassword, updateUserById, checkUsernameAvailable, getUsersWithActiveResetToken, getUserByUsername, getUsersByUsernameSearch, supabase } from "./supabase-users";
 import { sendPasswordResetEmail } from "./send-reset-email";
+import { addHuddlePushReminder, deleteSubscription, notifyHuddleLive, parseSubscription, saveSubscription, vapidPublicKey } from "./push";
 import { isCompanyEmail, normalizeEmail } from "./company-email";
 import { pickVerifiedGitHubEmail, pickVerifiedLinkedInEmail, resolvePasswordSignup, SIGNUP_EMAIL_TAKEN_MESSAGE } from "./account-linking";
 import {
@@ -42,6 +44,7 @@ import {
   huddleMediaUrl,
   listHotHuddles,
   type HuddleSettingsPatch,
+  getHuddleWaitingCount,
   isInvitedTo,
   joinHuddle,
   leaveHuddle,
@@ -56,6 +59,8 @@ import {
   setDisplayName,
   setHuddleMedia,
   setHuddleSettings,
+  updateHuddleDetails,
+  listInviteeIds,
   setHuddleThumbnail,
   updateMember,
   uploadHuddleMedia,
@@ -69,15 +74,18 @@ import {
   getDashboardStats,
   findInvitablePartner,
   getMatchStatus,
+  getSparkLimits,
   hasActivePairing,
   ONLINE_WINDOW_SECONDS,
   recordHeartbeat,
   SparkAlreadySearchingError,
   SparkInsufficientError,
   SparkIntentNotHeldError,
+  SparkRateLimitedError,
   SparkUnavailableError,
+  settleLatestPairing,
 } from "./spark";
-import { parseQuoteIntents, sparkIntentPrice, sparkMatchCost, validateMatchRequest, whisperConversationId } from "./spark-rules";
+import { parseQuoteIntents, SPARK_DEFAULT_FEE, sparkIntentPrice, sparkMatchCost, validateMatchRequest, whisperConversationId } from "./spark-rules";
 import { GeoUnavailableError, geoReverse, geoSearch } from "./geo";
 import { buildIceConfig } from "./turn-rules";
 import { normaliseGeoQuery, parseCoords, sanitiseAcceptLanguage } from "./geo-rules";
@@ -91,6 +99,7 @@ import {
   requestOrigin,
   toPublicHuddle,
   validateCreateHuddleInput,
+  validateEditHuddleInput,
   validateDisplayName,
   validateInviteeIds,
 } from "./huddle-rules";
@@ -115,7 +124,7 @@ import {
   type TransferFailure,
 } from "./points";
 import { parseIdempotencyKey, validateHuddleSendBody, validateTransferBody } from "./points-rules";
-import { isPaidIntentSource, validateCreateIntentBody, validateLocationBody, type IntentSource } from "./intents-rules";
+import { isPaidIntentSource, parseIntentSort, validateCreateIntentBody, validateLocationBody, type IntentSource } from "./intents-rules";
 import {
   clearUserLocation,
   createIntent,
@@ -255,6 +264,8 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
   .map((o) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
 app.use(cors({ origin: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : true, credentials: true }));
+// gzip/deflate JSON responses (lists, feeds, profiles shrink ~70-90%); tiny bodies are skipped.
+app.use(compression({ threshold: 1024 }));
 app.use(express.json());
 
 const tooMany = (_req: express.Request, res: express.Response) => {
@@ -263,12 +274,15 @@ const tooMany = (_req: express.Request, res: express.Response) => {
 };
 
 /**
- * General API budget per IP. The app polls (notifications, stats, live huddles, presence),
- * so this must comfortably cover one active session: ~100 requests a minute.
+ * General API budget per signed-in user (per IP when signed out). The app polls
+ * (notifications, balance, live huddles, Spark status, presence), so this must cover a few
+ * open tabs of one session: ~200 requests a minute. Keying by user, not IP, keeps people
+ * behind one network (office, campus, mobile carrier NAT) from sharing a single budget.
  */
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: Number(process.env.RATE_LIMIT_MAX) || 1500,
+  max: Number(process.env.RATE_LIMIT_MAX) || 3000,
+  keyGenerator: perUserKey,
   // Health checks are polled by the frontend and must not consume the budget.
   skip: (req) => req.path === "/health",
   standardHeaders: true,
@@ -326,6 +340,8 @@ function perUserLimiter(max: number) {
 
 /** Spark polling and pricing: a session's worth per user, not unlimited. */
 const matchStatusLimiter = perUserLimiter(90);
+const matchLimitsLimiter = perUserLimiter(60);
+const matchSettleLimiter = perUserLimiter(30);
 const matchQuoteLimiter = perUserLimiter(60);
 const matchLeaveLimiter = perUserLimiter(30);
 const matchIceLimiter = perUserLimiter(30);
@@ -1825,7 +1841,13 @@ app.get("/api/huddles/:id", async (req, res) => {
     const [count, tags] = await Promise.all([getHuddleParticipantCount(id), getIntentTags(id)]);
     const huddle = toPublicHuddle(row, current.userId, count);
     const canShareInvite = row.type !== "private" || huddle.is_owner || canManageHuddle(membership);
+    // Waiting-list size: hosts always; everyone else only when the host turned it on.
+    const showWaitlist = (row as { show_waitlist_count?: boolean }).show_waitlist_count === true;
+    const seesWaitlist = row.waiting_room === true && (huddle.is_owner || canManageHuddle(membership) || showWaitlist);
+    const waitingCount = seesWaitlist ? await getHuddleWaitingCount(id).catch(() => null) : null;
     res.json({
+      show_waitlist_count: showWaitlist,
+      waiting_count: waitingCount,
       ...huddle,
       intents: tags,
       media_url: row.media_path ? huddleMediaUrl(row.media_path) : null,
@@ -1845,6 +1867,58 @@ app.get("/api/huddles/:id", async (req, res) => {
   } catch (err) {
     console.error("GET /api/huddles/:id error:", err);
     res.status(500).json({ message: "Failed to get huddle" });
+  }
+});
+
+/** GET /api/push/public-key – VAPID key for the browser to subscribe; 404 when push is off. */
+app.get("/api/push/public-key", (_req, res) => {
+  const key = vapidPublicKey();
+  if (!key) {
+    res.status(404).json({ message: "Push notifications are not enabled" });
+    return;
+  }
+  res.json({ public_key: key });
+});
+
+/** POST /api/push/subscribe – save this browser's push subscription for the caller. */
+app.post("/api/push/subscribe", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const sub = parseSubscription(req.body);
+    if (!sub) {
+      res.status(400).json({ message: "Invalid push subscription" });
+      return;
+    }
+    await saveSubscription(current.userId, sub);
+    res.status(204).end();
+  } catch (err) {
+    console.error("POST /api/push/subscribe error:", err);
+    res.status(500).json({ message: "Could not save the subscription" });
+  }
+});
+
+/** DELETE /api/push/subscribe – forget this browser's push subscription. */
+app.delete("/api/push/subscribe", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const endpoint = typeof (req.body as { endpoint?: unknown } | undefined)?.endpoint === "string" ? (req.body as { endpoint: string }).endpoint : "";
+    if (!endpoint) {
+      res.status(400).json({ message: "endpoint is required" });
+      return;
+    }
+    await deleteSubscription(current.userId, endpoint);
+    res.status(204).end();
+  } catch (err) {
+    console.error("DELETE /api/push/subscribe error:", err);
+    res.status(500).json({ message: "Could not remove the subscription" });
   }
 });
 
@@ -1878,9 +1952,13 @@ app.post("/api/huddles/:id/join", async (req, res) => {
       await setDisplayName(id, current.userId, displayName.value).catch((err) => console.error("[huddles] display name not saved:", err));
     }
     if (result.waiting) {
+      // On the waiting list: push this user when the huddle goes live (if they allow notifications).
+      await addHuddlePushReminder(id, current.userId).catch((err) => console.error("[push] reminder not saved:", err));
       res.status(202).json({ status: "waiting", huddle_id: id, message: "Waiting for the host to let you in" });
       return;
     }
+    // This join started the huddle: tell everyone waiting for it.
+    if (!row.started_at) void notifyHuddleLive(id, row.title);
     res.json({ status: "joined", huddle_id: id, user_id: current.userId, joined_at: new Date().toISOString() });
   } catch (err) {
     console.error("POST /api/huddles/:id/join error:", err);
@@ -2108,6 +2186,72 @@ app.delete("/api/huddles/:id/members/:userId", async (req, res) => {
   }
 });
 
+/**
+ * PATCH /api/huddles/:id – host edits the details: title, description, intents (full list),
+ * scheduled_at and duration_minutes. Time changes are refused once the huddle has started.
+ * A changed time sets rescheduled_at and tells invitees and people with a seat.
+ */
+app.patch("/api/huddles/:id", async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    const row = await getHuddleById(req.params.id);
+    if (!row) {
+      res.status(404).json({ message: "Huddle not found" });
+      return;
+    }
+    if (row.created_by !== current.userId) {
+      res.status(403).json({ message: "Only the host can edit this huddle" });
+      return;
+    }
+    if (row.cancelled_at || row.ended_at) {
+      res.status(409).json({ message: "This huddle has ended and can no longer be edited" });
+      return;
+    }
+    const validation = validateEditHuddleInput(req.body);
+    if (!validation.ok) {
+      res.status(400).json({ message: validation.message });
+      return;
+    }
+    const { intents, ...fields } = validation.value;
+    const timeTouched = fields.scheduled_at !== undefined || fields.duration_minutes !== undefined;
+    if (timeTouched && row.started_at) {
+      res.status(409).json({ message: "The huddle has started, so its time can no longer change" });
+      return;
+    }
+    const sameTime = (a: string | null | undefined, b: string | null | undefined) =>
+      (a == null && b == null) || (a != null && b != null && Date.parse(a) === Date.parse(b));
+    const rescheduled =
+      (fields.scheduled_at !== undefined && !sameTime(fields.scheduled_at, row.scheduled_at)) ||
+      (fields.duration_minutes !== undefined && fields.duration_minutes !== row.duration_minutes);
+
+    const updated = await updateHuddleDetails(row.id, fields, intents, rescheduled);
+
+    if (rescheduled) {
+      const [members, invitees] = await Promise.all([listMembers(row.id), listInviteeIds(row.id)]);
+      const audience = [...new Set([...members.map((m) => m.user_id), ...invitees])].filter((id) => id !== current.userId);
+      if (audience.length > 0) {
+        const when = updated.scheduled_at ? new Date(updated.scheduled_at).toUTCString() : "a new time";
+        await notifyUsers(audience, {
+          type: "huddle_rescheduled",
+          title: `${updated.title} was rescheduled`,
+          body: `Now starts ${when}`,
+          payload: { huddle_id: updated.id, scheduled_at: updated.scheduled_at },
+        });
+      }
+    }
+
+    const [count, tags] = await Promise.all([getHuddleParticipantCount(row.id), getIntentTags(row.id)]);
+    res.json({ ...toPublicHuddle(updated, current.userId, count), intents: tags });
+  } catch (err) {
+    console.error("PATCH /api/huddles/:id error:", err);
+    res.status(500).json({ message: "Failed to update huddle" });
+  }
+});
+
 /** PATCH /api/huddles/:id/settings – host only. Body: { waiting_room: boolean }. */
 app.patch("/api/huddles/:id/settings", async (req, res) => {
   try {
@@ -2127,7 +2271,7 @@ app.patch("/api/huddles/:id/settings", async (req, res) => {
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
     const patch: HuddleSettingsPatch = {};
-    for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled", "rewards_receive_enabled"] as const) {
+    for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled", "rewards_receive_enabled", "show_waitlist_count"] as const) {
       if (body[key] === undefined) continue;
       if (typeof body[key] !== "boolean") {
         res.status(400).json({ message: `${key} must be true or false` });
@@ -2686,17 +2830,23 @@ app.get("/api/intents/nearby", nearbyLimiter, async (req, res) => {
 
 const INTENT_SEARCH_QUERY_MAX = 40;
 
-/** GET /api/intents/search?q=&limit= – public intents whose name starts with q (1..40 chars). */
+/**
+ * GET /api/intents/search?q=&limit=&sort=trending|popular|most_used – public intents whose name starts
+ * with q (1..40 chars), ordered by sort (default trending). q may be empty when sort is given: then the
+ * top intents by that sort are returned. Items include { name, count }.
+ */
 app.get("/api/intents/search", async (req, res) => {
   try {
     const current = await requireUser(req, res);
     if (!current) return;
     const q = typeof req.query.q === "string" ? req.query.q.replace(/\s+/g, " ").trim() : "";
-    if (q.length < 1 || q.length > INTENT_SEARCH_QUERY_MAX) {
+    const hasSort = typeof req.query.sort === "string" && req.query.sort.trim().length > 0;
+    if (q.length > INTENT_SEARCH_QUERY_MAX || (q.length < 1 && !hasSort)) {
       res.status(400).json({ message: `q must be between 1 and ${INTENT_SEARCH_QUERY_MAX} characters` });
       return;
     }
-    res.json(await searchIntents(current.userId, q, clampInt(req.query.limit, 1, 50, 5)));
+    const sort = parseIntentSort(req.query.sort);
+    res.json(await searchIntents(current.userId, q, clampInt(req.query.limit, 1, 50, 5), sort));
   } catch (err) {
     console.error("GET /api/intents/search error:", err);
     res.status(500).json({ message: "Failed to search intents" });
@@ -2952,6 +3102,11 @@ app.get("/api/dashboard/stats", async (_req, res) => {
 
 /** Map a Spark service error to an HTTP answer; false when it is not a Spark error. */
 function sendSparkError(res: express.Response, err: unknown): boolean {
+  if (err instanceof SparkRateLimitedError) {
+    const message = "Too many Sparks — try again later";
+    res.status(429).json({ error: message, message, code: "RATE_LIMITED", limits: err.limits });
+    return true;
+  }
   if (err instanceof SparkUnavailableError) {
     res.status(503).json({ message: "Spark is updating, try again shortly" });
     return true;
@@ -2975,6 +3130,7 @@ function sendSparkError(res: express.Response, err: unknown): boolean {
  * POST /api/match/queue – join the Spark queue.
  * Body: { mode: 'text'|'video', intents: string[1..5], note?: string<=200, anonymous?: boolean (default true) }
  * (legacy { mode, intent } accepted). 200 MatchView; 400 invalid / intent not held; 402 { message, cost, balance };
+ * 429 { error, message, code: 'RATE_LIMITED', limits } when the Spark window is used up;
  * 503 when the Spark v2 migration is missing.
  */
 app.post("/api/match/queue", tokenLimiter, async (req, res) => {
@@ -2997,7 +3153,10 @@ app.post("/api/match/queue", tokenLimiter, async (req, res) => {
   }
 });
 
-/** GET /api/match/status – the caller's current match state (MatchView). Poll this while waiting. */
+/**
+ * GET /api/match/status – the caller's current match state (MatchView). Poll this while waiting.
+ * When matched it carries charge { state: 'pending'|'charged'|'waived', settles_at, cost }; always limits.
+ */
 app.get("/api/match/status", matchStatusLimiter, async (req, res) => {
   try {
     const current = await getCurrentUserFromRequest(req);
@@ -3014,8 +3173,47 @@ app.get("/api/match/status", matchStatusLimiter, async (req, res) => {
 });
 
 /**
+ * GET /api/match/limits – the caller's Spark budget: SparkLimits { balance, matches_used, matches_left,
+ * max_per_window, window_minutes, resets_at }.
+ */
+app.get("/api/match/limits", matchLimitsLimiter, async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    res.json(await getSparkLimits(current.userId));
+  } catch (err) {
+    if (sendSparkError(res, err)) return;
+    console.error("GET /api/match/limits error:", err);
+    res.status(500).json({ message: "Failed to read Spark limits" });
+  }
+});
+
+/**
+ * POST /api/match/settle – idempotent: charges the caller's latest pairing once it has lasted 30s and
+ * is still pending. 200 { charge: { state, settles_at, cost } | null, limits: SparkLimits }.
+ */
+app.post("/api/match/settle", matchSettleLimiter, async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    res.json(await settleLatestPairing(current.userId));
+  } catch (err) {
+    if (sendSparkError(res, err)) return;
+    console.error("POST /api/match/settle error:", err);
+    res.status(500).json({ message: "Failed to settle the match" });
+  }
+});
+
+/**
  * DELETE /api/match/queue – leave the queue, and end the caller's latest matched pairing (Skip /
- * Leave) so neither side can rejoin its room. 200 { status: 'idle', cancelled, ended }.
+ * Leave) so neither side can rejoin its room. Ending settles the charge: charged when the match lasted
+ * 30s, otherwise waived for both. 200 { status: 'idle', cancelled, ended, limits }.
  */
 app.delete("/api/match/queue", matchLeaveLimiter, async (req, res) => {
   try {
@@ -3026,7 +3224,8 @@ app.delete("/api/match/queue", matchLeaveLimiter, async (req, res) => {
     }
     const cancelled = await cancelWaitingEntries(current.userId);
     const ended = await endLatestPairing(current.userId);
-    res.json({ status: "idle", cancelled, ended });
+    const limits = await getSparkLimits(current.userId);
+    res.json({ status: "idle", cancelled, ended, limits });
   } catch (err) {
     if (sendSparkError(res, err)) return;
     console.error("DELETE /api/match/queue error:", err);
@@ -3048,7 +3247,13 @@ app.get("/api/match/quote", matchQuoteLimiter, async (req, res) => {
       return;
     }
     const breakdown = parsed.value.map((intent) => ({ intent, price: sparkIntentPrice(intent) }));
-    res.json({ cost: sparkMatchCost(parsed.value), breakdown, balance: await getBalance(current.userId) });
+    res.json({
+      cost: sparkMatchCost(parsed.value),
+      breakdown,
+      balance: await getBalance(current.userId),
+      // Charged on top of cost only when the Default fallback makes the match.
+      default_fee: SPARK_DEFAULT_FEE,
+    });
   } catch (err) {
     console.error("GET /api/match/quote error:", err);
     res.status(500).json({ message: "Failed to price the match" });

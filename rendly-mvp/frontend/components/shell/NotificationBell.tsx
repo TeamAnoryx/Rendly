@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/context/NotificationsContext';
+import HuddleWaitingCard from '@/components/notifications/HuddleWaitingCard';
+import { huddleJoinHref } from '@/lib/huddleReminders';
 import { notificationHref, notificationIcon, type AppNotification } from '@/services/notificationsApi';
 import { groupsApi } from '@/services/groups';
 import { Icon } from './Icon';
@@ -81,7 +83,7 @@ function computePanelPos(button: HTMLElement): PanelPos {
 
 export function NotificationBell() {
   const router = useRouter();
-  const { items, unreadCount, loading, error, markRead, markAllRead, clearAll } = useNotifications();
+  const { items, unreadCount, loading, error, markRead, markAllRead, clearAll, waitingHuddle, openPanelSignal } = useNotifications();
   const [open, setOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -114,6 +116,13 @@ export function NotificationBell() {
       window.removeEventListener('scroll', reposition, true);
     };
   }, [open]);
+
+  // Something (e.g. entering a huddle waiting room) asked the panel to open.
+  useEffect(() => {
+    if (openPanelSignal === 0 || !buttonRef.current) return;
+    setPanelPos(computePanelPos(buttonRef.current));
+    setOpen(true);
+  }, [openPanelSignal]);
 
   const togglePanel = () => {
     if (!open && buttonRef.current) setPanelPos(computePanelPos(buttonRef.current));
@@ -178,6 +187,15 @@ export function NotificationBell() {
               )}
             </div>
           </div>
+          {waitingHuddle ? (
+            <HuddleWaitingCard
+              huddle={waitingHuddle}
+              onJoin={() => {
+                setOpen(false);
+                router.push(huddleJoinHref(waitingHuddle.id));
+              }}
+            />
+          ) : null}
           <div className="rd-notif-list rd-scroll">
             {loading && items.length === 0 ? (
               <>

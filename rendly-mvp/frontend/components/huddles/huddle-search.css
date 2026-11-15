@@ -1,0 +1,38 @@
+/* Huddle search: intent or link. Prefix hs- */
+.hs { position: relative; z-index: 6; }
+.hs-field {
+  position: relative; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 10px 0 14px;
+  border-radius: 12px; border: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.015));
+  transition: border-color .25s ease, box-shadow .35s cubic-bezier(.2,.8,.2,1), background .25s ease;
+}
+.hs-field::after {
+  content: ''; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent);
+  transform: scaleX(0); opacity: 0; transition: transform .5s cubic-bezier(.2,.8,.2,1), opacity .3s ease;
+}
+.hs-field:hover { border-color: rgba(255,255,255,.14); }
+.hs--focus .hs-field { border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.055); box-shadow: 0 0 0 4px rgba(255,255,255,.04), 0 14px 40px -20px rgba(255,255,255,.3); }
+.hs--focus .hs-field::after { transform: scaleX(1); opacity: 1; }
+.hs-icon { display: grid; place-items: center; color: rgba(255,255,255,.5); transition: transform .3s ease, color .3s ease; }
+.hs--focus .hs-icon { color: #fff; transform: scale(1.08); }
+.hs-input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: #fff; font: inherit; font-size: 14px; position: relative; z-index: 1; }
+.hs-hint { position: absolute; left: 40px; right: 70px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; color: rgba(255,255,255,.36); pointer-events: none; animation: hs-rise .5s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes hs-rise { from { opacity: 0; transform: translateY(8px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+.hs-active { position: relative; z-index: 2; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border-radius: 999px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: #fff; font: inherit; font-size: 12px; cursor: pointer; transition: background .2s ease; animation: hs-rise .3s ease both; }
+.hs-active:hover { background: rgba(255,255,255,.15); }
+.hs-kbd { flex: none; padding: 3px 7px; border-radius: 6px; border: 1px solid rgba(255,255,255,.1); font-size: 11px; color: rgba(255,255,255,.45); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; transition: color .2s ease; }
+.hs--focus .hs-kbd { color: rgba(255,255,255,.7); }
+.hs-pop {
+  position: absolute; left: 0; right: 0; top: calc(100% + 6px); margin: 0; padding: 8px; list-style: none; display: flex; flex-wrap: wrap; gap: 6px;
+  border-radius: 12px; border: 1px solid rgba(255,255,255,.1); background: rgba(16,17,19,.97); backdrop-filter: blur(12px);
+  box-shadow: 0 24px 60px -24px rgba(0,0,0,.9); animation: hs-pop .22s cubic-bezier(.2,.8,.2,1) both; transform-origin: top center;
+}
+@keyframes hs-pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+.hs-pop li { animation: hs-rise .3s ease both; }
+.hs-opt { display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 11px; border-radius: 8px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); color: rgba(255,255,255,.85); font: inherit; font-size: 12.5px; cursor: pointer; transition: background .2s ease, border-color .2s ease, transform .2s ease; }
+.hs-opt:hover { background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.2); transform: translateY(-1px); }
+.hs-opt:active { transform: translateY(0) scale(.97); }
+.hs-hash { color: rgba(255,255,255,.4); }
+@media (max-width: 520px) { .hs-kbd { display: none; } .hs-hint { right: 14px; } }
+@media (prefers-reduced-motion: reduce) { .hs-hint, .hs-pop, .hs-pop li, .hs-active { animation: none; } .hs-field::after { transition: none; } }

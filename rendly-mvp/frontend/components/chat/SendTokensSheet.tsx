@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Modal from '@/components/common/Modal';
 import { TokenCoin, TokenAmount } from '@/components/brand/TokenCoin';
-import { getMyPoints, transferTokens, emitPointsChanged, newIdempotencyKey } from '@/services/pointsApi';
+import { getMyPoints, transferTokens, emitPointsChanged, notifyPointsPeers, newIdempotencyKey } from '@/services/pointsApi';
 import { chat as chatApi, type ChatMessage } from '@/services/chat';
 import { useNotifications } from '@/context/NotificationsContext';
 
@@ -110,6 +110,7 @@ export default function SendTokensSheet({ open, onClose, conversationId, recipie
         setPhase('done');
         setSpinKey((k) => k + 1);
         emitPointsChanged();
+        notifyPointsPeers([recipient.id]);
         onSent?.(serverMsg);
         pushToast({ icon: '◉', title: `Sent ${amt.toLocaleString('en-IN')} Rendly Tokens`, body: `to ${recipient.name}` });
         setTimeout(onClose, 650);
@@ -122,7 +123,7 @@ export default function SendTokensSheet({ open, onClose, conversationId, recipie
         busyRef.current = false;
       }
     },
-    [conversationId, onClose, onSent, pushToast, recipient.name]
+    [conversationId, onClose, onSent, pushToast, recipient.id, recipient.name]
   );
 
   const handleSend = useCallback(async () => {

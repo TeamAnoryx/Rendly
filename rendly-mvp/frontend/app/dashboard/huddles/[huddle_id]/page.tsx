@@ -10,19 +10,28 @@ import {
   inviteToHuddle,
   joinHuddle,
   leaveHuddle,
+  listHuddleMembers,
   setHuddleDisplayName,
+  updateHuddleSettings,
   uploadHuddleThumbnail,
   videoDurationSeconds,
   type HuddleDetail,
 } from '@/services/huddlesApi';
 import { getConnections, type Connection } from '@/services/connectionsApi';
 import { useCurrentUser } from '@/context/CurrentUserContext';
+import { useNotifications } from '@/context/NotificationsContext';
+import websocket from '@/services/websocket';
+import { addReminder } from '@/lib/huddleReminders';
+import { requestNotificationConsent } from '@/components/notifications/NotificationConsent';
 import HuddleRoom from '@/components/huddles/HuddleRoom';
 import { HuddlePoster } from '@/components/huddles/HuddleList';
+import HuddleEditForm from '@/components/huddles/HuddleEditForm';
 import { Icon } from '@/components/shell/Icon';
 import '../huddles.css';
 
 const WAITING_POLL_MS = 4000;
+/** While inside, check whether the host ended the huddle (backup for the socket event). */
+const ENDED_POLL_MS = 5000;
 const PROMO_MAX_SECONDS = 15;
 
 function whenLabel(h: HuddleDetail): string {
@@ -75,6 +84,7 @@ function HostTools({ huddle, onChanged, onGone }: { huddle: HuddleDetail; onChan
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<'cancel' | 'delete' | null>(null);
+  const [editing, setEditing] = useState(false);
   const [connections, setConnections] = useState<Connection[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -112,6 +122,11 @@ function HostTools({ huddle, onChanged, onGone }: { huddle: HuddleDetail; onChan
         <Icon name="settings" size={16} /> Host tools
       </h3>
       <div className="hl-host-row">
+        {!huddle.cancelled_at && !huddle.ended_at ? (
+          <button type="button" className="rd-btn rd-btn--sm" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
+            <Icon name="edit" size={15} /> Edit huddle
+          </button>
+        ) : null}
         <button type="button" className="rd-btn rd-btn--sm" disabled={busy === 'thumb'} onClick={() => fileRef.current?.click()}>
           {busy === 'thumb' ? <span className="rd-spinner" /> : <Icon name="upload" size={15} />} Poster or 15 s promo
         </button>
@@ -135,6 +150,39 @@ function HostTools({ huddle, onChanged, onGone }: { huddle: HuddleDetail; onChan
           <Icon name="trash" size={15} /> Delete
         </button>
       </div>
+      {huddle.waiting_room ? (
+        <label className="hl-host-toggle">
+          <input
+            type="checkbox"
+            checked={!!huddle.show_waitlist_count}
+            disabled={busy === 'waitlist'}
+            onChange={(e) => {
+              const next = e.target.checked;
+              void run('waitlist', async () => {
+                await updateHuddleSettings(huddle.id, { show_waitlist_count: next });
+                await onChanged();
+                setMsg(next ? 'Everyone can now see the waitlist count.' : 'Only hosts can see the waitlist count now.');
+              });
+            }}
+          />
+          <span className="hl-host-toggle-track" aria-hidden="true" />
+          <span>
+            <strong>Show waitlist count to everyone</strong>
+            <small>Off: only hosts see how many people are waiting.</small>
+          </span>
+        </label>
+      ) : null}
+      {editing ? (
+        <HuddleEditForm
+          huddle={huddle}
+          onClose={() => setEditing(false)}
+          onSaved={async (rescheduled) => {
+            setEditing(false);
+            await onChanged();
+            setMsg(rescheduled ? 'Saved. Everyone invited was told about the new time.' : 'Saved.');
+          }}
+        />
+      ) : null}
       {confirm ? (
         <div className="hl-confirm" role="alertdialog">
           <p>{confirm === 'cancel' ? 'Cancel this huddle? Invitees are told it was cancelled.' : 'Delete this huddle permanently? This cannot be undone.'}</p>
@@ -254,8 +302,90 @@ export default function HuddleDetailPage() {
     }
   }, [waiting, huddle?.is_participant]);
 
+  // The host ended the huddle for everyone: leave the room (socket event, or the poll as a backup).
+  const { pushToast, setWaitingHuddle, requestOpenPanel } = useNotifications();
+  const isHost = huddle?.your_role === 'host';
+  const endedRef = useRef(false);
+  const exitEnded = useCallback(() => {
+    if (endedRef.current) return;
+    endedRef.current = true;
+    setInRoom(false);
+    pushToast({ icon: 'close', title: 'The host ended this huddle' });
+    router.push('/dashboard/huddles');
+  }, [pushToast, router]);
+  useEffect(() => {
+    if (!inRoom || isHost || !huddleId) return undefined;
+    const off = websocket.on<{ huddle_id?: string }>('huddle:ended', (p) => {
+      if (p?.huddle_id === huddleId) exitEnded();
+    });
+    const id = setInterval(() => {
+      getHuddle(huddleId, inviteCode)
+        .then((h) => {
+          // ended_at is the scheduled end while live: only a past time means it is over.
+          const over = !!h.ended_at && Date.parse(h.ended_at) <= Date.now();
+          if (h.cancelled_at || over) exitEnded();
+        })
+        .catch(() => undefined);
+    }, ENDED_POLL_MS);
+    return () => {
+      off();
+      clearInterval(id);
+    };
+  }, [inRoom, isHost, huddleId, inviteCode, exitEnded]);
+
+  // Waitlist pill: the server sends waiting_count to hosts always and to everyone when allowed.
+  const [waitlist, setWaitlist] = useState<number | null>(null);
+  useEffect(() => setWaitlist(huddle?.waiting_count ?? null), [huddle?.waiting_count]);
+  const watchWaitlist = huddle?.waiting_count != null && !inRoom && !huddle?.cancelled_at;
+  useEffect(() => {
+    if (!watchWaitlist || !huddleId) return undefined;
+    let alive = true;
+    const id = setInterval(() => {
+      getHuddle(huddleId, inviteCode)
+        .then((h) => alive && setWaitlist(h.waiting_count ?? null))
+        .catch(() => undefined);
+    }, WAITING_POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [watchWaitlist, huddleId, inviteCode]);
+
+  // Host on the join screen of a waiting-room huddle: show how many people are waiting.
+  const [waitingCount, setWaitingCount] = useState(0);
+  const manages = !!huddle && (huddle.is_owner || huddle.your_role === 'host' || huddle.your_role === 'co_host');
+  const watchWaiting = manages && !!huddle?.waiting_room && !inRoom && !huddle?.cancelled_at;
+  useEffect(() => {
+    if (!watchWaiting || !huddleId) return undefined;
+    let alive = true;
+    const load = () =>
+      listHuddleMembers(huddleId)
+        .then((list) => alive && setWaitingCount(list.filter((m) => !m.admitted).length))
+        .catch(() => undefined);
+    void load();
+    const id = setInterval(load, WAITING_POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [watchWaiting, huddleId]);
+
+  // In the waiting room: show the huddle card in the notifications panel and open it once.
+  const waitingTitle = huddle?.title ?? '';
+  const waitingAt = huddle?.scheduled_at ?? null;
+  useEffect(() => {
+    if (!waiting || !huddleId) return undefined;
+    setWaitingHuddle({ id: huddleId, title: waitingTitle, scheduled_at: waitingAt });
+    return () => setWaitingHuddle(null);
+  }, [waiting, huddleId, waitingTitle, waitingAt, setWaitingHuddle]);
+  useEffect(() => {
+    if (waiting) requestOpenPanel();
+  }, [waiting, requestOpenPanel]);
+
   const join = async () => {
     if (!huddle) return;
+    // Offer notifications (consent card) so a waiting-list join can be told when the huddle goes live.
+    if (huddle.waiting_room && !huddle.is_participant) requestNotificationConsent();
     setJoining(true);
     setError(null);
     const name = displayName.trim().replace(/\s+/g, ' ').slice(0, 40);
@@ -265,6 +395,8 @@ export default function HuddleDetailPage() {
       } else {
         const res = await joinHuddle(huddle.id, inviteCode, name || null);
         if (res.status === 'waiting') {
+          // Joined the waiting list: remind with a browser notification when the huddle goes live.
+          addReminder({ id: huddle.id, title: huddle.title, scheduled_at: huddle.scheduled_at ?? null });
           await reload();
           return;
         }
@@ -293,6 +425,8 @@ export default function HuddleDetailPage() {
 
   const endForAll = async () => {
     if (!huddle || !window.confirm('End this huddle for everyone?')) return;
+    // Tell connected participants first: the server checks the host seat, which cancelling closes.
+    websocket.emit('huddle:end', { huddle_id: huddle.id });
     try {
       await cancelHuddle(huddle.id);
     } catch (e) {
@@ -355,6 +489,7 @@ export default function HuddleDetailPage() {
             <span className="rd-chip">
               {huddle.type === 'private' ? <Icon name="lock" size={12} /> : <Icon name="globe" size={12} />} {huddle.type}
             </span>
+            {huddle.rescheduled_at && !huddle.started_at ? <span className="rd-chip hl-moved">Rescheduled</span> : null}
             {huddle.rewards_enabled !== false ? (
               <span className="rd-chip">
                 <Icon name="trophy" size={12} /> Rewards
@@ -380,6 +515,19 @@ export default function HuddleDetailPage() {
             {huddle.duration_minutes ? ` · ${huddle.duration_minutes} min` : ''}
             {huddle.allow_self_exit === false ? ' · host controls entry and exit' : ''}
           </p>
+          {waitlist != null && !inRoom && !huddle.cancelled_at ? (
+            <div className="hl-pills" role="status">
+              <span className="hl-pill">
+                <Icon name="people" size={14} />
+                <strong>{huddle.participants_count}</strong> in the huddle
+              </span>
+              <span className="hl-pill hl-pill--wait">
+                <span className="hl-pill-dot" aria-hidden="true" />
+                <strong>{waitlist}</strong> on the waitlist
+              </span>
+              {manages && !huddle.show_waitlist_count ? <span className="hl-pill hl-pill--muted">Only hosts see this</span> : null}
+            </div>
+          ) : null}
           {isOwner ? <HostTools huddle={huddle} onChanged={reload} onGone={() => router.push('/dashboard/huddles')} /> : null}
         </section>
 
@@ -399,6 +547,14 @@ export default function HuddleDetailPage() {
           ) : (
             <>
               <Preview />
+              {watchWaiting && waitingCount > 0 ? (
+                <p className="hl-waiting-count" role="status">
+                  <Icon name="people" size={15} />
+                  <span>
+                    <strong>{waitingCount}</strong> {waitingCount === 1 ? 'person is' : 'people are'} waiting to join
+                  </span>
+                </p>
+              ) : null}
               <label className="rd-label" htmlFor="hl-name">
                 Your name in this huddle
               </label>

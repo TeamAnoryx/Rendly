@@ -97,6 +97,16 @@ export function attachSocketIo(httpServer: HttpServer): Server {
     attachHuddleRoom(io!, socket, userId);
     attachSparkRoom(socket, userId);
 
+    // A client whose balance-changing action affects other users (a token transfer) asks
+    // them to refresh. The event carries no amounts; each client re-reads its own balance.
+    socket.on("points:notify", (data: { to?: unknown }) => {
+      const to = Array.isArray(data?.to) ? data.to : [];
+      const uuid = /^[0-9a-f-]{36}$/i;
+      to.slice(0, 20).forEach((id) => {
+        if (typeof id === "string" && uuid.test(id) && io) io.to(id).emit("points:changed");
+      });
+    });
+
     const becameOnline = addPresence(userId, socket.id);
     if (becameOnline && io) io.emit("user:online", { user_id: userId });
 

@@ -1,0 +1,170 @@
+/*
+ * Dashboard home layout: a single no-scroll viewport grid on laptop, big screen
+ * and tablet landscape. The shell (.rd-shell) is a 100dvh grid whose main row
+ * sits under the --rd-topbar row; .rd-main adds no padding, so the visible
+ * content area is exactly 100dvh - var(--rd-topbar).
+ */
+
+.rd-page.dl-page {
+  --dl-shell-offset: var(--rd-topbar, 52px);
+  --dl-gap: clamp(12px, 1.15vw, 18px);
+  --dl-pad-y: clamp(14px, 2.2dvh, 24px);
+  --dl-pad-x: clamp(16px, 2vw, 28px);
+
+  position: relative;
+  overflow: hidden;
+  height: calc(100dvh - var(--dl-shell-offset));
+  max-height: 100%;
+  min-height: 0;
+  padding: 0;
+  gap: 0;
+  isolation: isolate;
+}
+
+.dl-root {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  height: calc(100dvh - var(--dl-shell-offset));
+  max-height: 100%;
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: var(--dl-pad-y) var(--dl-pad-x);
+  overflow: hidden;
+  display: grid;
+  gap: var(--dl-gap);
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 26vw, 380px);
+  grid-template-rows: auto auto minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-areas:
+    'head head'
+    'stats stats'
+    'hot rank'
+    'live rank';
+}
+
+.dl-root > * {
+  min-height: 0;
+  min-width: 0;
+  margin: 0;
+}
+
+.dl-head {
+  grid-area: head;
+}
+.dl-stats {
+  grid-area: stats;
+}
+.dl-hot {
+  grid-area: hot;
+}
+.dl-live {
+  grid-area: live;
+}
+.dl-rank {
+  grid-area: rank;
+}
+.dl-dock {
+  grid-area: dock;
+}
+
+/* Panels that fill a fractional row clip internally rather than push the grid. */
+.dl-hot,
+.dl-live,
+.dl-rank {
+  overflow: hidden;
+}
+
+/* ---------- Entrance: staggered fade-up per grid area ---------- */
+@keyframes dl-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.dl-root > .dl-head,
+.dl-root > .dl-stats,
+.dl-root > .dl-hot,
+.dl-root > .dl-live,
+.dl-root > .dl-rank,
+.dl-root > .dl-dock {
+  animation: dl-rise 0.6s var(--rd-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+.dl-root > .dl-head {
+  animation-delay: 0ms;
+}
+.dl-root > .dl-stats {
+  animation-delay: 70ms;
+}
+.dl-root > .dl-hot {
+  animation-delay: 140ms;
+}
+.dl-root > .dl-rank {
+  animation-delay: 180ms;
+}
+.dl-root > .dl-live {
+  animation-delay: 220ms;
+}
+.dl-root > .dl-dock {
+  animation-delay: 290ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rd-page.dl-page,
+  .dl-root > * {
+    animation: none !important;
+  }
+}
+
+/* ---------- Tablet landscape / compact laptop height ---------- */
+@media (max-width: 1180px), (max-height: 760px) {
+  .rd-page.dl-page {
+    --dl-gap: 12px;
+    --dl-pad-y: 12px;
+    --dl-pad-x: 16px;
+  }
+  .dl-root {
+    grid-template-columns: minmax(0, 1fr) clamp(260px, 28vw, 320px);
+  }
+}
+
+/* ---------- Fallback: narrow or very short viewports scroll as a single column ---------- */
+@media (max-width: 899px), (max-height: 599px) {
+  .rd-page.dl-page {
+    height: 100%;
+    max-height: none;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .dl-root {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-auto-rows: auto;
+    grid-template-areas:
+      'head'
+      'stats'
+      'live'
+      'hot'
+      'rank';
+    padding-bottom: 28px;
+  }
+  .dl-hot,
+  .dl-live,
+  .dl-rank {
+    overflow: visible;
+  }
+}
+
+/* Scrolling layout: the hot rail has no grid row to fill, so give it a card height. */
+@media (max-width: 899px), (max-height: 599px) {
+  .dl-hot .hh-rail { flex: none; height: clamp(170px, 46vw, 220px); }
+}

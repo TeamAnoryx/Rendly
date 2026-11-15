@@ -1,0 +1,88 @@
+/* Waiting-room card at the top of the notifications panel. */
+.hwc {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 8px 8px 4px;
+  padding: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px -16px rgba(0, 0, 0, 0.35);
+  animation: hwc-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.hwc-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.hwc-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: #0a0a0a;
+  color: #ffffff;
+}
+.hwc-text {
+  min-width: 0;
+}
+.hwc-text p {
+  margin: 0;
+}
+.hwc-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #71717a;
+}
+.hwc-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0a0a0a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hwc-time {
+  font-size: 12.5px;
+  color: #3f3f46;
+  font-variant-numeric: tabular-nums;
+}
+.hwc-actions {
+  display: flex;
+  gap: 8px;
+}
+.hwc-btn {
+  flex: 1 1 0;
+  justify-content: center;
+  gap: 6px;
+}
+.hwc-btn--on {
+  border-color: #0a0a0a;
+  color: #0a0a0a;
+}
+@keyframes hwc-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hwc {
+    animation: none;
+  }
+}
+
+/* The card is white in both themes: keep the ghost button readable on hover. */
+.hwc .rd-btn--ghost,
+.hwc .rd-btn--ghost:hover,
+.hwc .rd-btn--ghost:focus-visible {
+  color: #0a0a0a;
+}
+.hwc .rd-btn--ghost:hover {
+  background: #f4f4f5;
+  border-color: rgba(0, 0, 0, 0.18);
+}

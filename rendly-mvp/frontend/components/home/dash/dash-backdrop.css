@@ -1,0 +1,166 @@
+/* DashBackdrop — ambient monochrome motion layer. Prefix: db-
+   Transform/opacity animations only; honours prefers-reduced-motion. */
+.db-root {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+  user-select: none;
+}
+
+/* Faint grid, masked so it fades towards the edges */
+.db-grid {
+  position: absolute;
+  inset: -64px;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 35%, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 35%, #000 20%, transparent 75%);
+  opacity: 0.7;
+  animation: db-grid-drift 40s linear infinite;
+  will-change: transform;
+}
+
+/* Soft drifting glows: near-white at very low alpha */
+.db-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  will-change: transform, opacity;
+}
+.db-blob--a {
+  top: -22%;
+  left: -12%;
+  width: 58vmax;
+  height: 58vmax;
+  max-width: 1100px;
+  max-height: 1100px;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.07), transparent 62%);
+  animation: db-drift-a 34s ease-in-out infinite alternate;
+}
+.db-blob--b {
+  bottom: -30%;
+  right: -14%;
+  width: 52vmax;
+  height: 52vmax;
+  max-width: 1000px;
+  max-height: 1000px;
+  background: radial-gradient(circle at center, rgba(220, 222, 230, 0.055), transparent 60%);
+  animation: db-drift-b 40s ease-in-out infinite alternate;
+}
+.db-blob--c {
+  top: 30%;
+  left: 38%;
+  width: 34vmax;
+  height: 34vmax;
+  max-width: 680px;
+  max-height: 680px;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.035), transparent 60%);
+  animation: db-breathe 26s ease-in-out infinite alternate;
+}
+
+/* Slow diagonal light beam sweeping across */
+.db-beam {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    115deg,
+    transparent 44%,
+    rgba(255, 255, 255, 0.022) 49%,
+    rgba(255, 255, 255, 0.035) 50%,
+    rgba(255, 255, 255, 0.022) 51%,
+    transparent 56%
+  );
+  transform: translate3d(-30%, 0, 0);
+  animation: db-beam 30s linear infinite;
+  will-change: transform;
+}
+
+/* Static film grain (SVG turbulence, rasterised once) */
+.db-noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 160px 160px;
+}
+
+.db-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 120% 90% at 50% 30%, transparent 55%, rgba(0, 0, 0, 0.45) 100%);
+}
+
+@keyframes db-grid-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(64px, 64px, 0);
+  }
+}
+@keyframes db-drift-a {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translate3d(8vw, 6vh, 0) scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(3vw, 12vh, 0) scale(0.96);
+    opacity: 0.75;
+  }
+}
+@keyframes db-drift-b {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translate3d(-7vw, -5vh, 0) scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(-3vw, -10vh, 0) scale(0.95);
+    opacity: 0.7;
+  }
+}
+@keyframes db-breathe {
+  from {
+    transform: translate3d(-4vw, 2vh, 0) scale(0.9);
+    opacity: 0.5;
+  }
+  to {
+    transform: translate3d(4vw, -3vh, 0) scale(1.12);
+    opacity: 1;
+  }
+}
+@keyframes db-beam {
+  from {
+    transform: translate3d(-30%, 0, 0);
+  }
+  to {
+    transform: translate3d(30%, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .db-grid,
+  .db-blob,
+  .db-beam {
+    animation: none;
+  }
+  .db-beam {
+    opacity: 0;
+  }
+}

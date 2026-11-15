@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { RendlyMark } from '@/components/brand/Brand';
+import AuthCtas from './AuthCtas';
 import PovOrbit from '@/components/motion/PovOrbit';
 import {
   IconArrowRight,
@@ -243,13 +244,7 @@ export default function Hero({ play = true }: HeroProps) {
         </p>
 
         <div className="ld-hero-ctas ld-enter ld-hero-step" style={{ animationDelay: `${STEP_MS.copy}ms` }}>
-          <Link href="/auth/sign-up" className="rd-btn rd-btn--primary rd-btn--lg">
-            Get started
-            <IconArrowRight size={15} className="rd-btn-arrow" />
-          </Link>
-          <Link href="/login" className="rd-btn rd-btn--lg">
-            Log in
-          </Link>
+          <AuthCtas />
         </div>
       </div>
 

@@ -145,12 +145,25 @@ export async function getNearbyIntents(): Promise<NearbyResult> {
   return { status: 'ok', user: data.user, intents: Array.isArray(data.intents) ? data.intents : [] };
 }
 
-export async function searchIntents(q: string, limit = 5): Promise<Intent[]> {
+/** Ordering for /api/intents/search (server default: trending). */
+export type IntentSearchSort = 'trending' | 'popular' | 'most_used';
+
+type RawSearchItem = Partial<Intent> & { tag?: unknown; count?: unknown };
+
+function normalizeSearchItem(item: RawSearchItem): Intent {
+  const tag = typeof item.tag === 'string' ? item.tag.replace(/^#/, '') : '';
+  const name = typeof item.name === 'string' && item.name ? item.name : tag;
+  return { ...item, name, usage_count: Number(item.usage_count ?? item.count ?? 0) } as Intent;
+}
+
+export async function searchIntents(q: string, limit = 5, sort?: IntentSearchSort): Promise<Intent[]> {
   const query = q.trim();
-  if (!query) return [];
+  // The server accepts an empty q only together with sort (then it returns the top intents by sort).
+  if (!query && !sort) return [];
   const params = new URLSearchParams({ q: query, limit: String(limit) });
+  if (sort) params.set('sort', sort);
   const data = await readJson<unknown>(await authFetch(`/api/intents/search?${params.toString()}`), 'Could not search intents');
-  return asArray<Intent>(data);
+  return asArray<RawSearchItem>(data).map(normalizeSearchItem);
 }
 
 /**

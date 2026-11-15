@@ -55,7 +55,12 @@ export type HuddleRow = {
   rewards_enabled?: boolean;
   /** Host may send Rendly Tokens from their own balance to participants. */
   rewards_receive_enabled?: boolean;
+  show_waitlist_count?: boolean;
   cancelled_at?: string | null;
+  /** Last time the host edited the details (description, intents, time). */
+  edited_at?: string | null;
+  /** Last time the host moved the start time or length after creating the huddle. */
+  rescheduled_at?: string | null;
 };
 
 export type CreateHuddleInput = {
@@ -73,6 +78,7 @@ export type CreateHuddleInput = {
   allow_self_exit: boolean;
   rewards_enabled: boolean;
   rewards_receive_enabled: boolean;
+  show_waitlist_count: boolean;
 };
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; message: string };
@@ -219,7 +225,7 @@ export function validateCreateHuddleInput(body: unknown, now: number = Date.now(
     }
     mode = input.mode as HuddleMode;
   }
-  for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled", "rewards_receive_enabled"] as const) {
+  for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled", "rewards_receive_enabled", "show_waitlist_count"] as const) {
     if (input[key] != null && typeof input[key] !== "boolean") {
       return { ok: false, message: `${key} must be true or false` };
     }
@@ -246,6 +252,7 @@ export function validateCreateHuddleInput(body: unknown, now: number = Date.now(
       allow_self_exit: input.allow_self_exit !== false,
       rewards_enabled: input.rewards_enabled === true,
       rewards_receive_enabled: input.rewards_receive_enabled === true,
+      show_waitlist_count: input.show_waitlist_count === true,
     },
   };
 }
@@ -274,7 +281,25 @@ export function huddleEndsAt(huddle: Pick<HuddleRow, "started_at" | "ended_at" |
 }
 
 /** Live: active, started, and not yet past its end time. Mirrors the list_live_huddles SQL. */
-export function isLive(huddle: Pick<HuddleRow, "is_active" | "started_at" | "ended_at" | "duration_minutes">, nowMs: number): boolean {
+/**
+ * A scheduled huddle nobody has joined yet is still live during its booked slot
+ * (scheduled_at .. scheduled_at + duration). The first join stamps started_at.
+ */
+export function isInScheduledSlot(
+  huddle: Pick<HuddleRow, "is_active" | "started_at" | "scheduled_at" | "duration_minutes">,
+  nowMs: number
+): boolean {
+  if (!huddle.is_active || huddle.started_at != null || !huddle.scheduled_at) return false;
+  const start = Date.parse(huddle.scheduled_at);
+  if (!Number.isFinite(start) || start > nowMs) return false;
+  return !huddle.duration_minutes || start + huddle.duration_minutes * 60_000 > nowMs;
+}
+
+export function isLive(
+  huddle: Pick<HuddleRow, "is_active" | "started_at" | "ended_at" | "duration_minutes" | "scheduled_at">,
+  nowMs: number
+): boolean {
+  if (isInScheduledSlot(huddle, nowMs)) return true;
   if (!huddle.is_active || huddle.started_at == null) return false;
   const endsAt = huddleEndsAt(huddle);
   return endsAt == null || endsAt > nowMs;
@@ -419,4 +444,55 @@ export function hotReason(row: {
   if (row.starts_in_seconds != null && row.starts_in_seconds <= HOT_STARTING_SOON_SECONDS) return "starting_soon";
   if (row.invites_count + row.visits_24h >= HOT_BUZZ_THRESHOLD) return "buzz";
   return "upcoming";
+}
+
+export type EditHuddleInput = {
+  title?: string;
+  description?: string | null;
+  intents?: string[];
+  scheduled_at?: string | null;
+  duration_minutes?: number | null;
+};
+
+/**
+ * PATCH /api/huddles/:id body. Every field is optional; at least one must be present.
+ * intents replaces the whole tag list (send the old tags plus the new ones to add).
+ */
+export function validateEditHuddleInput(body: unknown, now: number = Date.now()): ValidationResult<EditHuddleInput> {
+  const input = isPlainObject(body) ? body : {};
+  const value: EditHuddleInput = {};
+
+  if (input.title !== undefined) {
+    const title = typeof input.title === "string" ? input.title.trim() : "";
+    if (!title) return { ok: false, message: "Title is required" };
+    if (title.length > TITLE_MAX_LENGTH) return { ok: false, message: `Title must be at most ${TITLE_MAX_LENGTH} characters` };
+    value.title = title;
+  }
+  if (input.description !== undefined) {
+    if (input.description !== null && typeof input.description !== "string") {
+      return { ok: false, message: "description must be a string" };
+    }
+    const description = typeof input.description === "string" ? input.description.trim() || null : null;
+    if (description && description.length > DESCRIPTION_MAX_LENGTH) {
+      return { ok: false, message: `description must be at most ${DESCRIPTION_MAX_LENGTH} characters` };
+    }
+    value.description = description;
+  }
+  if (input.intents !== undefined) {
+    const intents = validateIntents(input.intents);
+    if (!intents.ok) return intents;
+    value.intents = intents.value;
+  }
+  if (input.scheduled_at !== undefined) {
+    const scheduledAt = validateScheduledAt(input.scheduled_at, now);
+    if (!scheduledAt.ok) return scheduledAt;
+    value.scheduled_at = scheduledAt.value;
+  }
+  if (input.duration_minutes !== undefined) {
+    const duration = validateDuration(input.duration_minutes);
+    if (!duration.ok) return duration;
+    value.duration_minutes = duration.value;
+  }
+  if (Object.keys(value).length === 0) return { ok: false, message: "Nothing to change" };
+  return { ok: true, value };
 }

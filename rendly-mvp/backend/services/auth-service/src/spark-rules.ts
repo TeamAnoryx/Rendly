@@ -32,7 +32,18 @@ export type MatchRequest = {
   intents: MatchIntent[];
   note: string | null;
   anonymous: boolean;
+  /** Default (guaranteed match): pair with another Default user when no intent match is found. */
+  match_any: boolean;
 };
+
+/** Extra tokens per side when a match was made by the Default fallback (never for intent matches). */
+export const SPARK_DEFAULT_FEE = 5;
+
+/** Seconds a waiting user is given to find an intent match before the Default fallback (and mixed-mode pairing) applies. */
+export const SPARK_FALLBACK_GRACE_SECONDS = 5;
+
+/** How a pair was made: a shared intent, or the Default fallback. */
+export type MatchedVia = "intents" | "default";
 
 /** True for the four preset names, case-insensitive. */
 export function isSparkPreset(name: string): boolean {
@@ -112,6 +123,9 @@ export function validateMatchRequest(body: unknown): ValidationResult<MatchReque
   if (input.anonymous !== undefined && typeof input.anonymous !== "boolean") {
     return { ok: false, message: "anonymous must be true or false" };
   }
+  if (input.match_any !== undefined && typeof input.match_any !== "boolean") {
+    return { ok: false, message: "match_any must be true or false" };
+  }
   return {
     ok: true,
     value: {
@@ -119,6 +133,7 @@ export function validateMatchRequest(body: unknown): ValidationResult<MatchReque
       intents: intents.value,
       note: note.value,
       anonymous: input.anonymous === undefined ? true : (input.anonymous as boolean),
+      match_any: input.match_any === undefined ? true : (input.match_any as boolean),
     },
   };
 }
@@ -164,4 +179,85 @@ export function whisperConversationId(userIdA: string, userIdB: string): string 
  */
 export function isCallInitiator(userId: string, partnerId: string): boolean {
   return userId < partnerId;
+}
+
+/* ---------------------------------------------------------------------------------------
+ * Deferred charging and rate limit.
+ * A pair is charged (each side its own cost) only once the match has lasted
+ * SPARK_CHARGE_AFTER_SECONDS. Ending earlier waives the charge for both sides.
+ * Mirrors spark_settle_pairing in the deferred-charge migration.
+ * ------------------------------------------------------------------------------------- */
+
+export const SPARK_CHARGE_AFTER_SECONDS = 30;
+export const SPARK_MATCHES_PER_WINDOW = 20;
+export const SPARK_WINDOW_MINUTES = 60;
+
+export type SparkChargeState = "pending" | "charged" | "waived";
+export type SparkCharge = { state: SparkChargeState; settles_at: string | null; cost: number };
+
+export type SparkLimits = {
+  balance: number;
+  matches_used: number;
+  matches_left: number;
+  max_per_window: number;
+  window_minutes: number;
+  resets_at: string | null;
+};
+
+function toDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
+/** When a pairing matched at matchedAt becomes chargeable (ISO). */
+export function chargeSettlesAt(matchedAt: Date | string): string {
+  return new Date(toDate(matchedAt).getTime() + SPARK_CHARGE_AFTER_SECONDS * 1000).toISOString();
+}
+
+/**
+ * What to do with a pairing's charge now. Pending and lasted >= 30s (measured to endedAt
+ * when ended) -> charge; pending and ending/ended before 30s -> waive; otherwise keep.
+ */
+export function decideSettlement(input: {
+  state: SparkChargeState;
+  matchedAt: Date;
+  endedAt: Date | null;
+  now: Date;
+  ending: boolean;
+}): "charge" | "waive" | "keep" {
+  if (input.state !== "pending") return "keep";
+  const until = input.endedAt ?? input.now;
+  const elapsedMs = until.getTime() - input.matchedAt.getTime();
+  if (elapsedMs >= SPARK_CHARGE_AFTER_SECONDS * 1000) return "charge";
+  if (input.ending || input.endedAt) return "waive";
+  return "keep";
+}
+
+/** Rolling-window match allowance from the matched_at times of the user's recent matches. */
+export function computeSparkLimits(
+  matchedAts: readonly (Date | string)[],
+  balance: number,
+  now: Date,
+  max = SPARK_MATCHES_PER_WINDOW,
+  windowMinutes = SPARK_WINDOW_MINUTES
+): SparkLimits {
+  const windowMs = windowMinutes * 60 * 1000;
+  const start = now.getTime() - windowMs;
+  const inWindow = matchedAts
+    .map((x) => toDate(x).getTime())
+    .filter((t) => Number.isFinite(t) && t > start && t <= now.getTime());
+  const used = inWindow.length;
+  const oldest = used > 0 ? Math.min(...inWindow) : null;
+  return {
+    balance,
+    matches_used: used,
+    matches_left: Math.max(0, max - used),
+    max_per_window: max,
+    window_minutes: windowMinutes,
+    resets_at: oldest === null ? null : new Date(oldest + windowMs).toISOString(),
+  };
+}
+
+/** True when no matches are left in the current window. */
+export function isRateLimited(limits: SparkLimits): boolean {
+  return limits.matches_left <= 0;
 }

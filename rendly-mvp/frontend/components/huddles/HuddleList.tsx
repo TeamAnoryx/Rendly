@@ -55,9 +55,15 @@ export function HuddlePoster({ huddle, large = false }: { huddle: HuddleListItem
 
 type When = { label: string; live: boolean; cancelled: boolean };
 
-function when(h: HuddleListItem): When {
+/**
+ * `isLive` comes from the server's live list (started and before its end), the same source the
+ * dashboard uses. `is_active` alone is not enough: a scheduled huddle the host never started
+ * stays active after its slot has passed.
+ */
+function when(h: HuddleListItem, isLive: boolean): When {
   if (h.cancelled_at) return { label: 'Cancelled', live: false, cancelled: true };
-  if (h.is_active) return { label: 'Live', live: true, cancelled: false };
+  if (isLive) return { label: 'Live', live: true, cancelled: false };
+  if (h.scheduled_at && slotEnd(h) <= Date.now()) return { label: 'Ended', live: false, cancelled: false };
   if (h.scheduled_at) {
     const d = new Date(h.scheduled_at);
     const day = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -86,8 +92,8 @@ function SeatStack({ count, max }: { count: number; max: number }) {
   );
 }
 
-export function HuddleCard({ h, rank }: { h: HuddleListItem; rank?: number }) {
-  const w = when(h);
+export function HuddleCard({ h, rank, live = false }: { h: HuddleListItem; rank?: number; live?: boolean }) {
+  const w = when(h, live);
   const full = h.participants_count >= h.max_participants;
   const cta = w.cancelled ? 'View' : w.live ? (full ? 'Full' : 'Join') : 'Details';
   return (
@@ -173,6 +179,12 @@ function scheduledTime(h: HuddleListItem): number {
   return h.scheduled_at ? Date.parse(h.scheduled_at) : Number.POSITIVE_INFINITY;
 }
 
+/** End of a scheduled huddle's slot (ms); infinite when it has no schedule or no duration. */
+function slotEnd(h: HuddleListItem): number {
+  if (!h.scheduled_at || !h.duration_minutes) return Number.POSITIVE_INFINITY;
+  return Date.parse(h.scheduled_at) + h.duration_minutes * 60_000;
+}
+
 export default function HuddleList({
   trendy,
   live,
@@ -196,14 +208,17 @@ export default function HuddleList({
     return map;
   }, [trendy]);
 
-  const lists = useMemo<Record<Tab, HuddleListItem[]>>(
-    () => ({
-      live: all.filter((h) => h.is_active && !h.cancelled_at),
-      upcoming: all.filter((h) => !h.is_active && !h.cancelled_at && !!h.scheduled_at).sort((a, b) => scheduledTime(a) - scheduledTime(b)),
+  const liveIds = useMemo(() => new Set(live.map((h) => h.id)), [live]);
+  const lists = useMemo<Record<Tab, HuddleListItem[]>>(() => {
+    const now = Date.now();
+    return {
+      live: all.filter((h) => liveIds.has(h.id) && !h.cancelled_at),
+      upcoming: all
+        .filter((h) => !liveIds.has(h.id) && !h.cancelled_at && !!h.scheduled_at && slotEnd(h) > now)
+        .sort((a, b) => scheduledTime(a) - scheduledTime(b)),
       mine: all.filter((h) => h.is_owner),
-    }),
-    [all]
-  );
+    };
+  }, [all, liveIds]);
 
   const onTabKey = (e: React.KeyboardEvent, i: number) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
@@ -259,7 +274,7 @@ export default function HuddleList({
             <div className="hgrid">
               <CreateCard onClick={onCreate} />
               {items.map((h) => (
-                <HuddleCard key={h.id} h={h} rank={tab === 'live' ? rankOf.get(h.id) : undefined} />
+                <HuddleCard key={h.id} h={h} live={liveIds.has(h.id)} rank={tab === 'live' ? rankOf.get(h.id) : undefined} />
               ))}
             </div>
             {items.length === 0 ? <p className="rd-small rd-muted hsec-empty">{EMPTY_COPY[tab]}</p> : null}

@@ -66,6 +66,7 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
   const [mode, setMode] = useState<HuddleMode>('open');
   const [waitingRoom, setWaitingRoom] = useState(false);
   const [allowSelfExit, setAllowSelfExit] = useState(true);
+  const [showWaitlistCount, setShowWaitlistCount] = useState(false);
   const [rewardsGive, setRewardsGive] = useState(true);
   const [rewardsReceive, setRewardsReceive] = useState(false);
   const [intents, setIntents] = useState<string[]>([]);
@@ -160,6 +161,7 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
         mode,
         waiting_room: waitingRoom,
         allow_self_exit: allowSelfExit,
+      show_waitlist_count: waitingRoom && showWaitlistCount,
         rewards_enabled: rewardsGive,
         rewards_receive_enabled: rewardsReceive,
         intents,
@@ -342,6 +344,14 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
           <div className="hc-switches">
             <Switch checked={waitingRoom} onChange={setWaitingRoom} title="Waiting room" hint="You admit each person." />
             <Switch checked={allowSelfExit} onChange={setAllowSelfExit} title="People can leave freely" hint="Turn off to control entry and exit yourself." />
+            {waitingRoom ? (
+              <Switch
+                checked={showWaitlistCount}
+                onChange={setShowWaitlistCount}
+                title="Show waitlist count to everyone"
+                hint="Off: only you see how many people are waiting."
+              />
+            ) : null}
           </div>
 
           <span className="rd-label">Rewards</span>

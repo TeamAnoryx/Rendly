@@ -934,3 +934,133 @@
     display: none;
   }
 }
+
+/* Token transfer announced in the room chat. */
+.hr-chat-tokens {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  align-self: center;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: #fafafa;
+  color: #3f3f46;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.hr-chat-tokens strong {
+  color: #0a0a0a;
+  font-weight: 600;
+}
+.hr-chat-tokens svg {
+  flex: none;
+  margin-top: 2px;
+  color: #b45309;
+}
+
+/* ---- People search + admin pill ---- */
+.hr-people-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 0 12px;
+  height: 38px;
+  border: 1px solid var(--rd-border);
+  border-radius: var(--rd-radius-sm);
+  background: var(--rd-surface);
+  color: var(--rd-muted);
+}
+.hr-people-search:focus-within {
+  border-color: var(--rd-border-strong);
+  color: var(--rd-text);
+}
+.hr-people-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--rd-text);
+  font: inherit;
+  font-size: 14px;
+}
+.hr-admin-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--rd-primary);
+  background: var(--rd-surface);
+  color: var(--rd-text);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--rd-fast) ease-out, color var(--rd-fast) ease-out;
+}
+.hr-admin-pill--on {
+  background: var(--rd-primary);
+  color: var(--rd-on-primary);
+}
+.hr-admin-pill:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- Rooms: leader + full ---- */
+.hr-room-lead {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rd-text);
+}
+.hr-room-full {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+/* ---- Recording ---- */
+.hr-rec {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.hr-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  animation: hr-rec-pulse 1.2s ease-in-out infinite;
+}
+@keyframes hr-rec-pulse {
+  50% { opacity: 0.25; }
+}
+.hr-dock-rec--on {
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+  color: #fff !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hr-rec-dot { animation: none; }
+}
+@media (max-width: 640px) {
+  .hr-admin-pill { padding: 0 10px; }
+  .hr-rec { padding: 0 8px; }
+}

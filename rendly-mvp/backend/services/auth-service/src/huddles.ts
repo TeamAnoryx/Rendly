@@ -9,6 +9,7 @@
 import crypto from "crypto";
 import { supabase } from "./supabase-users";
 import {
+  isInScheduledSlot,
   isLive,
   isUuid,
   rankTrending,
@@ -63,7 +64,33 @@ async function fetchLiveHuddles(viewerId: string): Promise<HuddleRow[]> {
   const client = requireClient();
   const { data, error } = await client.rpc("list_live_huddles", { p_viewer_id: viewerId, p_limit: LIVE_LIMIT });
   if (error) throw new HuddleStoreError("list live", error);
-  return (data ?? []) as HuddleRow[];
+  const started = (data ?? []) as HuddleRow[];
+  const slotted = await fetchScheduledSlotHuddles(viewerId, new Set(started.map((h) => h.id)));
+  return [...started, ...slotted].slice(0, LIVE_LIMIT);
+}
+
+/**
+ * Scheduled huddles whose slot is open but nobody has joined yet (started_at still null).
+ * The live RPC only sees started huddles, so these are merged in; visibility matches listHuddles.
+ */
+async function fetchScheduledSlotHuddles(viewerId: string, skipIds: Set<string>): Promise<HuddleRow[]> {
+  const client = requireClient();
+  const nowMs = Date.now();
+  const invitedIds = await fetchInvitedHuddleIds(viewerId);
+  const visibility = [`type.neq.private`, `created_by.eq.${viewerId}`];
+  if (invitedIds.length > 0) visibility.push(`id.in.(${invitedIds.join(",")})`);
+  const { data, error } = await client
+    .from("huddles")
+    .select("*")
+    .eq("is_active", true)
+    .is("started_at", null)
+    .is("cancelled_at", null)
+    .lte("scheduled_at", new Date(nowMs).toISOString())
+    .or(visibility.join(","))
+    .order("scheduled_at", { ascending: true })
+    .limit(LIVE_LIMIT);
+  if (error) throw new HuddleStoreError("list scheduled live", error);
+  return ((data ?? []) as HuddleRow[]).filter((h) => !skipIds.has(h.id) && isInScheduledSlot(h, nowMs));
 }
 
 /**
@@ -270,13 +297,41 @@ export async function listHotHuddles(viewerId: string, limit = HOT_HUDDLES_DEFAU
   const { data, error } = await client.rpc("hot_huddles", { p_viewer_id: viewerId, p_limit: size });
   if (error) throw new HuddleStoreError("hot", error);
   const stats = ((data ?? []) as (HotHuddleStats & { id: string })[]).filter((r) => isUuid(r.id));
-  if (stats.length === 0) return [];
 
-  const { data: rows, error: rowsError } = await client.from("huddles").select("*").in("id", stats.map((r) => r.id));
+  // The RPC only ranks started or future huddles; a scheduled slot that is open but not yet
+  // joined is live too, so it goes first.
+  const known = new Set(stats.map((r) => r.id));
+  const nowMs = Date.now();
+  const opened = (await fetchScheduledSlotHuddles(viewerId, known)).filter((h) => isInScheduledSlot(h, nowMs));
+  if (stats.length === 0 && opened.length === 0) return [];
+
+  const { data: rows, error: rowsError } = stats.length
+    ? await client.from("huddles").select("*").in("id", stats.map((r) => r.id))
+    : { data: [], error: null };
   if (rowsError) throw new HuddleStoreError("hot rows", rowsError);
   const byId = new Map(((rows ?? []) as HuddleRow[]).map((h) => [h.id, h]));
-  const hosts = await fetchHostProfiles(Array.from(byId.values()).map((h) => h.created_by));
+  const hosts = await fetchHostProfiles([...Array.from(byId.values()), ...opened].map((h) => h.created_by));
 
+  const openedHot: HotHuddle[] = opened.map((huddle) => ({
+    score: Number.MAX_SAFE_INTEGER,
+    is_live: true,
+    participants_count: 0,
+    invites_count: 0,
+    visits_24h: 0,
+    joins_24h: 0,
+    starts_in_seconds: null,
+    huddle,
+    host: hosts.get(huddle.created_by) ?? { username: null, avatar_url: null },
+  }));
+
+  return [...openedHot, ...rankedHot(stats, byId, hosts)].slice(0, size);
+}
+
+function rankedHot(
+  stats: (HotHuddleStats & { id: string })[],
+  byId: Map<string, HuddleRow>,
+  hosts: Map<string, HostProfile>
+): HotHuddle[] {
   return stats.flatMap((r) => {
     const huddle = byId.get(r.id);
     if (!huddle) return [];
@@ -338,6 +393,7 @@ export async function createHuddle(createdBy: string, input: CreateHuddleInput):
     allow_self_exit: input.allow_self_exit,
     rewards_enabled: input.rewards_enabled,
     rewards_receive_enabled: input.rewards_receive_enabled,
+    show_waitlist_count: input.show_waitlist_count,
   };
   const { data, error } = await client.from("huddles").insert(row).select("*").single();
   if (error || !data) throw new HuddleStoreError("create", error ?? "no row returned");
@@ -618,6 +674,20 @@ export async function getHuddleParticipantCount(huddleId: string): Promise<numbe
   return counts.get(huddleId) ?? 0;
 }
 
+/** People on the waiting list (joined, not yet admitted, not left). */
+export async function getHuddleWaitingCount(huddleId: string): Promise<number> {
+  if (!isUuid(huddleId)) return 0;
+  const client = requireClient();
+  const { count, error } = await client
+    .from("huddle_participants")
+    .select("id", { count: "exact", head: true })
+    .eq("huddle_id", huddleId)
+    .is("left_at", null)
+    .eq("admitted", false);
+  if (error) throw new HuddleStoreError("waiting count", error);
+  return count ?? 0;
+}
+
 /** Whether the user is currently in the huddle. */
 export async function isActiveParticipant(huddleId: string, userId: string): Promise<boolean> {
   if (!isUuid(huddleId) || !isUuid(userId)) return false;
@@ -692,6 +762,7 @@ export type HuddleSettingsPatch = Partial<{
   allow_self_exit: boolean;
   rewards_enabled: boolean;
   rewards_receive_enabled: boolean;
+  show_waitlist_count: boolean;
 }>;
 
 /** Host settings that can change after creation. Only the fields given are changed. */
@@ -763,4 +834,70 @@ export async function setDisplayName(huddleId: string, userId: string, name: str
     .select("id");
   if (error) throw new HuddleStoreError("display name", error);
   return (data ?? []).length > 0;
+}
+
+export type HuddleDetailsPatch = {
+  title?: string;
+  description?: string | null;
+  scheduled_at?: string | null;
+  duration_minutes?: number | null;
+};
+
+/** Postgres "undefined column": the edited_at / rescheduled_at migration has not run yet. */
+const UNDEFINED_COLUMN = "42703";
+/** PostgREST "column not in schema cache": same cause, seen through the REST layer. */
+const COLUMN_NOT_IN_CACHE = "PGRST204";
+
+/**
+ * Host edit of a huddle's details. Writes edited_at always and rescheduled_at when the time
+ * or length changed. intents, when given, replaces the tag list. Returns the updated row.
+ */
+export async function updateHuddleDetails(
+  huddleId: string,
+  patch: HuddleDetailsPatch,
+  intents: string[] | undefined,
+  rescheduled: boolean
+): Promise<HuddleRow> {
+  const client = requireClient();
+  const now = new Date().toISOString();
+  const stamps = { edited_at: now, ...(rescheduled ? { rescheduled_at: now } : {}) };
+  let result = await client.from("huddles").update({ ...patch, ...stamps }).eq("id", huddleId).select("*").single();
+  if (result.error?.code === UNDEFINED_COLUMN || result.error?.code === COLUMN_NOT_IN_CACHE) {
+    console.warn("[huddles] edited_at/rescheduled_at missing: run 20261115_huddle_edits.sql");
+    result =
+      Object.keys(patch).length > 0
+        ? await client.from("huddles").update(patch).eq("id", huddleId).select("*").single()
+        : await client.from("huddles").select("*").eq("id", huddleId).single();
+  }
+  if (result.error || !result.data) throw new HuddleStoreError("update details", result.error ?? "no row returned");
+
+  if (intents) {
+    const previous = await getIntentTags(huddleId);
+    const { error: delError } = await client.from("huddle_intents").delete().eq("huddle_id", huddleId);
+    if (delError) throw new HuddleStoreError("replace intents", delError);
+    if (intents.length > 0) {
+      const { error: tagError } = await client
+        .from("huddle_intents")
+        .insert(intents.map((tag) => ({ huddle_id: huddleId, tag })));
+      if (tagError) {
+        // Put the old tags back so a failed edit never leaves the huddle with none.
+        if (previous.length > 0) {
+          const { error: restoreError } = await client
+            .from("huddle_intents")
+            .insert(previous.map((tag) => ({ huddle_id: huddleId, tag })));
+          if (restoreError) console.error("[huddles] could not restore intents", huddleId, restoreError);
+        }
+        throw new HuddleStoreError("replace intents", tagError);
+      }
+    }
+  }
+  return result.data as HuddleRow;
+}
+
+/** Everyone holding an invite to the huddle. */
+export async function listInviteeIds(huddleId: string): Promise<string[]> {
+  const client = requireClient();
+  const { data, error } = await client.from("huddle_invites").select("invitee_id").eq("huddle_id", huddleId);
+  if (error) throw new HuddleStoreError("list invitees", error);
+  return ((data ?? []) as { invitee_id: string }[]).map((r) => r.invitee_id).filter(isUuid);
 }

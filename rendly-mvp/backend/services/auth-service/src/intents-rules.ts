@@ -124,3 +124,34 @@ export function validateLocationBody(body: unknown): RulesResult<LocationBody> {
   }
   return { ok: true, value: { lat, lng, city } };
 }
+
+/** Sort orders for intent search: recent adds (7 days), current holders, lifetime usage. */
+export const INTENT_SORTS = ["trending", "popular", "most_used"] as const;
+export type IntentSort = (typeof INTENT_SORTS)[number];
+
+/** Case-insensitive, trimmed; anything unknown falls back to "trending". */
+export function parseIntentSort(raw: unknown): IntentSort {
+  if (typeof raw !== "string") return "trending";
+  const value = raw.trim().toLowerCase();
+  return (INTENT_SORTS as readonly string[]).includes(value) ? (value as IntentSort) : "trending";
+}
+
+const COUNT_UNITS = [
+  { size: 1_000_000_000, suffix: "B" },
+  { size: 1_000_000, suffix: "M" },
+  { size: 1_000, suffix: "k" },
+] as const;
+
+/** Compact count for chips: 999, 1k, 1.3k, 2k, 1.5M. One decimal, trailing ".0" dropped. */
+export function formatIntentCount(n: number): string {
+  const value = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+  for (let i = 0; i < COUNT_UNITS.length; i++) {
+    const { size, suffix } = COUNT_UNITS[i];
+    if (value < size) continue;
+    const rounded = Math.round((value / size) * 10) / 10;
+    // 999_950 rounds to 1000k: promote to the next unit up.
+    if (rounded >= 1000 && i > 0) return `${Math.round((value / COUNT_UNITS[i - 1].size) * 10) / 10}${COUNT_UNITS[i - 1].suffix}`;
+    return `${rounded}${suffix}`;
+  }
+  return String(value);
+}

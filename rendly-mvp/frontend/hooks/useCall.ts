@@ -148,7 +148,15 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
       else screen = screen ?? stream; // an extra stream without a marker is a screen share
     });
     // A fresh MediaStream object makes <video> elements pick up added tracks.
-    setRemoteStream(cam ? new MediaStream((cam as MediaStream).getTracks()) : null);
+    const camTracks = cam ? (cam as MediaStream).getTracks() : [];
+    // Reuse the same object while the track set is unchanged: a new stream resets the <video>.
+    setRemoteStream((prev) =>
+      camTracks.length === 0
+        ? null
+        : prev && prev.getTracks().length === camTracks.length && camTracks.every((t) => prev.getTracks().includes(t))
+          ? prev
+          : new MediaStream(camTracks),
+    );
     setRemoteScreenStream(screen);
   }, []);
 

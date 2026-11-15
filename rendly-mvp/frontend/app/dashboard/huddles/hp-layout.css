@@ -1,0 +1,64 @@
+/* Huddles page: one screen, no page scroll. Prefix hp- */
+.hpg {
+  height: calc(100dvh - var(--rd-topbar, 52px));
+  /* clip, not hidden: a hidden box can still be scrolled sideways by focus, which shifted the page left. */
+  overflow: clip;
+  display: grid;
+  /* The list keeps at least 480px; the showcase takes up to 46vw but never wider than the height can use. */
+  grid-template-columns: minmax(480px, 1fr) minmax(0, min(40vw, calc((100dvh - var(--rd-topbar, 52px)) * 1.02), 660px));
+  gap: clamp(12px, 1.4vw, 20px);
+  padding: clamp(12px, 2dvh, 22px) clamp(14px, 1.8vw, 26px);
+  box-sizing: border-box;
+}
+.hp-main {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: clamp(10px, 1.5dvh, 16px);
+}
+.hp-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; animation: hp-in .6s cubic-bezier(.2,.8,.2,1) both; }
+.hp-title { min-width: 0; }
+.hp-eyebrow { display: block; margin-bottom: 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.45); }
+.hp-h1 { margin: 0; font-size: clamp(22px, 2.1vw, 30px); line-height: 1.05; font-weight: 600; letter-spacing: -.03em; color: #fff; }
+.hp-sub { margin: 6px 0 0; font-size: 13px; color: rgba(255,255,255,.5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hp-new {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; height: clamp(30px, 4.2dvh, 34px); padding: 0 clamp(10px, 1vw, 14px); border-radius: 999px; border: 1px solid #fff;
+  background: #fff; color: #0a0a0b; font: inherit; font-size: clamp(12px, 0.85vw, 13px); font-weight: 600; cursor: pointer;
+  transition: transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease, background .2s ease;
+}
+.hp-new:hover { transform: translateY(-1px); box-shadow: 0 10px 30px -12px rgba(255,255,255,.55); }
+.hp-new:active { transform: translateY(0) scale(.97); }
+.hp-new:focus-visible { outline: 2px solid rgba(255,255,255,.6); outline-offset: 2px; }
+.hp-search { animation: hp-in .6s .06s cubic-bezier(.2,.8,.2,1) both; }
+.hp-hot { min-height: 0; animation: hp-in .6s .12s cubic-bezier(.2,.8,.2,1) both; }
+.hp-hot .hh-seeall { display: none; }
+.hp-board { animation: hp-in .6s .18s cubic-bezier(.2,.8,.2,1) both; }
+.hp-stage { min-height: 0; min-width: 0; }
+@keyframes hp-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* Tablets and phones: the list fills the first screen, the showcase sits below it. */
+@media (max-width: 1180px) {
+  .hpg { display: block; overflow-x: clip; overflow-y: auto; overscroll-behavior: contain; }
+  .hp-main { height: calc(100dvh - var(--rd-topbar, 52px) - 2 * clamp(12px, 2dvh, 22px)); min-height: 520px; }
+  .hpg .hp-stage { display: block; width: 100%; max-width: 720px; aspect-ratio: 1260 / 1080; height: auto; margin: clamp(20px, 4dvh, 36px) auto 8px; }
+}
+/* Phones: keep the end of the showcase clear of the bottom tab bar. */
+@media (max-width: 767px) {
+  .hpg { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 640px) {
+  .hp-sub { display: none; }
+  .hp-main { grid-template-rows: auto auto minmax(0, 0.8fr) minmax(0, 1.2fr); }
+}
+/* Short screens: the board needs the room more than the Hot rail. */
+@media (max-height: 600px) {
+  .hp-main { grid-template-rows: auto auto minmax(0, 1fr); }
+  .hp-hot { display: none; }
+  .hp-sub { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hp-head, .hp-search, .hp-hot, .hp-board { animation: none; }
+  .hp-new:hover { transform: none; }
+}

@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { AnoryxSignature, RendlyLockup } from '@/components/brand/Brand';
 import Reveal from './Reveal';
-import { IconArrowRight } from './icons';
+import AuthCtas from './AuthCtas';
 
 export function FinalCta() {
   return (
@@ -16,13 +16,7 @@ export function FinalCta() {
           Choose your intents and meet someone who shares them today.
         </Reveal>
         <Reveal delay={120} className="ld-hero-ctas ld-hero-ctas--center">
-          <Link href="/auth/sign-up" className="rd-btn rd-btn--primary rd-btn--lg">
-            Get started
-            <IconArrowRight size={15} className="rd-btn-arrow" />
-          </Link>
-          <Link href="/login" className="rd-btn rd-btn--lg">
-            Log in
-          </Link>
+          <AuthCtas />
         </Reveal>
       </div>
     </section>

@@ -174,6 +174,14 @@ export function emitPointsChanged(): void {
   window.dispatchEvent(new Event(POINTS_CHANGED_EVENT));
 }
 
+/** Ask other users' open tabs (e.g. a token recipient) to re-fetch their balance via the chat socket. */
+export function notifyPointsPeers(userIds: readonly string[]): void {
+  if (typeof window === 'undefined' || userIds.length === 0) return;
+  void import('@/services/websocket')
+    .then(({ websocket }) => websocket.emit('points:notify', { to: [...userIds] }))
+    .catch(() => undefined);
+}
+
 function handle(username?: string | null): string | null {
   const clean = (username ?? '').trim().replace(/^@/, '');
   return clean ? `@${clean}` : null;

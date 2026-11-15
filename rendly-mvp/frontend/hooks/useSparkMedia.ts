@@ -16,7 +16,19 @@ type IceState = { status: 'loading' } | { status: 'failed' } | ({ status: 'ready
  * - waiting-partner: I allowed direct video, my anonymous match has not
  * - ready: the peer connection is (or is about to be) created
  */
-export type SparkVideoGate = 'loading' | 'unavailable' | 'need-consent' | 'declined' | 'waiting-partner' | 'ready';
+/**
+ * - idle: nobody has asked for video yet (no card)
+ * - partner-wants-video: my match turned on camera/mic, I have not allowed a direct connection
+ * - waiting-partner: my camera/mic is on, waiting for my match to allow it
+ */
+export type SparkVideoGate =
+  | 'loading'
+  | 'unavailable'
+  | 'idle'
+  | 'partner-wants-video'
+  | 'declined'
+  | 'waiting-partner'
+  | 'ready';
 
 const VIDEO_UNAVAILABLE = 'Video unavailable right now. You can still chat.';
 
@@ -144,7 +156,7 @@ export function useSparkMedia(opts: {
 
   const refreshLocal = useCallback(() => {
     const v = tracksRef.current.video;
-    setLocalStream(v ? new MediaStream([v]) : null);
+    setLocalStream((prev) => (v ? (prev && prev.getVideoTracks()[0] === v ? prev : new MediaStream([v])) : null));
     setCamOn(!!v);
     setMicOn(!!tracksRef.current.audio);
   }, []);
@@ -294,6 +306,9 @@ export function useSparkMedia(opts: {
         }
         track.enabled = true;
         tracksRef.current[kind] = track;
+        // Turning my camera or mic on is my consent to a direct connection.
+        myConsentRef.current = true;
+        setDirectChoice('allowed');
       } else {
         const track = tracksRef.current[kind];
         tracksRef.current[kind] = null;
@@ -413,11 +428,25 @@ export function useSparkMedia(opts: {
         .forEach((t) => remote.removeTrack(t));
       if (!remote.getTracks().includes(track)) remote.addTrack(track);
       if (track.kind === 'video') {
+        // A brief frame gap fires 'mute': only hide the partner's video if it stays muted.
+        let muteTimer: ReturnType<typeof setTimeout> | null = null;
         setRemoteVideoUnmuted(!track.muted);
-        track.onmute = () => aliveRef.current && setRemoteVideoUnmuted(false);
-        track.onunmute = () => aliveRef.current && setRemoteVideoUnmuted(true);
+        track.onmute = () => {
+          if (muteTimer) clearTimeout(muteTimer);
+          muteTimer = setTimeout(() => aliveRef.current && track.muted && setRemoteVideoUnmuted(false), 1500);
+        };
+        track.onunmute = () => {
+          if (muteTimer) clearTimeout(muteTimer);
+          muteTimer = null;
+          if (aliveRef.current) setRemoteVideoUnmuted(true);
+        };
       }
-      setRemoteStream(new MediaStream(remote.getTracks()));
+      // Keep the same object while the track set is unchanged: a new stream resets the <video>.
+      setRemoteStream((prev) =>
+        prev && prev.getTracks().length === remote.getTracks().length && remote.getTracks().every((t) => prev.getTracks().includes(t))
+          ? prev
+          : new MediaStream(remote.getTracks()),
+      );
     };
     pc.onicecandidate = (ev) => {
       if (ev.candidate) sparkChannel.signal('ice', ev.candidate.toJSON());
@@ -477,6 +506,11 @@ export function useSparkMedia(opts: {
       } finally {
         if (!cancelled) setBusy(null);
       }
+      if (tracksRef.current.video || tracksRef.current.audio) {
+        // Choosing video mode and starting the camera is my consent to a direct connection.
+        myConsentRef.current = true;
+        setDirectChoice('allowed');
+      }
       await attachTracks();
       refreshLocal();
       publishState();
@@ -519,8 +553,11 @@ export function useSparkMedia(opts: {
   if (pcReady || canConnect) videoGate = 'ready';
   else if (unsupported || ice.status === 'failed') videoGate = 'unavailable';
   else if (ice.status === 'loading') videoGate = 'loading';
-  else if (!myConsent) videoGate = directChoice === 'declined' ? 'declined' : 'need-consent';
-  else videoGate = 'waiting-partner';
+  else if (!myConsent) {
+    const partnerWantsVideo = partner.video || partner.audio;
+    if (!partnerWantsVideo) videoGate = 'idle';
+    else videoGate = directChoice === 'declined' ? 'declined' : 'partner-wants-video';
+  } else videoGate = camOn || micOn ? 'waiting-partner' : 'idle';
 
   const hasRemoteVideo = !!remoteStream?.getVideoTracks().some((t) => t.readyState === 'live');
 

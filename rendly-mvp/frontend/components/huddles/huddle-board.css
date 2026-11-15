@@ -1,0 +1,56 @@
+/* Paged huddle board, Linear-style rows. Prefix hb- */
+.hb { height: 100%; min-height: 0; display: flex; flex-direction: column; border: 1px solid rgba(255,255,255,.07); border-radius: 16px; background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01)); overflow: hidden; }
+.hb-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px 8px; border-bottom: 1px solid rgba(255,255,255,.06); }
+.hb-tabs { display: flex; gap: 2px; min-width: 0; overflow: hidden; }
+.hb-tab { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border: 0; border-radius: 8px; background: transparent; color: rgba(255,255,255,.55); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: color .2s ease, background .2s ease; }
+.hb-tab:hover { color: #fff; background: rgba(255,255,255,.04); }
+.hb-tab--on { color: #fff; background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+.hb-count { font-size: 11px; font-variant-numeric: tabular-nums; color: rgba(255,255,255,.4); }
+.hb-tab--on .hb-count { color: rgba(255,255,255,.7); }
+.hb-dot { width: 6px; height: 6px; border-radius: 50%; background: #fff; flex: none; animation: hb-pulse 2.4s ease-out infinite; }
+@keyframes hb-pulse { 0% { box-shadow: 0 0 0 0 rgba(255,255,255,.5); } 70%, 100% { box-shadow: 0 0 0 6px rgba(255,255,255,0); } }
+.hb-pager { display: flex; align-items: center; gap: 4px; flex: none; }
+.hb-pageno { margin-right: 4px; font-size: 11.5px; color: rgba(255,255,255,.45); font-variant-numeric: tabular-nums; }
+.hb-arrow { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); color: #fff; cursor: pointer; transition: background .2s ease, transform .15s ease, opacity .2s ease; }
+.hb-arrow:hover:not(:disabled) { background: rgba(255,255,255,.1); }
+.hb-arrow:active:not(:disabled) { transform: scale(.94); }
+.hb-arrow:disabled { opacity: .3; cursor: default; }
+.hb-error { margin: 8px 14px 0; font-size: 12px; color: rgba(255,180,180,.9); }
+.hb-body { flex: 1; min-height: 0; padding: 8px; overflow: hidden; }
+.hb-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; align-content: start; }
+.hb-row-wrap { min-width: 0; animation: hb-in .45s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes hb-in { from { opacity: 0; transform: translateY(8px); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+.hb-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; height: 60px; padding: 0 12px 0 8px; border-radius: 12px; border: 1px solid transparent; color: inherit; text-decoration: none; transition: background .22s ease, border-color .22s ease, transform .22s cubic-bezier(.2,.8,.2,1); }
+.hb-row:hover { background: rgba(255,255,255,.045); border-color: rgba(255,255,255,.08); transform: translateX(2px); }
+.hb-row:active { transform: scale(.995); }
+.hb-row:focus-visible { outline: 2px solid rgba(255,255,255,.5); outline-offset: 1px; }
+.hb-thumb { position: relative; width: 78px; height: 44px; border-radius: 8px; overflow: hidden; flex: none; background: #0d0d0f; border: 1px solid rgba(255,255,255,.08); }
+.hb-thumb > * { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0 !important; font-size: 14px !important; }
+.hb-thumb img, .hb-thumb video { object-fit: cover; }
+.hb-row--live .hb-thumb { border-color: rgba(255,255,255,.3); }
+.hb-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.hb-title-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hb-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; letter-spacing: -.005em; color: #fff; }
+.hb-chip { flex: none; display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 999px; border: 1px solid rgba(255,255,255,.14); font-size: 10.5px; color: rgba(255,255,255,.7); }
+.hb-meta { display: flex; align-items: center; gap: 4px 12px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: 12px; color: rgba(255,255,255,.5); font-variant-numeric: tabular-nums; }
+.hb-status, .hb-seats { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.hb-status--live { color: #fff; font-weight: 500; }
+.hb-tag { color: rgba(255,255,255,.42); overflow: hidden; text-overflow: ellipsis; }
+.hb-cta { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 11px; border-radius: 8px; border: 1px solid rgba(255,255,255,.1); font-size: 12px; font-weight: 500; color: rgba(255,255,255,.8); transition: background .2s ease, color .2s ease, border-color .2s ease; }
+.hb-cta svg { transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+.hb-row:hover .hb-cta { border-color: rgba(255,255,255,.25); color: #fff; }
+.hb-row:hover .hb-cta svg { transform: translateX(2px); }
+.hb-cta--on { background: #fff; color: #0a0a0b; border-color: #fff; }
+.hb-row:hover .hb-cta--on { color: #0a0a0b; }
+.hb-skel { height: 60px; border-radius: 12px; }
+.hb-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; font-size: 13px; color: rgba(255,255,255,.55); animation: hb-in .4s ease both; }
+.hb-empty p { margin: 0; }
+.hb-empty-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; border: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,.75); }
+@media (max-width: 560px) {
+  .hb-thumb { width: 52px; }
+  .hb-tag, .hb-pageno { display: none; }
+  .hb-tab { padding: 0 8px; font-size: 12.5px; }
+  .hb-cta { padding: 0 8px; }
+}
+@media (prefers-reduced-motion: reduce) { .hb-row-wrap, .hb-empty, .hb-dot { animation: none; } .hb-row:hover { transform: none; } }
+.hb-moved { flex: none; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 500; color: #ffd38a; border: 1px solid rgba(255, 196, 102, 0.35); }

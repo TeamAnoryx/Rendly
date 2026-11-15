@@ -12,8 +12,12 @@ import {
 } from '@/services/notificationsApi';
 import { planToasts } from '@/lib/notificationDiff';
 import { getResolvedApiUrl, getResolvedApiUrlSync } from '@/lib/resolvedApiUrl';
+import { getHuddle } from '@/services/huddlesApi';
+import { listReminders, removeReminder, showLiveNotification, huddleJoinHref, type HuddleRef } from '@/lib/huddleReminders';
 
 const POLL_MS = 10_000;
+/** How often reminded huddles are checked for going live. */
+const REMINDER_POLL_MS = 15_000;
 const TOAST_MS = 6_000;
 const MAX_TOASTS = 4;
 /** Prompt to meet new people when more than this many are online, at most once a day. */
@@ -43,6 +47,12 @@ type NotificationsValue = {
   clearAll: () => Promise<void>;
   pushToast: (t: Omit<Toast, 'id'> & { id?: string }) => void;
   dismissToast: (id: string) => void;
+  /** The huddle whose waiting room this user is in (shown as a card in the notifications panel). */
+  waitingHuddle: HuddleRef | null;
+  setWaitingHuddle: (h: HuddleRef | null) => void;
+  /** Increments when something asks the notifications panel to open. */
+  openPanelSignal: number;
+  requestOpenPanel: () => void;
 };
 
 const NotificationsContext = createContext<NotificationsValue | null>(null);
@@ -220,6 +230,42 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     }
   }, [items]);
 
+  const [waitingHuddle, setWaitingHuddle] = useState<HuddleRef | null>(null);
+  const [openPanelSignal, setOpenPanelSignal] = useState(0);
+  const requestOpenPanel = useCallback(() => setOpenPanelSignal((n) => n + 1), []);
+
+  // "Remind me": check reminded huddles and notify once each goes live (or drop it if called off).
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      for (const ref of listReminders()) {
+        try {
+          const h = await getHuddle(ref.id);
+          if (!alive) return;
+          if (h.cancelled_at || (h.ended_at && Date.parse(h.ended_at) <= Date.now())) {
+            removeReminder(ref.id);
+            continue;
+          }
+          const due = h.scheduled_at ? Date.parse(h.scheduled_at) <= Date.now() : false;
+          if (!h.started_at && !due) continue;
+          removeReminder(ref.id);
+          const live = { id: ref.id, title: h.title || ref.title, scheduled_at: h.scheduled_at };
+          if (!showLiveNotification(live)) {
+            pushToast({ icon: 'bell', title: `${live.title} is live`, href: huddleJoinHref(ref.id), actionLabel: 'Join' });
+          }
+        } catch {
+          /* network or access error: try again on the next tick */
+        }
+      }
+    };
+    void check();
+    const id = setInterval(() => void check(), REMINDER_POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [pushToast]);
+
   const value = useMemo<NotificationsValue>(
     () => ({
       items,
@@ -233,8 +279,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       clearAll,
       pushToast,
       dismissToast,
+      waitingHuddle,
+      setWaitingHuddle,
+      openPanelSignal,
+      requestOpenPanel,
     }),
-    [items, loading, error, toasts, refresh, markRead, markAllRead, clearAll, pushToast, dismissToast]
+    [items, loading, error, toasts, refresh, markRead, markAllRead, clearAll, pushToast, dismissToast, waitingHuddle, openPanelSignal, requestOpenPanel]
   );
 
   return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;

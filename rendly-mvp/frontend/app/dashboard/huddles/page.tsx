@@ -1,17 +1,20 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import HuddleList from '@/components/huddles/HuddleList';
-import HuddleCreate, { normaliseIntent } from '@/components/huddles/HuddleCreate';
+import HuddleCreate from '@/components/huddles/HuddleCreate';
+import HuddleSearch from '@/components/huddles/HuddleSearch';
+import HuddleBoard from '@/components/huddles/HuddleBoard';
+import HuddleShowcase from '@/components/huddles/showcase/HuddleShowcase';
+import HotHuddles from '@/components/home/HotHuddles';
 import { useHuddles } from '@/hooks/useHuddles';
 import { Icon } from '@/components/shell/Icon';
 import './huddles.css';
+import './hp-layout.css';
 
 export default function HuddlesPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const [filterDraft, setFilterDraft] = useState('');
   const [intent, setIntent] = useState<string | null>(null);
   const { trendy, live, loading, error, createHuddle } = useHuddles(intent);
   const [creating, setCreating] = useState(params?.get('create') === '1');
@@ -31,47 +34,43 @@ export default function HuddlesPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [creating]);
 
+  // Intent tags on loaded huddles, most common first, offered as search suggestions.
+  const knownIntents = useMemo(() => {
+    const counts = new Map<string, number>();
+    [...live, ...trendy].forEach((h) => h.intents?.forEach((t) => counts.set(t, (counts.get(t) ?? 0) + 1)));
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
+  }, [live, trendy]);
+
   return (
-    <div className="rd-page hpage">
-      <header className="hpage-head">
-        <div className="hpage-title">
-          <span className="rd-eyebrow">Rooms</span>
-          <h1 className="rd-h1">Huddles</h1>
-          <p className="rd-muted rd-small">Live rooms for talks, seminars, hackathons and quizzes.</p>
-        </div>
-        <div className="hpage-actions">
-          <form
-            className="hpage-filter"
-            role="search"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setIntent(normaliseIntent(filterDraft) || null);
-            }}
-          >
-            <span className="hpage-filter-icon" aria-hidden="true">#</span>
-            <input className="rd-input" value={filterDraft} onChange={(e) => setFilterDraft(e.target.value)} placeholder="Filter by intent" aria-label="Filter huddles by intent" />
-            {intent ? (
-              <button
-                type="button"
-                className="rd-chip rd-chip--on hpage-filter-clear"
-                onClick={() => {
-                  setIntent(null);
-                  setFilterDraft('');
-                }}
-                aria-label={`Clear filter #${intent}`}
-              >
-                #{intent} <Icon name="close" size={12} />
-              </button>
-            ) : null}
-          </form>
-          <button type="button" className="rd-btn rd-btn--primary" onClick={() => setCreating(true)}>
-            <Icon name="plus" size={16} /> New huddle
+    <div className="hpg">
+      <div className="hp-main">
+        <header className="hp-head">
+          <div className="hp-title">
+            <span className="hp-eyebrow">Rooms</span>
+            <h1 className="hp-h1">Huddles</h1>
+            <p className="hp-sub">Live rooms for talks, seminars, hackathons and launches, yours and everyone&apos;s.</p>
+          </div>
+          <button type="button" className="hp-new" onClick={() => setCreating(true)}>
+            <Icon name="plus" size={15} /> New huddle
           </button>
-        </div>
-      </header>
-      <div className="hpage-scroll rd-scroll">
-        <HuddleList trendy={trendy} live={live} loading={loading} error={error} onCreate={() => setCreating(true)} />
+        </header>
+
+        <HuddleSearch className="hp-search" intent={intent} onIntent={setIntent} knownIntents={knownIntents} />
+
+        <HotHuddles className="hp-hot" />
+
+        <HuddleBoard
+          className="hp-board"
+          trendy={trendy}
+          live={live}
+          loading={loading}
+          error={error}
+          intent={intent}
+          onCreate={() => setCreating(true)}
+        />
       </div>
+
+      <HuddleShowcase className="hp-stage" />
 
       {creating ? (
         <div

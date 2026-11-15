@@ -5,20 +5,25 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { auth } from '@/services/auth';
-import { getMyPoints } from '@/services/pointsApi';
+import { getMyPoints, emitPointsChanged } from '@/services/pointsApi';
+import websocket from '@/services/websocket';
 import { RendlyLockup, RendlyMark } from '@/components/brand/Brand';
 import { TokenCoin } from '@/components/brand/TokenCoin';
 import { Icon } from './Icon';
 import { NotificationBell } from './NotificationBell';
 import { Toasts } from './Toasts';
+import NotificationConsent from '@/components/notifications/NotificationConsent';
 import './shell.css';
 
 const POINTS_REFRESH_MS = 60_000;
+/** Safety net on live pages; transfers and Spark charges arrive instantly over the socket. */
+const POINTS_LIVE_REFRESH_MS = 10_000;
 
 type NavItem = { href: string; label: string; short?: string; icon: string; match: (p: string) => boolean };
 
 const WORKSPACE: NavItem[] = [
-  { href: '/dashboard', label: 'Home', icon: 'home', match: (p) => p === '/dashboard' },
+  { href: '/', label: 'Home', icon: 'home', match: (p) => p === '/' },
+  { href: '/dashboard', label: 'Dashboard', icon: 'grid', match: (p) => p === '/dashboard' },
   { href: '/dashboard/match', label: 'Spark', icon: 'spark', match: (p) => p.startsWith('/dashboard/match') },
   { href: '/dashboard/chat', label: 'Whispers', icon: 'chat', match: (p) => p.startsWith('/dashboard/chat') },
   { href: '/dashboard/huddles', label: 'Huddles', icon: 'huddle', match: (p) => p.startsWith('/dashboard/huddles') },
@@ -99,16 +104,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Live pages (huddles, Spark) move tokens often: refresh faster there.
+  const livePage = pathname.startsWith('/dashboard/huddles/') || pathname.startsWith('/dashboard/match');
   useEffect(() => {
     void loadPoints();
-    const t = setInterval(() => void loadPoints(), POINTS_REFRESH_MS);
+    // Hidden tabs skip the poll (and stay off the rate limit); the socket event still updates them.
+    const t = setInterval(() => {
+      if (document.visibilityState === 'visible') void loadPoints();
+    }, livePage ? POINTS_LIVE_REFRESH_MS : POINTS_REFRESH_MS);
     const onPoints = () => void loadPoints();
     window.addEventListener('rendly:points-changed', onPoints);
+    // Another user's action (e.g. a token transfer to us) is pushed over the chat socket.
+    const offSocket = websocket.on('points:changed', () => emitPointsChanged());
     return () => {
       clearInterval(t);
       window.removeEventListener('rendly:points-changed', onPoints);
+      offSocket();
     };
-  }, [loadPoints]);
+  }, [loadPoints, livePage]);
 
   // 3D tilt for .rd-tilt cards: one delegated listener, rAF-throttled, fine pointers only,
   // and off when the user prefers reduced motion.
@@ -235,6 +248,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
       </div>
+      <NotificationConsent />
       <Toasts />
     </>
   );

@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { RendlyLockup } from '@/components/brand/Brand';
+import { useSignedIn } from '@/hooks/useSignedIn';
 import { IconClose, IconMenu } from './icons';
 
 export const NAV_LINKS: ReadonlyArray<{ href: string; label: string }> = [
@@ -16,6 +17,7 @@ export const NAV_LINKS: ReadonlyArray<{ href: string; label: string }> = [
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const signedIn = useSignedIn();
   const toggleRef = useRef<HTMLButtonElement | null>(null);
   const sheetRef = useRef<HTMLDivElement | null>(null);
 
@@ -67,12 +69,17 @@ export default function Nav() {
         </nav>
 
         <div className="ld-nav-actions">
-          <Link href="/login" className="rd-btn rd-btn--ghost ld-nav-login">
-            Log in
-          </Link>
-          <Link href="/auth/sign-up" className="rd-btn rd-btn--primary ld-nav-signup">
-            Sign up
-          </Link>
+          {/* Signed in: the hero already carries "Go to Dashboard", so the nav stays clean. */}
+          {signedIn ? null : (
+            <>
+              <Link href="/login" className="rd-btn rd-btn--ghost ld-nav-login">
+                Log in
+              </Link>
+              <Link href="/auth/sign-up" className="rd-btn rd-btn--primary ld-nav-signup">
+                Sign up
+              </Link>
+            </>
+          )}
           <button
             ref={toggleRef}
             type="button"
@@ -104,12 +111,20 @@ export default function Nav() {
           ))}
         </nav>
         <div className="ld-container ld-sheet-actions">
-          <Link href="/auth/sign-up" className="rd-btn rd-btn--primary rd-btn--lg rd-btn--block" onClick={close}>
-            Sign up
-          </Link>
-          <Link href="/login" className="rd-btn rd-btn--lg rd-btn--block" onClick={close}>
-            Log in
-          </Link>
+          {signedIn ? (
+            <Link href="/dashboard" className="rd-btn rd-btn--primary rd-btn--lg rd-btn--block" onClick={close}>
+              Go to Dashboard
+            </Link>
+          ) : (
+            <>
+              <Link href="/auth/sign-up" className="rd-btn rd-btn--primary rd-btn--lg rd-btn--block" onClick={close}>
+                Sign up
+              </Link>
+              <Link href="/login" className="rd-btn rd-btn--lg rd-btn--block" onClick={close}>
+                Log in
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </header>

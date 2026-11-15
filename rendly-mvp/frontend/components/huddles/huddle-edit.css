@@ -1,0 +1,23 @@
+/* Host edit panel for a huddle. Prefix he- */
+.he { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; padding: 14px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.025); animation: he-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes he-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.he-field { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-width: 0; }
+.he-field--short { flex: 0 0 120px; }
+.he-label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.5); }
+.he-label em { font-style: normal; margin-left: 6px; color: rgba(255, 255, 255, 0.35); letter-spacing: 0; }
+.he-input { width: 100%; box-sizing: border-box; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(0, 0, 0, 0.3); color: #fff; font: inherit; font-size: 13px; color-scheme: dark; transition: border-color 0.2s ease; }
+.he-input:focus { outline: none; border-color: rgba(255, 255, 255, 0.35); }
+.he-input:disabled { opacity: 0.5; cursor: not-allowed; }
+.he-textarea { height: auto; min-height: 76px; padding: 10px 12px; resize: vertical; line-height: 1.45; }
+.he-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 36px; padding: 5px 8px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(0, 0, 0, 0.3); }
+.he-tag { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 4px 0 9px; border-radius: 999px; font-size: 12px; font-weight: 500; color: #fff; background: rgba(255, 255, 255, 0.08); }
+.he-tag button { display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: rgba(255, 255, 255, 0.6); cursor: pointer; }
+.he-tag button:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
+.he-tag-input { flex: 1 1 100px; min-width: 80px; height: 24px; border: 0; background: transparent; color: #fff; font: inherit; font-size: 12.5px; }
+.he-tag-input:focus { outline: none; }
+.he-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.he-note { margin: -4px 0 0; font-size: 12px; color: rgba(255, 255, 255, 0.5); }
+.he-err { margin: 0; font-size: 12.5px; color: #ffb4b4; }
+.he-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 520px) { .he-field--short { flex: 1 1 100%; } }
+@media (prefers-reduced-motion: reduce) { .he { animation: none; } }

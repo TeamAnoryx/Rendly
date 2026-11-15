@@ -7,6 +7,9 @@ import { TokenAmount } from '@/components/brand/TokenCoin';
 import { inviteSparkPartner, type SparkMatched, type SparkMode } from '@/services/sparkApi';
 import { sparkChannel, useSparkEvent } from '@/hooks/useSparkChannel';
 import { useSparkMedia } from '@/hooks/useSparkMedia';
+import { formatResetsIn, notifySparkLimitsChanged, useSparkLimits } from '@/hooks/useSparkLimits';
+import { useMatchCharge } from '@/hooks/useMatchCharge';
+import ChargeNotice, { ChargeChip, markChargeNoticeSeen, shouldShowChargeNotice } from '@/components/spark/ChargeNotice';
 import './spark-room.css';
 
 export type SparkRoomProps = {
@@ -23,6 +26,14 @@ type ChatLine = { id: string; mine: boolean; text: string; at: string; pending?:
 const MAX_CHAT = 1000;
 const TYPING_IDLE_MS = 1500;
 const MAX_LINES = 300;
+/** Wait for the server-side DELETE/settle before refetching limits after a match ends. */
+const LIMITS_REFRESH_DELAY_MS = 600;
+
+function limitsTitle(maxPerWindow: number, windowMinutes: number, resetsAt: string | null): string {
+  const resets = formatResetsIn(resetsAt);
+  const rule = `${maxPerWindow} matches per ${windowMinutes} minutes`;
+  return resets ? `${resets} · ${rule}` : rule;
+}
 
 function newClientId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -86,6 +97,29 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
   const { partner } = match;
   const initial = (partner.display_name?.trim()?.[0] ?? '?').toUpperCase();
 
+  // ---- limits + deferred charge ------------------------------------------
+  const { limits, refresh: refreshLimits } = useSparkLimits();
+  const charge = useMatchCharge(match.charge);
+  const { markEnded } = charge;
+  const scheduleLimitsRefresh = useCallback(() => {
+    setTimeout(() => notifySparkLimitsChanged(), LIMITS_REFRESH_DELAY_MS);
+  }, []);
+  const seedLimits = useRef(match.limits);
+  useEffect(() => {
+    if (seedLimits.current) notifySparkLimitsChanged(seedLimits.current);
+    void refreshLimits();
+  }, [refreshLimits]);
+
+  const [noticeOpen, setNoticeOpen] = useState(false);
+  useEffect(() => {
+    if (!shouldShowChargeNotice()) return;
+    markChargeNoticeSeen();
+    setNoticeOpen(true);
+  }, []);
+  useEffect(() => {
+    if (noticeOpen && (charge.state !== 'pending' || charge.secondsLeft <= 0)) setNoticeOpen(false);
+  }, [noticeOpen, charge.state, charge.secondsLeft]);
+
   // ---- chat ---------------------------------------------------------------
   const [lines, setLines] = useState<ChatLine[]>([]);
   const [draft, setDraft] = useState('');
@@ -121,6 +155,9 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
   useSparkEvent('spark:ended', (m) => {
     setEndedReason(m?.reason || 'ended');
     setPartnerTyping(false);
+    markEnded();
+    void refreshLimits();
+    scheduleLimitsRefresh();
   });
 
   useEffect(() => {
@@ -195,7 +232,9 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const remoteVideoRef = useRef<HTMLDivElement | null>(null);
-  const showBanner = myMode === 'text' && media.partner.video && !media.camOn && !bannerDismissed && !endedReason;
+  // Offer my camera only once video can actually flow; the gate card handles consent before that.
+  const showBanner =
+    media.videoGate === 'ready' && media.partner.video && !media.camOn && !bannerDismissed && !endedReason;
 
   const unlockAudio = () => {
     const el = remoteVideoRef.current?.querySelector('video');
@@ -203,18 +242,31 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
   };
 
   // ---- actions ------------------------------------------------------------
+  const handleSkip = () => {
+    markEnded();
+    onSkip();
+    scheduleLimitsRefresh();
+  };
+  const handleLeave = () => {
+    markEnded();
+    onLeave();
+    scheduleLimitsRefresh();
+  };
   const skip = () => {
     stopTyping();
     media.leave('skip');
-    onSkip();
+    handleSkip();
   };
   const leave = () => {
     stopTyping();
     media.leave('leave');
-    onLeave();
+    handleLeave();
   };
 
   const ended = !!endedReason || media.ended;
+  useEffect(() => {
+    if (ended) markEnded();
+  }, [ended, markEnded]);
   const showRemoteVideo = media.partnerVideoLive && !ended;
   const connecting =
     !ended &&
@@ -244,13 +296,31 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
               #{i.replace(/\s+/g, '')}
             </span>
           ))}
-          {match.cost_charged > 0 && (
-            <span className="sr-cost" title="Tokens charged for this match">
-              <TokenAmount amount={match.cost_charged} size={12} /> charged
-            </span>
-          )}
+          <ChargeChip
+            className="sr-charge"
+            state={charge.state}
+            secondsLeft={charge.secondsLeft}
+            cost={charge.cost || match.cost_charged}
+          />
         </div>
         <div className="sr-head-actions">
+          {limits ? (
+            <div
+              className="sr-limits"
+              title={limitsTitle(limits.max_per_window, limits.window_minutes, limits.resets_at)}
+            >
+              <span className="sr-limits-balance" aria-label={`Balance ${limits.balance} tokens`}>
+                <TokenAmount amount={limits.balance} size={12} />
+              </span>
+              <span className="sr-limits-sep" aria-hidden="true" />
+              <span className="sr-limits-left">
+                {limits.matches_left}
+                <span className="sr-limits-word"> matches</span> left
+              </span>
+            </div>
+          ) : (
+            <span className="sr-limits sr-limits--skeleton" aria-hidden="true" />
+          )}
           <button type="button" className="rd-btn rd-btn--sm" onClick={skip}>
             <Icon name="skip" size={15} /> Skip
           </button>
@@ -293,40 +363,73 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
             )}
           </AnimatePresence>
 
-          {gateCard === 'need-consent' && (
-            <div className="sr-gate" role="region" aria-label="Direct video">
-              <Icon name="video" size={16} />
-              <p className="sr-gate-text">
-                Video connects directly and can show your match your network location. Allow direct video?
-              </p>
-              <div className="sr-gate-actions">
-                <button type="button" className="rd-btn rd-btn--sm rd-btn--primary" onClick={media.allowDirect}>
-                  Allow
-                </button>
-                <button type="button" className="rd-btn rd-btn--sm rd-btn--ghost" onClick={media.declineDirect}>
-                  Text only
-                </button>
-              </div>
-            </div>
-          )}
-          {gateCard === 'waiting-partner' && (
-            <div className="sr-gate" role="status">
-              <Icon name="video" size={16} />
-              <p className="sr-gate-text">Waiting for your match to allow video. Chat is open.</p>
-            </div>
-          )}
-          {gateCard === 'declined' && (
-            <div className="sr-gate sr-gate--quiet" role="status">
-              <p className="sr-gate-text">Text only. Your network location stays private.</p>
-              <div className="sr-gate-actions">
-                <button type="button" className="rd-btn rd-btn--sm rd-btn--ghost" onClick={media.allowDirect}>
-                  Allow direct video
-                </button>
-              </div>
-            </div>
-          )}
+          <AnimatePresence initial={false}>
+            {gateCard === 'partner-wants-video' && (
+              <motion.div
+                key="gate-ask"
+                className="sr-gate"
+                role="region"
+                aria-label="Your match turned on video"
+                initial={reduce ? { opacity: 0 } : { opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+              >
+                <Icon name="video" size={16} />
+                <p className="sr-gate-text">
+                  <strong>Your match turned on {media.partner.video ? 'their camera' : 'their mic'}.</strong> Video
+                  connects you directly, which can show your match your network location.
+                </p>
+                <div className="sr-gate-actions">
+                  <button type="button" className="rd-btn rd-btn--sm rd-btn--primary" onClick={media.allowDirect}>
+                    Allow video
+                  </button>
+                  <button type="button" className="rd-btn rd-btn--sm rd-btn--ghost" onClick={media.declineDirect}>
+                    Text only
+                  </button>
+                </div>
+              </motion.div>
+            )}
+            {gateCard === 'waiting-partner' && (
+              <motion.div
+                key="gate-wait"
+                className="sr-gate sr-gate--quiet"
+                role="status"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <Icon name="video" size={16} />
+                <p className="sr-gate-text">Your camera is on. Your match sees you as soon as they allow video.</p>
+              </motion.div>
+            )}
+            {gateCard === 'declined' && (
+              <motion.div
+                key="gate-declined"
+                className="sr-gate sr-gate--quiet"
+                role="status"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <p className="sr-gate-text">Text only. Your network location stays private.</p>
+                <div className="sr-gate-actions">
+                  <button type="button" className="rd-btn rd-btn--sm rd-btn--ghost" onClick={media.allowDirect}>
+                    Allow video
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <div className="sr-stage" ref={remoteVideoRef}>
+            <div className="sr-charge-slot">
+              <ChargeNotice
+                open={noticeOpen && !ended}
+                secondsLeft={charge.secondsLeft}
+                progress={charge.progress}
+                onDismiss={() => setNoticeOpen(false)}
+              />
+            </div>
             <StreamVideo
               stream={media.remoteStream}
               muted={false}
@@ -340,9 +443,13 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
                   <span>{initial}</span>
                 </div>
                 <p className="sr-placeholder-label">
-                  <Icon name="video" size={14} /> Camera off
+                  <Icon name="video" size={14} /> {media.partner.video && !ended ? 'Camera on' : 'Camera off'}
                 </p>
-                {connecting && <p className="sr-placeholder-sub">Connecting…</p>}
+                {media.partner.video && !ended && media.videoGate !== 'ready' ? (
+                  <p className="sr-placeholder-sub">Allow video above to see your match</p>
+                ) : connecting || (media.partner.video && !ended) ? (
+                  <p className="sr-placeholder-sub">Connecting…</p>
+                ) : null}
               </div>
             )}
 
@@ -403,11 +510,17 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
                   animate={{ opacity: 1 }}
                 >
                   <p className="sr-ended-title">{endedMessage(endedReason ?? undefined)}</p>
+                  <ChargeChip
+                    className="sr-charge sr-charge--ended"
+                    state={charge.state}
+                    secondsLeft={charge.secondsLeft}
+                    cost={charge.cost || match.cost_charged}
+                  />
                   <div className="sr-ended-actions">
-                    <button type="button" className="rd-btn rd-btn--primary" onClick={onSkip}>
+                    <button type="button" className="rd-btn rd-btn--primary" onClick={handleSkip}>
                       <Icon name="spark" size={16} /> Find another
                     </button>
-                    <button type="button" className="rd-btn rd-btn--ghost" onClick={onLeave}>
+                    <button type="button" className="rd-btn rd-btn--ghost" onClick={handleLeave}>
                       <Icon name="back" size={16} /> Back
                     </button>
                   </div>

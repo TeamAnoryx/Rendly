@@ -1145,3 +1145,168 @@
     transform: translate3d(0, 24px, 0);
   }
 }
+.hl-moved { color: #ffd38a; border-color: rgba(255, 196, 102, 0.35); }
+
+/* Host on the join screen: people already in the waiting room. */
+.hl-waiting-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: #fafafa;
+  color: #3f3f46;
+  font-size: 13px;
+}
+.hl-waiting-count strong {
+  color: #0a0a0a;
+}
+
+/* Count pills under the huddle meta line (in the huddle / on the waitlist). */
+.hl-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+.hl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+  background: #fafafa;
+  color: #3f3f46;
+  font-size: 12.5px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.hl-pill strong {
+  color: #0a0a0a;
+  font-variant-numeric: tabular-nums;
+}
+.hl-pill--wait {
+  background: #0a0a0a;
+  border-color: #0a0a0a;
+  color: #d4d4d8;
+}
+.hl-pill--wait strong {
+  color: #fff;
+}
+.hl-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6);
+  animation: hl-pill-pulse 1.8s ease-out infinite;
+}
+.hl-pill--muted {
+  background: transparent;
+  border-style: dashed;
+  color: #71717a;
+}
+@keyframes hl-pill-pulse {
+  70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hl-pill-dot { animation: none; }
+}
+
+/* Host tools: "show waitlist count" switch. */
+.hl-host-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.hl-host-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.hl-host-toggle-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: #d4d4d8;
+  transition: background 0.2s;
+}
+.hl-host-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s;
+}
+.hl-host-toggle input:checked + .hl-host-toggle-track {
+  background: #0a0a0a;
+}
+.hl-host-toggle input:checked + .hl-host-toggle-track::after {
+  transform: translateX(14px);
+}
+.hl-host-toggle input:focus-visible + .hl-host-toggle-track {
+  outline: 2px solid #0a0a0a;
+  outline-offset: 2px;
+}
+.hl-host-toggle span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hl-host-toggle small {
+  color: #71717a;
+  font-size: 12px;
+}
+
+/* Phones and portrait tablets: the join card comes first so it is visible without scrolling,
+   and the page scrolls as one column instead of nested scroll areas. */
+@media (max-width: 1024px), (orientation: portrait) and (max-width: 1180px) {
+  .hl-grid {
+    grid-template-columns: 1fr;
+    align-content: start;
+    overflow-y: auto;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  .hl-join,
+  .rd-card.hl-join {
+    order: -1;
+    align-self: stretch;
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  .hl-info {
+    overflow: visible;
+    max-height: none;
+  }
+  .hl-preview {
+    max-height: 36vh;
+  }
+}
+
+@media (max-width: 480px) {
+  .hl-join,
+  .rd-card.hl-join {
+    padding: 12px;
+    gap: 8px;
+  }
+  .hl-join-btn {
+    min-height: 48px;
+  }
+}

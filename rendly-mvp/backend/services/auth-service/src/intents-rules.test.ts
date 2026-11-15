@@ -1,4 +1,6 @@
 import {
+  formatIntentCount,
+  parseIntentSort,
   INTENT_DURATION_DAYS,
   INTENT_PRICES,
   INTENT_ROYALTY,
@@ -147,5 +149,38 @@ describe("validateLocationBody", () => {
     const r = validateLocationBody(body);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain(fragment);
+  });
+});
+
+describe("parseIntentSort", () => {
+  test("defaults to trending", () => {
+    expect(parseIntentSort(undefined)).toBe("trending");
+    expect(parseIntentSort("")).toBe("trending");
+  });
+  test.each(["trending", "popular", "most_used"] as const)("accepts %s", (sort) => {
+    expect(parseIntentSort(sort)).toBe(sort);
+  });
+  test("ignores casing and whitespace", () => {
+    expect(parseIntentSort("  POPULAR ")).toBe("popular");
+    expect(parseIntentSort("Most_Used")).toBe("most_used");
+  });
+  test.each([["newest"], [42], [null], [["popular"]]])("falls back on junk %j", (raw) => {
+    expect(parseIntentSort(raw)).toBe("trending");
+  });
+});
+
+describe("formatIntentCount", () => {
+  test.each([
+    [0, "0"],
+    [999, "999"],
+    [1000, "1k"],
+    [1250, "1.3k"],
+    [2000, "2k"],
+    [999_999, "1M"],
+    [1_500_000, "1.5M"],
+    [-5, "0"],
+    [Number.NaN, "0"],
+  ])("formats %d as %s", (n, expected) => {
+    expect(formatIntentCount(n)).toBe(expected);
   });
 });

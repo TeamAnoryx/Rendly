@@ -1,0 +1,226 @@
+/* Spark launch card: boxed Format / Privacy toggles, note input and CTA. Prefix: sl- */
+
+.sl-card {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 440px;
+  min-width: 0;
+  margin: 0 auto;
+  padding: 22px 20px;
+  box-sizing: border-box;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(24, 25, 27, 0.74), rgba(12, 13, 14, 0.66));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 30px 80px -30px rgba(0, 0, 0, 0.85),
+    0 10px 30px -18px rgba(0, 0, 0, 0.7);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+}
+
+/* Faint moving edge ring */
+.sl-card__ring {
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--sl-ring-angle, 0deg),
+    transparent 0deg,
+    rgba(255, 255, 255, 0.16) 40deg,
+    transparent 100deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  opacity: 0.6;
+  animation: sl-ring 9s linear infinite;
+}
+@property --sl-ring-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes sl-ring {
+  to {
+    --sl-ring-angle: 360deg;
+  }
+}
+
+/* ---------- Fields ---------- */
+.sl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.sl-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sl-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.55);
+}
+.sl-hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.45);
+}
+.sl-counter {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.45);
+}
+.sl-counter--max {
+  color: #ff8a8a;
+}
+
+/* ---------- Segmented overrides (black & white) ---------- */
+.sl-card .ss-seg {
+  display: flex;
+  align-self: stretch;
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+}
+.sl-card .ss-seg__btn {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  height: 36px;
+  padding: 0 10px;
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.55);
+  transition: color 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sl-card .ss-seg__btn:hover {
+  color: rgba(255, 255, 255, 0.82);
+}
+.sl-card .ss-seg__btn--on,
+.sl-card .ss-seg__btn--on:hover {
+  color: #0b0b0c;
+}
+.sl-card .ss-seg__btn:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 2px;
+}
+.sl-card .ss-seg__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sl-card .ss-seg__ink {
+  background: linear-gradient(180deg, #ffffff, #e9e9ec);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 6px 18px -10px rgba(255, 255, 255, 0.35);
+}
+
+/* ---------- Note ---------- */
+.sl-card .sl-note {
+  width: 100%;
+  box-sizing: border-box;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
+    background 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sl-card .sl-note:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.sl-card .sl-note:focus {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.05);
+}
+.sl-card .sl-note:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 2px;
+}
+
+/* ---------- CTA ---------- */
+.sl-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin-top: 2px;
+}
+.sl-cost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.55);
+}
+.sl-error {
+  margin: 0;
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 90, 90, 0.18);
+  background: rgba(255, 90, 90, 0.08);
+  color: #ff8a8a;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: center;
+  overflow-wrap: anywhere;
+  animation: sl-fade-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes sl-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- Responsive ---------- */
+@media (min-width: 768px) {
+  .sl-card {
+    padding: 24px;
+  }
+}
+@media (max-width: 479px) {
+  .sl-card {
+    padding: 18px 16px;
+    gap: 18px;
+  }
+  .sl-card .ss-seg__btn {
+    font-size: 13px;
+    padding: 0 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sl-card__ring {
+    animation: none;
+  }
+  .sl-error {
+    animation: none;
+  }
+  .sl-card .ss-seg__btn,
+  .sl-card .sl-note {
+    transition: none;
+  }
+}

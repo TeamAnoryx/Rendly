@@ -29,6 +29,10 @@ export type HuddleListItem = {
   /** Host can send Rendly Tokens from their own balance (coin). */
   rewards_receive_enabled?: boolean;
   cancelled_at?: string | null;
+  /** Last host edit of the details. */
+  edited_at?: string | null;
+  /** Set when the host moved the start time or length after creating the huddle. */
+  rescheduled_at?: string | null;
   ends_at?: string | null;
   /** Only on /api/huddles/active: the viewer is already admitted. */
   is_participant?: boolean;
@@ -69,6 +73,10 @@ export type HuddleDetail = HuddleListItem & {
   your_permissions: { can_speak: boolean; can_share_screen: boolean; is_muted: boolean } | null;
   started_at: string | null;
   ended_at: string | null;
+  /** Host lets everyone see the waiting-list size. */
+  show_waitlist_count?: boolean;
+  /** People on the waiting list; null when this viewer may not see it. */
+  waiting_count?: number | null;
 };
 
 export type HuddleMember = {
@@ -99,6 +107,7 @@ export type CreateHuddlePayload = {
   allow_self_exit?: boolean;
   rewards_enabled?: boolean;
   rewards_receive_enabled?: boolean;
+  show_waitlist_count?: boolean;
 };
 
 export type CreateHuddleResponse = HuddleListItem & {
@@ -185,6 +194,7 @@ export async function createHuddle(payload: CreateHuddlePayload): Promise<Create
       ...(payload.allow_self_exit !== undefined && { allow_self_exit: payload.allow_self_exit }),
       ...(payload.rewards_enabled !== undefined && { rewards_enabled: payload.rewards_enabled }),
       ...(payload.rewards_receive_enabled !== undefined && { rewards_receive_enabled: payload.rewards_receive_enabled }),
+      ...(payload.show_waitlist_count !== undefined && { show_waitlist_count: payload.show_waitlist_count }),
     }),
   });
   return parseOrThrow<CreateHuddleResponse>(res, 'Failed to create huddle');
@@ -284,6 +294,7 @@ export type HuddleSettingsPatch = Partial<{
   allow_self_exit: boolean;
   rewards_enabled: boolean;
   rewards_receive_enabled: boolean;
+  show_waitlist_count: boolean;
 }>;
 
 export async function updateHuddleSettings(id: string, patch: HuddleSettingsPatch): Promise<HuddleSettingsPatch> {
@@ -293,6 +304,25 @@ export async function updateHuddleSettings(id: string, patch: HuddleSettingsPatc
     body: JSON.stringify(patch),
   });
   return parseOrThrow<HuddleSettingsPatch>(res, 'Failed to update settings');
+}
+
+export type HuddleEditPatch = Partial<{
+  title: string;
+  description: string | null;
+  /** Full tag list (existing plus new). */
+  intents: string[];
+  scheduled_at: string | null;
+  duration_minutes: number | null;
+}>;
+
+/** Host: edit details. A changed time marks the huddle as rescheduled and notifies people. */
+export async function updateHuddle(id: string, patch: HuddleEditPatch): Promise<HuddleListItem> {
+  const res = await authFetch(`/api/huddles/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  return parseOrThrow<HuddleListItem>(res, 'Failed to update the huddle');
 }
 
 /** Host: cancel a huddle (it stays visible as cancelled to people who had it). */

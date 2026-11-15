@@ -110,23 +110,32 @@ export default function LocationIntentPicker({ selected, maxReached, onSelect }:
           void add(value);
         }}
       >
-        <input
-          className="ss-input"
-          value={value}
-          maxLength={LOCATION_NAME_MAX}
-          placeholder={scope === 'city' ? 'e.g. Lisbon' : 'e.g. Portugal'}
-          aria-label={scope === 'city' ? 'City name' : 'Country name'}
-          aria-invalid={touched && Boolean(validation)}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setError(null);
-          }}
-          onBlur={() => setTouched(value.length > 0)}
-        />
-        <button type="submit" className="ss-btn ss-btn--ghost" disabled={busy || Boolean(validation)}>
-          {busy ? <span className="ss-spinner" aria-label="Adding" /> : <Icon name="plus" size={16} />}
-          Add
-        </button>
+        <div className={`ss-loc__field${value.trim() ? ' has-value' : ''}`}>
+          <Icon name="map-pin" size={15} className="ss-loc__icon" />
+          <input
+            className="ss-input"
+            value={value}
+            maxLength={LOCATION_NAME_MAX}
+            placeholder={scope === 'city' ? 'Type a city, e.g. Lisbon' : 'Type a country, e.g. Portugal'}
+            aria-label={scope === 'city' ? 'City name' : 'Country name'}
+            aria-invalid={touched && Boolean(validation)}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setError(null);
+            }}
+            onBlur={() => setTouched(value.length > 0)}
+          />
+          <button
+            type="submit"
+            className="ss-loc__add"
+            disabled={busy || Boolean(validation)}
+            tabIndex={value.trim() ? 0 : -1}
+            aria-hidden={value.trim() ? undefined : true}
+          >
+            {busy ? <span className="ss-spinner" aria-label="Adding" /> : <Icon name="plus" size={14} />}
+            Add
+          </button>
+        </div>
       </form>
 
       {(error || (touched && validation)) && (
