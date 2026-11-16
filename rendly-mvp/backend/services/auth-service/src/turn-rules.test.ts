@@ -51,3 +51,22 @@ describe("buildIceConfig", () => {
     expect(buildIceConfig({ turnUrls: undefined, sharedSecret: "s3cret", nowMs: NOW, randomHex8: "0a1b2c3d" }).relay).toBe(false);
   });
 });
+
+describe("buildIceConfig with a fixed TURN login", () => {
+  const base = { turnUrls: "turn:a.relay.metered.ca:80,turns:a.relay.metered.ca:443", sharedSecret: undefined, nowMs: 0, randomHex8: "abcd1234" };
+
+  it("relays with the fixed username and credential when no shared secret is set", () => {
+    const cfg = buildIceConfig({ ...base, staticUsername: "user1", staticCredential: "pass1" });
+    expect(cfg.relay).toBe(true);
+    expect(cfg.iceServers[1]).toEqual({
+      urls: ["turn:a.relay.metered.ca:80", "turns:a.relay.metered.ca:443"],
+      username: "user1",
+      credential: "pass1",
+    });
+  });
+
+  it("falls back to STUN only when the fixed login is incomplete", () => {
+    const cfg = buildIceConfig({ ...base, staticUsername: "user1", staticCredential: "" });
+    expect(cfg.relay).toBe(false);
+  });
+});

@@ -2869,6 +2869,8 @@ app.get("/api/huddles/:id/ice", async (req, res) => {
       buildIceConfig({
         turnUrls: process.env.TURN_URLS,
         sharedSecret: process.env.TURN_SHARED_SECRET,
+        staticUsername: process.env.TURN_USERNAME,
+        staticCredential: process.env.TURN_CREDENTIAL,
         nowMs: Date.now(),
         randomHex8: crypto.randomBytes(4).toString("hex"),
       })
@@ -3382,6 +3384,8 @@ app.get("/api/match/ice", matchIceLimiter, async (req, res) => {
       buildIceConfig({
         turnUrls: process.env.TURN_URLS,
         sharedSecret: process.env.TURN_SHARED_SECRET,
+        staticUsername: process.env.TURN_USERNAME,
+        staticCredential: process.env.TURN_CREDENTIAL,
         nowMs: Date.now(),
         randomHex8: crypto.randomBytes(4).toString("hex"),
       })

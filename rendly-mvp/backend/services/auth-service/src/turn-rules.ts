@@ -41,17 +41,25 @@ export function turnUsername(nowMs: number, suffixHex: string): string {
 }
 
 /**
- * ICE servers for a Spark call. With both TURN_URLS and TURN_SHARED_SECRET configured the
- * client gets relay credentials; otherwise only the public STUN server (relay: false).
+ * ICE servers for a call. TURN_URLS + TURN_SHARED_SECRET gives short-lived relay credentials;
+ * TURN_URLS + TURN_USERNAME + TURN_CREDENTIAL gives a fixed relay login; otherwise STUN only.
  */
 export function buildIceConfig(opts: {
   turnUrls: string | undefined | null;
   sharedSecret: string | undefined | null;
+  /** Fixed TURN login (e.g. Metered, Twilio) used when no shared secret is set. */
+  staticUsername?: string | undefined | null;
+  staticCredential?: string | undefined | null;
   nowMs: number;
   randomHex8: string;
 }): IceConfig {
   const urls = parseTurnUrls(opts.turnUrls);
   const secret = opts.sharedSecret ?? "";
+  const staticUser = (opts.staticUsername ?? "").trim();
+  const staticCred = (opts.staticCredential ?? "").trim();
+  if (urls.length > 0 && secret.length === 0 && staticUser && staticCred) {
+    return { relay: true, iceServers: [{ urls: PUBLIC_STUN_URL }, { urls, username: staticUser, credential: staticCred }] };
+  }
   if (urls.length === 0 || secret.length === 0) {
     return { relay: false, iceServers: [{ urls: PUBLIC_STUN_URL }] };
   }
