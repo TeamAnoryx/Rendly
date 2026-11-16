@@ -537,7 +537,9 @@ app.post("/api/auth/forgot-password", async (req, res) => {
         password_reset_token_hash: tokenHash,
         password_reset_expires_at: expiresAt,
       });
-      const origin = req.headers.origin || req.headers.referer || "http://localhost:3001";
+      // APP_URL includes any sub-path (https://anoryxtechsolutions.com/rendly.app); the Origin
+      // header never does, so it is only a fallback for local development.
+      const origin = process.env.APP_URL || req.headers.origin || req.headers.referer || "http://localhost:3001";
       const resetLink = `${origin.replace(/\/$/, "")}/login/reset-password?token=${encodeURIComponent(token)}`;
       const userEmail = (user as { email?: string | null }).email;
       if (userEmail && typeof userEmail === "string" && userEmail.trim()) {

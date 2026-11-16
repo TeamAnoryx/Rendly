@@ -57,6 +57,7 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL,
+    NEXT_PUBLIC_BASE_PATH: process.env.NEXT_BASE_PATH || '',
   },
   // compiler.removeConsole not supported with Turbopack; omit to use --turbo
   webpack: (config, { dev }) => {

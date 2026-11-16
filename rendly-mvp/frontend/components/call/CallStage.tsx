@@ -10,8 +10,9 @@ import { Icon } from '@/components/shell/Icon';
 import { Avatar } from '@/components/shell/AppShell';
 import { VideoTile } from './VideoTile';
 import './call.css';
+import { withBasePath } from '@/lib/basePath';
 
-const RINGTONE = '/sounds/ringtone-audio.mp3';
+const RINGTONE = withBasePath('/sounds/ringtone-audio.mp3');
 
 function formatDuration(s: number): string {
   const m = Math.floor(s / 60);

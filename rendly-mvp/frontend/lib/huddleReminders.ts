@@ -1,3 +1,4 @@
+import { withBasePath } from '@/lib/basePath';
 /** Huddles the user asked to be reminded about, kept in this browser until the huddle goes live. */
 
 export type HuddleRef = {
@@ -78,7 +79,7 @@ export function showLiveNotification(ref: HuddleRef): boolean {
     });
     n.onclick = () => {
       window.focus();
-      window.location.assign(huddleJoinHref(ref.id));
+      window.location.assign(withBasePath(huddleJoinHref(ref.id)));
       n.close();
     };
     return true;

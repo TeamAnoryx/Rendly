@@ -10,8 +10,9 @@
 
 import React, { createContext, useContext, useLayoutEffect, useRef } from 'react';
 import { ShiftCtx } from './engine';
+import { withBasePath } from '@/lib/basePath';
 
-const BASE = '/film/clips/';
+const BASE = withBasePath('/film/clips/');
 /** Start loading a clip this many seconds before it is needed. */
 const PRELOAD = 4;
 /** Re-seek a playing clip when it drifts further than this from the clock. */

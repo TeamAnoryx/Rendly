@@ -6,9 +6,10 @@ import { TokenCoin } from '@/components/brand/TokenCoin';
 import { Icon } from '@/components/shell/Icon';
 import type { SetupSnapshot } from './SparkSetup';
 import './match-preview.css';
+import { withBasePath } from '@/lib/basePath';
 
 /** Faces for the preview stack (same photos as the orbit behind it). */
-const FACES = ['/images/pov22.jpg', '/images/pov24.jpg', '/images/pov29.jpg'];
+const FACES = ['/images/pov22.jpg', '/images/pov24.jpg', '/images/pov29.jpg'].map(withBasePath);
 const MAX_ECHO = 3;
 
 export type MatchPreviewProps = {

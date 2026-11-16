@@ -209,6 +209,10 @@ export function useSparkMedia(opts: {
       void makeOffer(false);
     } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
       void makeOffer(true);
+    } else if (pc.signalingState === 'have-local-offer' && pc.localDescription && pc.connectionState !== 'connected') {
+      // Still waiting for an answer: the offer may never have reached the partner. Send it again;
+      // a repeated identical offer is answered the same way.
+      sparkChannel.signal('offer', pc.localDescription.toJSON());
     }
   }, [initiator, makeOffer]);
 
@@ -224,7 +228,19 @@ export function useSparkMedia(opts: {
       if (pc.signalingState === 'closed') return;
       try {
         if (msg.kind === 'offer' && !initiator) {
-          await pc.setRemoteDescription(msg.data as RTCSessionDescriptionInit);
+          const offer = msg.data as RTCSessionDescriptionInit;
+          // A repeated offer (resent because our answer seemed lost): resend the same answer.
+          if (
+            pc.signalingState === 'stable' &&
+            pc.remoteDescription?.sdp === offer.sdp &&
+            pc.localDescription?.type === 'answer'
+          ) {
+            sparkChannel.signal('answer', pc.localDescription.toJSON());
+            return;
+          }
+          // Mid-negotiation duplicate: the first copy is still being answered.
+          if (pc.signalingState !== 'stable') return;
+          await pc.setRemoteDescription(offer);
           pc.getTransceivers().forEach((t) => {
             if (t.currentDirection !== 'stopped' && t.direction !== 'stopped') t.direction = 'sendrecv';
           });

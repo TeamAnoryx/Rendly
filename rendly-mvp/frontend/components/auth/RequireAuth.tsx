@@ -2,6 +2,7 @@
 
 import React, { useLayoutEffect, useState } from 'react';
 import { getStoredAuthToken } from '@/lib/auth-storage';
+import { withBasePath } from '@/lib/basePath';
 
 /** Where a signed-out visitor lands when they reach a signed-in page (for example via Back). */
 const SIGNED_OUT_HOME = '/';
@@ -18,11 +19,11 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
     if (getStoredAuthToken()) {
       setAllowed(true);
     } else {
-      window.location.replace(SIGNED_OUT_HOME);
+      window.location.replace(withBasePath(SIGNED_OUT_HOME));
     }
 
     const onPageShow = (event: PageTransitionEvent) => {
-      if (event.persisted && !getStoredAuthToken()) window.location.replace(SIGNED_OUT_HOME);
+      if (event.persisted && !getStoredAuthToken()) window.location.replace(withBasePath(SIGNED_OUT_HOME));
     };
     window.addEventListener('pageshow', onPageShow);
     return () => window.removeEventListener('pageshow', onPageShow);

@@ -8,9 +8,10 @@ import { Fx, Shot, type Animator, type Layout } from './engine';
 import { Chip, Cursor, KLine, pick, pop, type CursorKey } from './kit';
 import { Face, Icon } from './primitives';
 import { CLICKS, clamp, ease, kf, seg } from './timeline';
+import { withBasePath } from '@/lib/basePath';
 
-export const YOU_IMG = '/film/clips/laptop-pip.jpg';
-export const JORDAN_IMG = '/film/clips/call.jpg';
+export const YOU_IMG = withBasePath('/film/clips/laptop-pip.jpg');
+export const JORDAN_IMG = withBasePath('/film/clips/call.jpg');
 
 function Avatar({ src, className = '' }: { src: string; className?: string }) {
   return (

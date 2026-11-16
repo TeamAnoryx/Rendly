@@ -1,5 +1,6 @@
 import { getResolvedApiUrl, getResolvedApiUrlSync, clearResolvedApiUrlCache } from '@/lib/resolvedApiUrl';
 import { getStoredAuthToken, clearAuthStorage } from '@/lib/auth-storage';
+import { withBasePath } from '@/lib/basePath';
 
 const AUTH_FETCH_TIMEOUT_MS = 45000;
 
@@ -32,7 +33,7 @@ export async function authFetch(path: string, options: RequestInit = {}): Promis
     if (res.status === 401) {
       clearAuthStorage();
       clearResolvedApiUrlCache();
-      if (typeof window !== 'undefined') window.location.href = '/login';
+      if (typeof window !== 'undefined') window.location.href = withBasePath('/login');
       throw new Error('Unauthorized');
     }
 

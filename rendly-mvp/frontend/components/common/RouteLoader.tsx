@@ -1,4 +1,5 @@
 import React from 'react';
+import { withBasePath } from '@/lib/basePath';
 
 /**
  * Full-screen branded loader shown while a page loads. Styled inline (no stylesheet), so it can
@@ -27,7 +28,7 @@ export function RouteLoader({ inline = false }: { inline?: boolean }) {
     >
       <style>{SPIN_CSS}</style>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/rendly-mark.svg" alt="" width={44} height={44} style={{ opacity: 0.92 }} />
+      <img src={withBasePath('/brand/rendly-mark.svg')} alt="" width={44} height={44} style={{ opacity: 0.92 }} />
       <span
         aria-hidden
         style={{

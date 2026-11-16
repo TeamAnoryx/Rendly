@@ -28,6 +28,7 @@ import './film/film-shots-5.css';
 import './film/film-shots-6.css';
 import './film/film-shots-7.css';
 import './product-film.css';
+import { withBasePath } from '@/lib/basePath';
 
 /** Where reduced-motion viewers rest: the finished end card. */
 const STILL_T = DURATION - 1;
@@ -380,7 +381,7 @@ export default function ProductFilm({ variant = 'section', sound, hold = false }
             Spark video call with live captions, keep talking in Whispers, then join a Huddle, a small live room of up
             to six, where they plan a Saturday meetup. They meet in person, and the film ends on the Rendly logo and
             the line: Know your why. Find your who.{' '}
-            <a href="/auth/sign-up">Get started with Rendly</a>
+            <a href={withBasePath('/auth/sign-up')}>Get started with Rendly</a>
           </p>
     </>
   );

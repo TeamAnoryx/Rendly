@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getResolvedApiUrl } from '@/lib/resolvedApiUrl';
 import { getStoredAuthToken } from '@/lib/auth-storage';
+import { withBasePath } from '@/lib/basePath';
 
 export const INTENTS = ['Light chat', 'Brainstorm', 'Motivation', 'Collaborate', 'Networking'] as const;
 export type Intent = (typeof INTENTS)[number];
@@ -182,7 +183,7 @@ export function useProfileSetup() {
   const submit = useCallback(async () => {
     if (!formValid || submitLoading || !token) return;
     if (profileAlreadyComplete) {
-      window.location.href = '/dashboard';
+      window.location.href = withBasePath('/dashboard');
       return;
     }
     setSubmitError(null);
@@ -210,7 +211,7 @@ export function useProfileSetup() {
       if (data.success) {
         setSubmitSuccess(true);
         setTimeout(() => {
-          window.location.href = '/dashboard';
+          window.location.href = withBasePath('/dashboard');
         }, 1000);
       } else {
         throw new Error(data?.message || 'Failed to save profile');

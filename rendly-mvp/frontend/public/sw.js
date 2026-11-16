@@ -1,6 +1,9 @@
 /* Rendly service worker: shows Web Push notifications and opens the linked page on click. */
 
-const ICON = '/apple-icon.png';
+// Resolve app paths against the worker's scope so a sub-path deploy (/rendly.app/) works.
+const SCOPE = self.registration.scope;
+const appUrl = (path) => new URL(String(path).replace(/^\/+/, ''), SCOPE).href;
+const ICON = appUrl('/apple-icon.png');
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
@@ -28,7 +31,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const path = (event.notification.data && event.notification.data.url) || '/dashboard';
-  const target = new URL(path, self.location.origin).href;
+  const target = appUrl(path);
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
       for (const w of wins) {

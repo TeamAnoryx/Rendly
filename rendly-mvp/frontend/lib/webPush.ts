@@ -1,8 +1,9 @@
 import { authFetch } from '@/lib/api';
+import { withBasePath } from '@/lib/basePath';
 
 /** Browser Web Push: registers the service worker and saves this browser's subscription server-side. */
 
-const SW_PATH = '/sw.js';
+const SW_PATH = withBasePath('/sw.js');
 
 export function pushSupported(): boolean {
   return (

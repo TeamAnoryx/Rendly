@@ -6,6 +6,7 @@ import { useOAuth } from '@/hooks/useOAuth';
 import { LINKEDIN_PKCE_STORAGE_KEY } from '@/lib/pkce';
 import { LINK_TO_GITHUB_ID_KEY, RENDLY_SESSION_TOKEN } from '@/lib/auth-storage';
 import AuthShell, { Enter, FormError } from '@/components/auth/AuthShell';
+import { withBasePath } from '@/lib/basePath';
 
 const GITHUB_STORAGE_KEY = 'rendly_oauth_github';
 const LINKEDIN_STORAGE_KEY = 'rendly_oauth_linkedin';
@@ -107,10 +108,10 @@ export default function CallbackPage() {
       <AuthShell title="We couldn’t sign you in" subtitle="The provider handshake didn’t complete.">
         <Enter index={1} className="flex flex-col gap-4">
           <FormError message={error} />
-          <a href="/login" className="rd-btn rd-btn--primary rd-btn--lg rd-btn--block">
+          <a href={withBasePath('/login')} className="rd-btn rd-btn--primary rd-btn--lg rd-btn--block">
             Back to log in
           </a>
-          <a href="/auth/sign-up" className="rd-btn rd-btn--lg rd-btn--block">
+          <a href={withBasePath('/auth/sign-up')} className="rd-btn rd-btn--lg rd-btn--block">
             Go to sign up
           </a>
         </Enter>

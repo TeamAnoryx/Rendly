@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import ProceedButton from '@/components/common/ProceedButton';
+import { withBasePath } from '@/lib/basePath';
 
 const LOGO_ANIMATION_DURATION_MS = 2000;
 
@@ -41,7 +42,7 @@ export default function WelcomeContent() {
                 style={{ animation: 'logoPulse 3.5s ease-in-out infinite 2s' }}
               >
                 <Image
-                  src="/images/logo.svg"
+                  src={withBasePath('/images/logo.svg')}
                   alt="Rendly"
                   fill
                   className="object-contain"

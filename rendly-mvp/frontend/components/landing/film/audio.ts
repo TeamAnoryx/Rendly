@@ -10,8 +10,9 @@
 
 import { CUES, cuesBetween, type Cue, type CueName } from './cues';
 import { BEAT, DURATION, env, storyTime } from './timeline';
+import { withBasePath } from '@/lib/basePath';
 
-export const MUSIC_SRC = '/audio/film/music.mp3';
+export const MUSIC_SRC = withBasePath('/audio/film/music.mp3');
 
 /** Music sits low under everything. */
 const MUSIC_LEVEL = 0.45;

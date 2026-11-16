@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import './intro.css';
+import { withBasePath } from '@/lib/basePath';
 
 export const INTRO_SEEN_KEY = 'rendly:intro-seen';
 
@@ -172,7 +173,7 @@ export default function IntroSplash({ onLeave, onDone, onProceed }: IntroSplashP
         <video
           ref={videoRef}
           className="intro-video"
-          src="/video/rendly-intro-dark.mp4"
+          src={withBasePath('/video/rendly-intro-dark.mp4')}
           muted
           playsInline
           autoPlay
@@ -185,7 +186,7 @@ export default function IntroSplash({ onLeave, onDone, onProceed }: IntroSplashP
           }}
         />
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="intro-still" src="/brand/rendly-wordmark-white.png" alt="" aria-hidden draggable={false} />
+        <img className="intro-still" src={withBasePath('/brand/rendly-wordmark-white.png')} alt="" aria-hidden draggable={false} />
       </div>
 
       <div className="intro-after">
@@ -209,10 +210,10 @@ export default function IntroSplash({ onLeave, onDone, onProceed }: IntroSplashP
           <span className="intro-credit-label">A product of</span>
           <span className="intro-anoryx">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="intro-anoryx-symbol" src="/images/anoryx-symbol-white.png" alt="" draggable={false} />
+            <img className="intro-anoryx-symbol" src={withBasePath('/images/anoryx-symbol-white.png')} alt="" draggable={false} />
             <span className="intro-anoryx-divider" aria-hidden />
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="intro-anoryx-word" src="/images/anoryx-wordmark-white.png" alt="Anoryx" draggable={false} />
+            <img className="intro-anoryx-word" src={withBasePath('/images/anoryx-wordmark-white.png')} alt="Anoryx" draggable={false} />
           </span>
         </div>
       </div>

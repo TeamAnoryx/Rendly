@@ -18,8 +18,10 @@ const MAX_TEXT = 1000;
 const RATE_WINDOW_MS = 10_000;
 const CHAT_RATE_MAX = 20;
 const TYPING_RATE_MAX = 30;
-const SIGNAL_RATE_MAX = 60;
-const MEDIA_RATE_MAX = 10;
+// TURN + STUN produce many ICE candidates per call (and a renegotiation repeats them).
+const SIGNAL_RATE_MAX = 240;
+// The client announces its media state on join, consent and every camera/mic switch.
+const MEDIA_RATE_MAX = 40;
 const SIGNAL_MAX_BYTES = 64 * 1024;
 const SDP_MAX = 60_000;
 const ICE_CANDIDATE_MAX = 1000;

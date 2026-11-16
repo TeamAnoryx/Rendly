@@ -29,7 +29,79 @@ export type SparkEventName = keyof SparkEventMap;
 
 /** Delay before an unmount "leave" is sent, so a StrictMode remount can cancel it. */
 const LEAVE_GRACE_MS = 50;
+/** Retry a failed join (e.g. the pairing row is not visible yet) a few times. */
+const JOIN_RETRY_MS = 1500;
+const JOIN_MAX_RETRIES = 4;
+/** Signals held while joining; an offer plus a burst of ICE candidates fits comfortably. */
+const MAX_QUEUED_SIGNALS = 200;
 let pendingLeave: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * The server drops spark:signal / spark:media until spark:join has resolved the pairing, and
+ * resolving it is a database round trip. Anything sent before then used to be lost: a lost
+ * offer meant the call never connected. So signals and the latest media state wait here until
+ * the join is acknowledged.
+ */
+let joined = false;
+let joining = false;
+let joinRetries = 0;
+let joinRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let queuedSignals: SparkSignal[] = [];
+let queuedMedia: SparkMediaState | null = null;
+
+function flushQueued(): void {
+  if (queuedMedia) {
+    websocket.emit('spark:media', queuedMedia);
+    queuedMedia = null;
+  }
+  const signals = queuedSignals;
+  queuedSignals = [];
+  signals.forEach((s) => websocket.emit('spark:signal', s));
+}
+
+function resetJoin(): void {
+  joined = false;
+  joining = false;
+  joinRetries = 0;
+  if (joinRetryTimer) clearTimeout(joinRetryTimer);
+  joinRetryTimer = null;
+}
+
+function requestJoin(): void {
+  if (joining) return;
+  if (!websocket.isConnected()) return; // onConnected() joins again
+  joining = true;
+  websocket
+    .emitWithAck<{ ok?: boolean }>('spark:join', {})
+    .then((res) => {
+      joining = false;
+      if (res?.ok) {
+        joined = true;
+        joinRetries = 0;
+        flushQueued();
+        return;
+      }
+      throw new Error('join refused');
+    })
+    .catch(() => {
+      joining = false;
+      if (joinRetries >= JOIN_MAX_RETRIES) return;
+      joinRetries += 1;
+      if (joinRetryTimer) clearTimeout(joinRetryTimer);
+      joinRetryTimer = setTimeout(() => {
+        joinRetryTimer = null;
+        requestJoin();
+      }, JOIN_RETRY_MS);
+    });
+}
+
+websocket.onStatus((connected) => {
+  // The pairing lives on the server socket: a reconnect must join again before sending.
+  if (!connected) {
+    joined = false;
+    joining = false;
+  }
+});
 
 export const sparkChannel = {
   join(): void {
@@ -37,7 +109,9 @@ export const sparkChannel = {
       clearTimeout(pendingLeave);
       pendingLeave = null;
     }
-    websocket.emit('spark:join');
+    joined = false;
+    joinRetries = 0;
+    requestJoin();
   },
   /** Leave now (explicit user action). */
   leave(reason: string): void {
@@ -45,6 +119,9 @@ export const sparkChannel = {
       clearTimeout(pendingLeave);
       pendingLeave = null;
     }
+    resetJoin();
+    queuedSignals = [];
+    queuedMedia = null;
     websocket.emit('spark:leave', { reason });
   },
   /** Leave after a short grace period; cancelled by a following join (StrictMode remount). */
@@ -52,6 +129,9 @@ export const sparkChannel = {
     if (pendingLeave) clearTimeout(pendingLeave);
     pendingLeave = setTimeout(() => {
       pendingLeave = null;
+      resetJoin();
+      queuedSignals = [];
+      queuedMedia = null;
       websocket.emit('spark:leave', { reason });
     }, LEAVE_GRACE_MS);
   },
@@ -62,10 +142,15 @@ export const sparkChannel = {
     websocket.emit('spark:typing', { typing });
   },
   signal(kind: SparkSignalKind, data: unknown): void {
-    websocket.emit('spark:signal', { kind, data });
+    if (joined) {
+      websocket.emit('spark:signal', { kind, data });
+      return;
+    }
+    if (queuedSignals.length < MAX_QUEUED_SIGNALS) queuedSignals.push({ kind, data });
   },
   media(state: SparkMediaState): void {
-    websocket.emit('spark:media', state);
+    if (joined) websocket.emit('spark:media', state);
+    else queuedMedia = state; // only the latest state matters
   },
   on<E extends SparkEventName>(event: E, cb: (payload: SparkEventMap[E]) => void): () => void {
     return websocket.on<SparkEventMap[E]>(event, cb);

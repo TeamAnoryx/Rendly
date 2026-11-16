@@ -19,6 +19,7 @@ import {
 import { useOAuth } from '@/hooks/useOAuth';
 import { getResolvedApiUrl } from '@/lib/resolvedApiUrl';
 import { clearAuthStorage, RENDLY_SESSION_TOKEN } from '@/lib/auth-storage';
+import { withBasePath } from '@/lib/basePath';
 
 const GITHUB_STORAGE_KEY = 'rendly_oauth_github';
 const LINKEDIN_STORAGE_KEY = 'rendly_oauth_linkedin';
@@ -46,7 +47,7 @@ function clearVerification() {
   } catch {
     // storage unavailable: nothing to clear
   }
-  window.location.href = '/auth/sign-up';
+  window.location.href = withBasePath('/auth/sign-up');
 }
 
 function readStoredProvider(key: string): { user?: Record<string, unknown>; token?: string } | null {

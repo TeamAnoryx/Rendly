@@ -1,3 +1,4 @@
+import { withBasePath } from '@/lib/basePath';
 /**
  * Photo registry for the marketing pages.
  *
@@ -34,7 +35,7 @@ export interface Photo {
   alt?: string;
 }
 
-const img = (file: string) => `/images/${file}`;
+const img = (file: string) => withBasePath(`/images/${file}`);
 
 /* ---------------- Landing ---------------- */
 

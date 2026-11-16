@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { getResolvedApiUrl } from '@/lib/resolvedApiUrl';
 import { LINKEDIN_PKCE_STORAGE_KEY } from '@/lib/pkce';
 import { GITHUB_STORAGE_KEY, LINK_TO_GITHUB_ID_KEY, getStoredAuthToken } from '@/lib/auth-storage';
+import { withBasePath } from '@/lib/basePath';
 
 function normalizeRedirectUri(value: string): string {
   if (!value) return value;
@@ -16,7 +17,7 @@ function getRedirectUri() {
   // We normalize it to avoid mismatches from trailing slash variants.
   const envUri = process.env.NEXT_PUBLIC_OAUTH_REDIRECT_URI;
   if (envUri) return normalizeRedirectUri(envUri);
-  return normalizeRedirectUri(`${window.location.origin}/auth/callback`);
+  return normalizeRedirectUri(`${window.location.origin}${withBasePath('/auth/callback')}`);
 }
 
 export type OAuthFlow = 'login' | 'signup';

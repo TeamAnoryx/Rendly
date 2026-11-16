@@ -186,6 +186,12 @@ export default function HuddleRoom({
   const isManager = role === 'host' || role === 'co_host';
   const { user } = useCurrentUser();
   const myId = user?.id ?? null;
+  /**
+   * Read by the WebRTC callbacks, which the setup effect captures once. Who offers first is
+   * decided by comparing ids, so a stale null here meant nobody ever offered and no video flowed.
+   */
+  const myIdRef = useRef(myId);
+  myIdRef.current = myId;
 
   const [status, setStatus] = useState<'connecting' | 'live' | 'error'>('connecting');
   const [error, setError] = useState<string | null>(null);
@@ -233,6 +239,9 @@ export default function HuddleRoom({
   const localRef = useRef<MediaStream | null>(null);
   const screenRef = useRef<MediaStream | null>(null);
   const screenSenders = useRef<Record<string, RTCRtpSender[]>>({});
+  /** My camera sender per peer: it carries no track while my camera is off, so others see my avatar. */
+  const camSenders = useRef<Record<string, RTCRtpSender>>({});
+  const camOnRef = useRef(false);
   const roomRef = useRef(MAIN_ROOM);
   const panelRef = useRef<Panel>(null);
   panelRef.current = panel;
@@ -281,6 +290,7 @@ export default function HuddleRoom({
     delete streamsByPeer.current[id];
     delete camStreams.current[id];
     delete screenSenders.current[id];
+    delete camSenders.current[id];
     setPeers((cur) => {
       const next = { ...cur };
       delete next[id];
@@ -311,8 +321,15 @@ export default function HuddleRoom({
       const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       pcs.current[id] = pc;
       const l = localRef.current;
-      if (l) l.getTracks().forEach((t) => pc.addTrack(t, l));
-      else {
+      if (l) {
+        l.getTracks().forEach((t) => {
+          const sender = pc.addTrack(t, l);
+          if (t.kind === 'video') {
+            camSenders.current[id] = sender;
+            if (!camOnRef.current) void sender.replaceTrack(null).catch(() => undefined);
+          }
+        });
+      } else {
         // No camera/mic: still receive everyone else.
         pc.addTransceiver('audio', { direction: 'recvonly' });
         pc.addTransceiver('video', { direction: 'recvonly' });
@@ -331,7 +348,8 @@ export default function HuddleRoom({
       };
       // Either side may renegotiate (e.g. adding a screen); the lower id makes the first offer.
       pc.onnegotiationneeded = () => {
-        if (pc.signalingState === 'stable' && (pc.localDescription || (myId && myId < id))) void renegotiate(id);
+        const me = myIdRef.current;
+        if (pc.signalingState === 'stable' && (pc.localDescription || (me && me < id))) void renegotiate(id);
       };
       // A failed path (often NAT on mobile networks) gets one ICE restart before the peer is dropped.
       let restarted = false;
@@ -346,7 +364,7 @@ export default function HuddleRoom({
       };
       return pc;
     },
-    [signal, publishPeer, renegotiate, dropPeer, myId]
+    [signal, publishPeer, renegotiate, dropPeer]
   );
 
   const handleSignal = useCallback(
@@ -356,7 +374,8 @@ export default function HuddleRoom({
         if (data.type === 'offer' && data.sdp) {
           // Glare: if we were also offering, the higher id backs off.
           if (pc.signalingState === 'have-local-offer') {
-            if (myId && myId < from) return;
+            const me = myIdRef.current;
+            if (me && me < from) return;
             await pc.setLocalDescription({ type: 'rollback' });
           }
           await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp });
@@ -377,7 +396,7 @@ export default function HuddleRoom({
         console.warn('[huddle] signal failed', err);
       }
     },
-    [connectionFor, signal, myId]
+    [connectionFor, signal]
   );
 
   // ---------- rooms ----------
@@ -434,7 +453,10 @@ export default function HuddleRoom({
   );
 
   // ---------- setup ----------
+  // Join only once we know who we are: the id decides which side of each pair offers first.
+  const myIdReady = !!myId;
   useEffect(() => {
+    if (!myIdReady) return undefined;
     let cancelled = false;
     (async () => {
       try {
@@ -521,9 +543,9 @@ export default function HuddleRoom({
       localRef.current?.getTracks().forEach((t) => t.stop());
       screenRef.current?.getTracks().forEach((t) => t.stop());
     };
-    // Set up once per huddle.
+    // Set up once per huddle, as soon as the signed-in user is known.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [huddleId]);
+  }, [huddleId, myIdReady]);
 
   // Mic/camera switches apply to the live tracks.
   useEffect(() => {
@@ -531,6 +553,12 @@ export default function HuddleRoom({
     if (!s) return;
     s.getAudioTracks().forEach((t) => (t.enabled = micOn && canSpeak && !mutedByHost));
     s.getVideoTracks().forEach((t) => (t.enabled = camOn));
+    // Send no video at all while the camera is off (a disabled track still sends black frames).
+    camOnRef.current = camOn;
+    const cam = s.getVideoTracks()[0] ?? null;
+    Object.values(camSenders.current).forEach((sender) => {
+      void sender.replaceTrack(camOn ? cam : null).catch(() => undefined);
+    });
   }, [micOn, camOn, canSpeak, mutedByHost, local]);
 
   // Roster (names, roles, permissions). Hosts also see the waiting list.
@@ -1075,13 +1103,21 @@ function PeoplePanel({
                     })}>
                     <Icon name={m.is_muted ? 'mic-off' : 'mic'} size={15} />
                   </button>
-                  <button type="button" className={`rd-icon-btn ${m.can_share_screen ? 'rd-icon-btn--on' : ''}`} title={m.can_share_screen ? 'Revoke screen sharing' : 'Allow screen sharing'} disabled={disabled}
-                    onClick={() => act(m.user_id, async () => {
-                      const res = await websocket.emitWithAck<{ ok: boolean; message?: string }>('huddle:permit', { huddle_id: huddle.id, target: m.user_id, can_share_screen: !m.can_share_screen });
-                      if (!res?.ok) throw new Error(res?.message ?? 'Could not change screen sharing');
-                    })}>
-                    <Icon name="screen" size={15} />
-                  </button>
+                  {m.role === 'co_host' ? (
+                    <span className="hr-admin-pill hr-admin-pill--on" title="Admins can always share their screen">
+                      <Icon name="screen" size={14} /> Can share
+                    </span>
+                  ) : (
+                    <button type="button" className={`hr-admin-pill ${m.can_share_screen ? 'hr-admin-pill--on' : ''}`} aria-pressed={!!m.can_share_screen} disabled={disabled}
+                      title={m.can_share_screen ? 'Stop this person sharing their screen' : 'Let this person share their screen'}
+                      onClick={() => act(m.user_id, async () => {
+                        const res = await websocket.emitWithAck<{ ok: boolean; message?: string }>('huddle:permit', { huddle_id: huddle.id, target: m.user_id, can_share_screen: !m.can_share_screen });
+                        if (!res?.ok) throw new Error(res?.message ?? 'Could not change screen sharing');
+                      })}>
+                      <Icon name="screen" size={14} />
+                      {m.can_share_screen ? 'Sharing allowed' : 'Allow screen share'}
+                    </button>
+                  )}
                   </>
                   ) : null}
                   {flags.rewards_enabled ? (

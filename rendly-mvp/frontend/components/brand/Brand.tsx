@@ -1,4 +1,5 @@
 import React from 'react';
+import { withBasePath } from '@/lib/basePath';
 
 /**
  * Rendly brand primitives.
@@ -51,7 +52,7 @@ export function RendlyWordmark({
   // eslint-disable-next-line @next/next/no-img-element
   return (
     <img
-      src={`/brand/rendly-wordtype-${tone}.png`}
+      src={withBasePath(`/brand/rendly-wordtype-${tone}.png`)}
       alt="rendly"
       className={className}
       draggable={false}
@@ -74,7 +75,7 @@ export function RendlyLockup({
   // eslint-disable-next-line @next/next/no-img-element
   return (
     <img
-      src={`/brand/rendly-wordmark-${tone}.png`}
+      src={withBasePath(`/brand/rendly-wordmark-${tone}.png`)}
       alt="Rendly"
       className={`block select-none ${className}`}
       draggable={false}
@@ -96,7 +97,7 @@ export function AnoryxSignature({ className = '', size = 'md' }: { className?: s
       <span className={`inline-flex items-center ${lg ? 'gap-4' : 'gap-3'}`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/images/anoryx-symbol-white.png"
+          src={withBasePath('/images/anoryx-symbol-white.png')}
           alt=""
           className={lg ? 'h-9 w-9' : 'h-6 w-6'}
           draggable={false}
@@ -104,7 +105,7 @@ export function AnoryxSignature({ className = '', size = 'md' }: { className?: s
         <span className={`w-px bg-white/20 ${lg ? 'h-6' : 'h-5'}`} aria-hidden />
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/images/anoryx-wordmark-white.png"
+          src={withBasePath('/images/anoryx-wordmark-white.png')}
           alt="Anoryx"
           className={lg ? 'h-5 w-auto' : 'h-[15px] w-auto'}
           draggable={false}

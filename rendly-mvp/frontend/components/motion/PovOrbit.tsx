@@ -2,19 +2,20 @@
 
 import React, { useEffect, useRef } from 'react';
 import './pov-orbit.css';
+import { withBasePath } from '@/lib/basePath';
 
 /** A card image: a path, or a path plus an object-position focal point for the crop. */
 export type PovImage = string | { src: string; position?: string };
 
 /** The seven POV photos; the ring holds them twice so a repeat is always half a turn away. */
 const PHOTOS: PovImage[] = [
-  { src: '/images/pov21.jpg', position: '60% 40%' },
-  { src: '/images/pov22.jpg', position: '52% 35%' },
-  { src: '/images/pov23.jpg', position: '55% 35%' },
-  { src: '/images/pov24.jpg', position: '52% 40%' },
-  { src: '/images/pov26.jpg', position: '55% 45%' },
-  { src: '/images/pov28.jpeg', position: '70% 40%' },
-  { src: '/images/pov29.jpg', position: '55% 50%' },
+  { src: withBasePath('/images/pov21.jpg'), position: '60% 40%' },
+  { src: withBasePath('/images/pov22.jpg'), position: '52% 35%' },
+  { src: withBasePath('/images/pov23.jpg'), position: '55% 35%' },
+  { src: withBasePath('/images/pov24.jpg'), position: '52% 40%' },
+  { src: withBasePath('/images/pov26.jpg'), position: '55% 45%' },
+  { src: withBasePath('/images/pov28.jpeg'), position: '70% 40%' },
+  { src: withBasePath('/images/pov29.jpg'), position: '55% 50%' },
 ];
 
 export const DEFAULT_POV_IMAGES: PovImage[] = [...PHOTOS, ...PHOTOS];
