@@ -35,7 +35,9 @@ type Registration = {
 
 async function registration(): Promise<Registration | null> {
   try {
-    return (await navigator.serviceWorker.ready) as unknown as Registration;
+    // getRegistration() settles even when no worker is installed; `ready` would wait forever.
+    const reg = await navigator.serviceWorker.getRegistration();
+    return reg?.active ? (reg as unknown as Registration) : null;
   } catch {
     return null;
   }

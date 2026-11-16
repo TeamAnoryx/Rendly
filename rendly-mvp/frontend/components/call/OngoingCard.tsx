@@ -55,7 +55,12 @@ export function useFreezeVideo(
     const el = ref.current;
     if (!el) return;
     if (frozen) el.pause();
-    else if (stream && el.paused) el.play().catch(() => undefined);
+    else if (stream && el.paused) {
+      // Autoplay can refuse a resume; retry on the next tap instead of staying frozen.
+      el.play().catch(() => {
+        window.addEventListener('pointerdown', () => void el.play().catch(() => undefined), { once: true });
+      });
+    }
   }, [ref, frozen, stream]);
 }
 

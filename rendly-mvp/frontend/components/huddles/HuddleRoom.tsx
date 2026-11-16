@@ -610,7 +610,9 @@ export default function HuddleRoom({
     camOnRef.current = sending;
     const cam = s.getVideoTracks()[0] ?? null;
     Object.values(camSenders.current).forEach((sender) => {
-      void sender.replaceTrack(sending ? cam : null).catch(() => undefined);
+      void sender.replaceTrack(sending ? cam : null).catch((err: unknown) => {
+        console.warn('[huddle] camera track switch failed', err instanceof Error ? err.message : err);
+      });
     });
   }, [micOn, camOn, canSpeak, mutedByHost, local, paused]);
 
