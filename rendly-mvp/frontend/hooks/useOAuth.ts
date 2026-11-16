@@ -2,11 +2,7 @@
 
 import { useCallback } from 'react';
 import { getResolvedApiUrl } from '@/lib/resolvedApiUrl';
-import {
-  generateCodeVerifier,
-  computeCodeChallenge,
-  LINKEDIN_PKCE_STORAGE_KEY,
-} from '@/lib/pkce';
+import { LINKEDIN_PKCE_STORAGE_KEY } from '@/lib/pkce';
 import { GITHUB_STORAGE_KEY, LINK_TO_GITHUB_ID_KEY, getStoredAuthToken } from '@/lib/auth-storage';
 
 function normalizeRedirectUri(value: string): string {
@@ -45,10 +41,12 @@ export function useOAuth() {
       console.error('NEXT_PUBLIC_LINKEDIN_CLIENT_ID is not set');
       return;
     }
-    const verifier = generateCodeVerifier();
-    const challenge = await computeCodeChallenge(verifier);
+    // LinkedIn web apps authenticate with the client secret on the server, and LinkedIn
+    // documents PKCE for native clients only. PKCE is therefore not sent here (it is the
+    // suspected cause of "Client authentication failed" in production), and any stale
+    // verifier from an earlier attempt is cleared.
     try {
-      sessionStorage.setItem(LINKEDIN_PKCE_STORAGE_KEY, verifier);
+      sessionStorage.removeItem(LINKEDIN_PKCE_STORAGE_KEY);
       // If user already verified GitHub, link LinkedIn to that same user row
       const ghRaw = typeof window !== 'undefined' ? localStorage.getItem(GITHUB_STORAGE_KEY) : null;
       if (ghRaw) {
@@ -58,8 +56,6 @@ export function useOAuth() {
     } catch {
       // ignore
     }
-    const redirectUri = encodeURIComponent(getRedirectUri());
-    const scope = encodeURIComponent('openid profile email');
     const state = flow === 'login' ? 'linkedin_login' : 'linkedin';
     const params = new URLSearchParams({
       response_type: 'code',
@@ -67,8 +63,6 @@ export function useOAuth() {
       redirect_uri: getRedirectUri(),
       scope: 'openid profile email',
       state,
-      code_challenge: challenge,
-      code_challenge_method: 'S256',
     });
     const url = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;
     window.location.href = url;
