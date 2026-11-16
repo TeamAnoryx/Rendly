@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSparkIceConfig, type SparkIceConfig, type SparkMode } from '@/services/sparkApi';
 import { sparkChannel, type SparkMediaState, type SparkSignal } from '@/hooks/useSparkChannel';
+import type { PauseReason } from '@/lib/mediaPause';
 
 type Kind = 'audio' | 'video';
 
@@ -45,6 +46,12 @@ export type SparkMediaApi = {
   busy: Kind | null;
   toggleCam: () => void;
   toggleMic: () => void;
+  /** I paused: my camera and mic are frozen for my match. */
+  paused: boolean;
+  togglePause: () => void;
+  setPaused: (paused: boolean) => void;
+  /** My match paused ('manual') or dropped and may come back ('away'). */
+  partnerPaused: PauseReason | null;
   clearError: () => void;
   /** Explicit leave (skip / back). Safe to call more than once. */
   leave: (reason: string) => void;
@@ -123,6 +130,10 @@ export function useSparkMedia(opts: {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Kind | null>(null);
   const [ended, setEnded] = useState(false);
+  const [paused, setPausedState] = useState(false);
+  const pausedRef = useRef(false);
+  const [partnerManualPause, setPartnerManualPause] = useState(false);
+  const [partnerAway, setPartnerAway] = useState(false);
 
   const myConsent = !selfAnonymous || directChoice === 'allowed';
   const partnerConsent = !partnerAnonymous || partner.p2p;
@@ -166,6 +177,7 @@ export function useSparkMedia(opts: {
       video: !!tracksRef.current.video,
       audio: !!tracksRef.current.audio,
       p2p: myConsentRef.current,
+      paused: pausedRef.current,
     };
     stateRef.current = state;
     sparkChannel.media(state);
@@ -320,7 +332,8 @@ export function useSparkMedia(opts: {
           track.stop();
           return;
         }
-        track.enabled = true;
+        // Turning a device on while paused keeps it frozen until resume.
+        track.enabled = !pausedRef.current;
         tracksRef.current[kind] = track;
         // Turning my camera or mic on is my consent to a direct connection.
         myConsentRef.current = true;
@@ -367,9 +380,20 @@ export function useSparkMedia(opts: {
       sparkChannel.on('spark:signal', (m) => void handleSignal(m)),
       sparkChannel.on('spark:media', (m) => {
         setPartner({ video: !!m?.video, audio: !!m?.audio, p2p: m?.p2p === true });
+        setPartnerManualPause(m?.paused === true);
         maybeOffer();
       }),
+      sparkChannel.on('spark:partner-paused', (p) => {
+        if (p?.reason === 'manual') setPartnerManualPause(true);
+        else setPartnerAway(true);
+      }),
+      sparkChannel.on('spark:partner-resumed', (p) => {
+        if (p?.reason === 'manual') setPartnerManualPause(false);
+        else setPartnerAway(false);
+      }),
+      sparkChannel.onJoined((ack) => setPartnerAway(ack.partner_paused === true)),
       sparkChannel.on('spark:partner-joined', () => {
+        setPartnerAway(false);
         // Re-announce so a late joiner learns our state; the initiator offers on first contact.
         sparkChannel.media(stateRef.current);
         maybeOffer();
@@ -561,6 +585,22 @@ export function useSparkMedia(opts: {
     [teardown],
   );
 
+  const setPaused = useCallback(
+    (next: boolean) => {
+      if (leftRef.current || pausedRef.current === next) return;
+      pausedRef.current = next;
+      setPausedState(next);
+      // Tracks that are on follow the pause; tracks that are off stay off.
+      (['audio', 'video'] as Kind[]).forEach((k) => {
+        const t = tracksRef.current[k];
+        if (t) t.enabled = !next;
+      });
+      publishState();
+    },
+    [publishState],
+  );
+  const togglePause = useCallback(() => setPaused(!pausedRef.current), [setPaused]);
+
   const clearError = useCallback(() => setError(null), []);
   const allowDirect = useCallback(() => setDirectChoice('allowed'), []);
   const declineDirect = useCallback(() => setDirectChoice('declined'), []);
@@ -589,6 +629,10 @@ export function useSparkMedia(opts: {
     busy,
     toggleCam,
     toggleMic,
+    paused,
+    togglePause,
+    setPaused,
+    partnerPaused: partnerAway ? 'away' : partnerManualPause ? 'manual' : null,
     clearError,
     leave,
     ended,

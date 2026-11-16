@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { DashboardSidebarProvider } from './DashboardSidebarContext';
 import { CurrentUserProvider } from '@/context/CurrentUserContext';
 import { CallProvider } from '@/context/CallContext';
+import { HuddleSessionProvider } from '@/context/HuddleSessionContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
 import { SocketProvider } from '@/context/SocketContext';
 import { AppShell } from '@/components/shell/AppShell';
@@ -36,8 +37,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <SocketProvider>
           <NotificationsProvider>
             <CallProvider>
-              <DashboardLayoutInner>{children}</DashboardLayoutInner>
-              <CallStage />
+              <HuddleSessionProvider>
+                <DashboardLayoutInner>{children}</DashboardLayoutInner>
+                <CallStage />
+              </HuddleSessionProvider>
             </CallProvider>
           </NotificationsProvider>
         </SocketProvider>

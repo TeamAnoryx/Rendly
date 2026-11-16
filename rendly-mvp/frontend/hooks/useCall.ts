@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import websocket from '@/services/websocket';
 import { chat } from '@/services/chat';
+import { applyPausedTracks, type PauseReason } from '@/lib/mediaPause';
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
 
@@ -57,6 +58,13 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
   const [screenStream, setScreenStreamState] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
+  /** I paused (my camera and mic are frozen for the other side). */
+  const [isPaused, setIsPaused] = useState(false);
+  /** The other side paused, or dropped and may come back (server holds the call for a while). */
+  const [peerPaused, setPeerPaused] = useState<PauseReason | null>(null);
+  const pausedRef = useRef(false);
+  const mutedRef = useRef(false);
+  const videoOffRef = useRef(false);
 
   // Refs mirror state so socket handlers never act on stale values.
   const stateRef = useRef<CallState>('idle');
@@ -110,6 +118,11 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
     setIsScreenSharing(false);
     setIsMuted(false);
     setIsVideoOff(false);
+    pausedRef.current = false;
+    mutedRef.current = false;
+    videoOffRef.current = false;
+    setIsPaused(false);
+    setPeerPaused(null);
     setIncomingCall(null);
     setState('idle');
     setConv(null);
@@ -301,8 +314,20 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
       publishRemote();
     });
 
+    type PausePayload = { conversation_id: string; user_id?: string; reason?: string };
+    const offPeerPaused = websocket.on<PausePayload>('call:peer-paused', (p) => {
+      if (p?.conversation_id !== convRef.current || p.user_id === currentUserId) return;
+      setPeerPaused(p.reason === 'manual' ? 'manual' : 'away');
+    });
+    const offPeerResumed = websocket.on<PausePayload>('call:peer-resumed', (p) => {
+      if (p?.conversation_id !== convRef.current || p.user_id === currentUserId) return;
+      setPeerPaused(null);
+    });
+
     return () => {
       offScreen();
+      offPeerPaused();
+      offPeerResumed();
     };
   }, [currentUserId, createPeer, finish, publishRemote]);
 
@@ -365,23 +390,36 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
     void finish(status);
   }, [finish]);
 
-  const toggleMute = useCallback(() => {
-    setIsMuted((m) => {
-      localRef.current?.getAudioTracks().forEach((t) => {
-        t.enabled = m;
-      });
-      return !m;
-    });
+  /** Push mute / camera / pause onto the outgoing tracks (a paused call sends nothing). */
+  const syncTracks = useCallback(() => {
+    applyPausedTracks(localRef.current, pausedRef.current, { mic: !mutedRef.current, cam: !videoOffRef.current });
   }, []);
 
+  const toggleMute = useCallback(() => {
+    mutedRef.current = !mutedRef.current;
+    setIsMuted(mutedRef.current);
+    syncTracks();
+  }, [syncTracks]);
+
   const toggleVideo = useCallback(() => {
-    setIsVideoOff((off) => {
-      localRef.current?.getVideoTracks().forEach((t) => {
-        t.enabled = off;
-      });
-      return !off;
-    });
-  }, []);
+    videoOffRef.current = !videoOffRef.current;
+    setIsVideoOff(videoOffRef.current);
+    syncTracks();
+  }, [syncTracks]);
+
+  /** Pause or resume my side of the call; the other side sees my tile frozen with "Paused". */
+  const setPaused = useCallback(
+    (paused: boolean) => {
+      const convId = convRef.current;
+      if (stateRef.current !== 'active' || !convId || pausedRef.current === paused) return;
+      pausedRef.current = paused;
+      setIsPaused(paused);
+      syncTracks();
+      websocket.emit('call:pause', { conversation_id: convId, paused });
+    },
+    [syncTracks],
+  );
+  const togglePause = useCallback(() => setPaused(!pausedRef.current), [setPaused]);
 
   const renegotiate = useCallback(async () => {
     const pc = pcRef.current;
@@ -468,6 +506,10 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
     toggleMute,
     toggleVideo,
     toggleScreenShare,
+    isPaused,
+    peerPaused,
+    setPaused,
+    togglePause,
     cleanupMedia,
   };
 }

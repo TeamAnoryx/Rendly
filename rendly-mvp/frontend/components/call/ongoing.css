@@ -1,0 +1,76 @@
+/* Floating "ongoing call / huddle" card and the paused overlay shared by every tile. */
+
+.ongoing-card {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--rd-surface, #15151b);
+  color: var(--rd-text, #fff);
+  border: 1px solid var(--rd-border, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.ongoing-card-dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.25);
+}
+
+.ongoing-card-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+}
+
+.ongoing-card-extra {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paused-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+}
+
+/* The persistent huddle host: fills the huddle page's slot, or parks off-screen elsewhere. */
+.huddle-host {
+  position: fixed;
+  /* Above the page content it covers, below the rail (30) and every overlay. */
+  z-index: 25;
+  display: flex;
+}
+
+.huddle-host--parked {
+  left: -10000px;
+  top: 0;
+  width: 360px;
+  height: 240px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}

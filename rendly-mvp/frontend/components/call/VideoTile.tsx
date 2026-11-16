@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Avatar } from '@/components/shell/AppShell';
+import { PausedOverlay, useFrozenWhile, useFreezeVideo } from './OngoingCard';
 
 /** True while the stream has a live, enabled, unmuted video track. */
 /** How long a video track may report `muted` (no frames) before the tile falls back to the avatar. */
@@ -92,6 +93,7 @@ export function VideoTile({
   fit = 'cover',
   className = '',
   forceAvatar = false,
+  pausedLabel = null,
 }: {
   stream: MediaStream | null;
   label: string;
@@ -101,6 +103,8 @@ export function VideoTile({
   fit?: 'cover' | 'contain';
   className?: string;
   forceAvatar?: boolean;
+  /** "Paused" / "Reconnecting…" when this person froze their media; the last frame stays visible. */
+  pausedLabel?: string | null;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   const hasVideo = useHasVideo(stream, fit === 'contain');
@@ -109,10 +113,12 @@ export function VideoTile({
     const el = ref.current;
     if (!el) return;
     if (el.srcObject !== stream) el.srcObject = stream;
-    if (stream && el.paused) el.play().catch(() => undefined);
-  }, [stream, hasVideo]);
+    if (stream && el.paused && !pausedLabel) el.play().catch(() => undefined);
+  }, [stream, hasVideo, pausedLabel]);
 
-  const showAvatar = forceAvatar || !hasVideo;
+  // A paused tile keeps what it showed (its last frame, or the avatar) until it resumes.
+  const showAvatar = useFrozenWhile(!!pausedLabel, forceAvatar || !hasVideo);
+  useFreezeVideo(ref, !!pausedLabel, stream);
   return (
     <div className={`call-tile ${className}`}>
       {/* Audio keeps playing through the <video> element even when the avatar covers it. */}
@@ -129,6 +135,7 @@ export function VideoTile({
           <Avatar url={avatarUrl} name={label} size="lg" />
         </div>
       ) : null}
+      <PausedOverlay label={pausedLabel} />
       <span className="call-tile-label">{label}</span>
     </div>
   );

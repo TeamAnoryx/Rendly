@@ -9,7 +9,6 @@ import {
   HUDDLE_MODE_LABELS,
   inviteToHuddle,
   joinHuddle,
-  leaveHuddle,
   listHuddleMembers,
   setHuddleDisplayName,
   updateHuddleSettings,
@@ -20,18 +19,16 @@ import {
 import { getConnections, type Connection } from '@/services/connectionsApi';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useNotifications } from '@/context/NotificationsContext';
-import websocket from '@/services/websocket';
+import { useHuddleSession } from '@/context/HuddleSessionContext';
+import { consumeResumeParam } from '@/lib/resumeParam';
 import { addReminder } from '@/lib/huddleReminders';
 import { requestNotificationConsent } from '@/components/notifications/NotificationConsent';
-import HuddleRoom from '@/components/huddles/HuddleRoom';
 import { HuddlePoster } from '@/components/huddles/HuddleList';
 import HuddleEditForm from '@/components/huddles/HuddleEditForm';
 import { Icon } from '@/components/shell/Icon';
 import '../huddles.css';
 
 const WAITING_POLL_MS = 4000;
-/** While inside, check whether the host ended the huddle (backup for the socket event). */
-const ENDED_POLL_MS = 5000;
 const PROMO_MAX_SECONDS = 15;
 
 function whenLabel(h: HuddleDetail): string {
@@ -254,20 +251,47 @@ export default function HuddleDetailPage() {
   const params = useParams();
   const router = useRouter();
   const huddleId = typeof params?.huddle_id === 'string' ? params.huddle_id : '';
-  const inviteCode = useSearchParams()?.get('code') ?? null;
+  const searchParams = useSearchParams();
+  const inviteCode = searchParams?.get('code') ?? null;
+  const resumeRequested = searchParams?.get('resume') === '1';
   const { user } = useCurrentUser();
   const [huddle, setHuddle] = useState<HuddleDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
-  const [inRoom, setInRoom] = useState(false);
   const [displayName, setDisplayName] = useState('');
-  const [leaveError, setLeaveError] = useState<string | null>(null);
+  // The room itself lives in HuddleSessionProvider so it survives leaving this page.
+  const { activeId, start: startSession, sync: syncSession, setPaused, registerSlot } = useHuddleSession();
+  const inRoom = !!huddleId && activeId === huddleId;
 
-  const reload = useCallback(async () => {
-    if (!huddleId) return;
-    setHuddle(await getHuddle(huddleId, inviteCode));
+  const reload = useCallback(async (): Promise<HuddleDetail | null> => {
+    if (!huddleId) return null;
+    const h = await getHuddle(huddleId, inviteCode);
+    setHuddle(h);
+    return h;
   }, [huddleId, inviteCode]);
+
+  // Keep the running room's details (title, role) fresh.
+  useEffect(() => {
+    if (huddle && inRoom) syncSession(huddle);
+  }, [huddle, inRoom, syncSession]);
+
+  // Leaving (or the huddle ending) closes the session: show the updated lobby.
+  const wasInRoom = useRef(false);
+  useEffect(() => {
+    if (wasInRoom.current && !inRoom) reload().catch(() => undefined);
+    wasInRoom.current = inRoom;
+  }, [inRoom, reload]);
+
+  // Opened from the ongoing-huddle notification (?resume=1): unpause, or rejoin after a reload.
+  const resumeHandled = useRef(false);
+  useEffect(() => {
+    if (!resumeRequested || resumeHandled.current || !huddle) return;
+    resumeHandled.current = true;
+    consumeResumeParam();
+    if (inRoom) setPaused(false);
+    else if (huddle.is_participant && !huddle.is_waiting && !huddle.cancelled_at) startSession(huddle, inviteCode);
+  }, [resumeRequested, huddle, inRoom, setPaused, startSession, inviteCode]);
 
   useEffect(() => {
     if (!huddleId) {
@@ -298,40 +322,12 @@ export default function HuddleDetailPage() {
     if (waiting) wasWaiting.current = true;
     else if (wasWaiting.current && huddle?.is_participant) {
       wasWaiting.current = false;
-      setInRoom(true);
+      startSession(huddle, inviteCode);
     }
-  }, [waiting, huddle?.is_participant]);
+  }, [waiting, huddle, startSession, inviteCode]);
 
-  // The host ended the huddle for everyone: leave the room (socket event, or the poll as a backup).
-  const { pushToast, setWaitingHuddle, requestOpenPanel } = useNotifications();
-  const isHost = huddle?.your_role === 'host';
-  const endedRef = useRef(false);
-  const exitEnded = useCallback(() => {
-    if (endedRef.current) return;
-    endedRef.current = true;
-    setInRoom(false);
-    pushToast({ icon: 'close', title: 'The host ended this huddle' });
-    router.push('/dashboard/huddles');
-  }, [pushToast, router]);
-  useEffect(() => {
-    if (!inRoom || isHost || !huddleId) return undefined;
-    const off = websocket.on<{ huddle_id?: string }>('huddle:ended', (p) => {
-      if (p?.huddle_id === huddleId) exitEnded();
-    });
-    const id = setInterval(() => {
-      getHuddle(huddleId, inviteCode)
-        .then((h) => {
-          // ended_at is the scheduled end while live: only a past time means it is over.
-          const over = !!h.ended_at && Date.parse(h.ended_at) <= Date.now();
-          if (h.cancelled_at || over) exitEnded();
-        })
-        .catch(() => undefined);
-    }, ENDED_POLL_MS);
-    return () => {
-      off();
-      clearInterval(id);
-    };
-  }, [inRoom, isHost, huddleId, inviteCode, exitEnded]);
+  // The host ending the huddle is watched by HuddleSessionProvider (it works from any page).
+  const { setWaitingHuddle, requestOpenPanel } = useNotifications();
 
   // Waitlist pill: the server sends waiting_count to hosts always and to everyone when allowed.
   const [waitlist, setWaitlist] = useState<number | null>(null);
@@ -401,39 +397,13 @@ export default function HuddleDetailPage() {
           return;
         }
       }
-      await reload();
-      setInRoom(true);
+      const fresh = await reload();
+      if (fresh?.is_participant) startSession(fresh, inviteCode);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not join');
     } finally {
       setJoining(false);
     }
-  };
-
-  const leave = async () => {
-    if (!huddle) return;
-    setLeaveError(null);
-    try {
-      await leaveHuddle(huddle.id);
-      setInRoom(false);
-      await reload();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Could not leave';
-      setLeaveError(msg);
-    }
-  };
-
-  const endForAll = async () => {
-    if (!huddle || !window.confirm('End this huddle for everyone?')) return;
-    // Tell connected participants first: the server checks the host seat, which cancelling closes.
-    websocket.emit('huddle:end', { huddle_id: huddle.id });
-    try {
-      await cancelHuddle(huddle.id);
-    } catch (e) {
-      setLeaveError(e instanceof Error ? e.message : 'Could not end the huddle');
-      return;
-    }
-    router.push('/dashboard/huddles');
   };
 
   if (loading) {
@@ -461,14 +431,9 @@ export default function HuddleDetailPage() {
     );
   }
 
-  if (inRoom && huddle.is_participant) {
-    const canLeave = huddle.your_role === 'host' || huddle.your_role === 'co_host' || huddle.allow_self_exit !== false;
-    return (
-      <div className="rd-page hl-room-page">
-        {leaveError ? <p className="hl-err hl-room-err">{leaveError}</p> : null}
-        <HuddleRoom huddle={huddle} onLeave={() => void leave()} onEnd={huddle.your_role === 'host' ? () => void endForAll() : undefined} canLeave={canLeave} />
-      </div>
-    );
+  if (inRoom) {
+    // HuddleSessionProvider draws the live room over this stage (Leave / End live there too).
+    return <div className="rd-page hl-room-page" ref={registerSlot} aria-label={huddle.title} />;
   }
 
   const isOwner = huddle.is_owner || huddle.your_role === 'host';
@@ -528,7 +493,7 @@ export default function HuddleDetailPage() {
               {manages && !huddle.show_waitlist_count ? <span className="hl-pill hl-pill--muted">Only hosts see this</span> : null}
             </div>
           ) : null}
-          {isOwner ? <HostTools huddle={huddle} onChanged={reload} onGone={() => router.push('/dashboard/huddles')} /> : null}
+          {isOwner ? <HostTools huddle={huddle} onChanged={async () => void (await reload())} onGone={() => router.push('/dashboard/huddles')} /> : null}
         </section>
 
         <section className="rd-card hl-join">

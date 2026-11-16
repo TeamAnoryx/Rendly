@@ -10,6 +10,11 @@ import { useSparkMedia } from '@/hooks/useSparkMedia';
 import { formatResetsIn, notifySparkLimitsChanged, useSparkLimits } from '@/hooks/useSparkLimits';
 import { useMatchCharge } from '@/hooks/useMatchCharge';
 import ChargeNotice, { ChargeChip, markChargeNoticeSeen, shouldShowChargeNotice } from '@/components/spark/ChargeNotice';
+import { usePathname } from 'next/navigation';
+import { PausedOverlay, useFreezeVideo } from '@/components/call/OngoingCard';
+import { pauseLabelFor } from '@/lib/mediaPause';
+import { useOngoingNotification } from '@/hooks/useOngoingNotification';
+import { consumeResumeParam } from '@/lib/resumeParam';
 import './spark-room.css';
 
 export type SparkRoomProps = {
@@ -65,23 +70,27 @@ function StreamVideo({
   className,
   label,
   onAutoplayBlocked,
+  frozen = false,
 }: {
   stream: MediaStream | null;
   muted: boolean;
   className: string;
   label: string;
   onAutoplayBlocked?: (blocked: boolean) => void;
+  /** Hold the last frame (the other side paused). */
+  frozen?: boolean;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
+  useFreezeVideo(ref, frozen, stream);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     if (el.srcObject !== stream) el.srcObject = stream;
-    if (!stream) return;
+    if (!stream || frozen) return;
     el.play()
       .then(() => onAutoplayBlocked?.(false))
       .catch(() => onAutoplayBlocked?.(true));
-  }, [stream, onAutoplayBlocked]);
+  }, [stream, onAutoplayBlocked, frozen]);
   return <video ref={ref} className={className} autoPlay playsInline muted={muted} aria-label={label} />;
 }
 
@@ -95,6 +104,9 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
     partnerAnonymous: match.partner.anonymous,
   });
   const { partner } = match;
+  const pathname = usePathname() ?? '/dashboard/match';
+  const partnerPausedLabel = pauseLabelFor(media.partnerPaused);
+  const { setPaused } = media;
   const initial = (partner.display_name?.trim()?.[0] ?? '?').toUpperCase();
 
   // ---- limits + deferred charge ------------------------------------------
@@ -240,6 +252,17 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
     const el = remoteVideoRef.current?.querySelector('video');
     el?.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true));
   };
+
+  // ---- ongoing notification / resume ---------------------------------------
+  const live = !endedReason && !media.ended;
+  useOngoingNotification(
+    live ? { title: 'Ongoing Spark', body: `With ${partner.display_name || 'your match'}. Tap to return.`, path: pathname } : null,
+    () => setPaused(false),
+  );
+  // Opened from the ongoing notification (?resume=1): unpause and drop the param.
+  useEffect(() => {
+    if (consumeResumeParam()) setPaused(false);
+  }, [setPaused]);
 
   // ---- actions ------------------------------------------------------------
   const handleSkip = () => {
@@ -436,7 +459,9 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
               className={`sr-remote ${showRemoteVideo ? 'is-on' : ''}`}
               label="Your match's video"
               onAutoplayBlocked={setAudioBlocked}
+              frozen={!!partnerPausedLabel && !ended}
             />
+            {!ended ? <PausedOverlay label={partnerPausedLabel} /> : null}
             {!showRemoteVideo && (
               <div className="sr-placeholder" aria-hidden={ended}>
                 <div className={`sr-avatar ${reduce ? '' : 'is-anim'}`}>
@@ -496,6 +521,16 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
                   aria-label={media.camOn ? 'Turn camera off' : 'Turn camera on'}
                 >
                   <Icon name="video" size={18} />
+                </button>
+                <button
+                  type="button"
+                  className={`sr-ctl ${media.paused ? 'is-off' : 'is-on'}`}
+                  onClick={media.togglePause}
+                  aria-pressed={media.paused}
+                  aria-label={media.paused ? 'Resume' : 'Pause'}
+                  title={media.paused ? 'Resume' : 'Pause camera and mic'}
+                >
+                  <Icon name={media.paused ? 'play' : 'pause'} size={18} />
                 </button>
               </div>
             )}

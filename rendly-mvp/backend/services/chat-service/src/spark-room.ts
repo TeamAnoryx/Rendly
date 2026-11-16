@@ -12,6 +12,7 @@
 
 import type { Socket } from "socket.io";
 import { supabase } from "./supabase-users";
+import { GraceTimers } from "./grace";
 
 const MATCH_WINDOW_MS = 3 * 60 * 60 * 1000;
 const MAX_TEXT = 1000;
@@ -99,18 +100,20 @@ export function normaliseSparkSignal(raw: unknown): SparkSignal | null {
   return null;
 }
 
-export type SparkMedia = { video: boolean; audio: boolean; p2p: boolean };
+export type SparkMedia = { video: boolean; audio: boolean; p2p: boolean; paused: boolean };
 
 /**
  * Validate a spark:media payload: video and audio must be booleans; p2p (the sender's
- * connection is direct rather than relayed) is optional and defaults to false.
+ * connection is direct rather than relayed) and paused (the sender froze their camera and
+ * mic) are optional and default to false.
  */
 export function normaliseSparkMedia(raw: unknown): SparkMedia | null {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
-  const { video, audio, p2p } = raw as { video?: unknown; audio?: unknown; p2p?: unknown };
+  const { video, audio, p2p, paused } = raw as { video?: unknown; audio?: unknown; p2p?: unknown; paused?: unknown };
   if (typeof video !== "boolean" || typeof audio !== "boolean") return null;
   if (p2p !== undefined && typeof p2p !== "boolean") return null;
-  return { video, audio, p2p: p2p === true };
+  if (paused !== undefined && typeof paused !== "boolean") return null;
+  return { video, audio, p2p: p2p === true, paused: paused === true };
 }
 
 /** One socket's place in a match: who the partner is and which two queue rows pair them. */
@@ -119,6 +122,20 @@ type Entry = { socket: Socket; pairing: Pairing };
 
 /** userId -> socket id -> entry, for sockets currently in a Spark room. */
 const roomSockets = new Map<string, Map<string, Entry>>();
+
+/**
+ * Pairings whose user dropped their last socket without leaving (closed tab, switched app).
+ * Keyed by that user's own side of the pairing; the match ends only if the grace runs out.
+ */
+const sparkHolds = new GraceTimers();
+
+function ownSideKey(pairing: Pairing): string {
+  return `${pairing.ownRowId}:${pairing.partnerRowId}`;
+}
+
+function partnerSideKey(pairing: Pairing): string {
+  return `${pairing.partnerRowId}:${pairing.ownRowId}`;
+}
 
 function register(userId: string, socket: Socket, pairing: Pairing): void {
   let byId = roomSockets.get(userId);
@@ -271,7 +288,7 @@ function makeLimiter(max: number): () => boolean {
   };
 }
 
-type Ack = (res: { ok: boolean; message?: string; partner_present?: boolean }) => void;
+type Ack = (res: { ok: boolean; message?: string; partner_present?: boolean; partner_paused?: boolean }) => void;
 
 function ackOf(ack: unknown): Ack {
   return typeof ack === "function" ? (ack as Ack) : () => undefined;
@@ -292,8 +309,9 @@ export function attachSparkRoom(socket: Socket, userId: string): void {
   };
 
   /**
-   * Leave the current pairing. A skip or close ends it for both sides; a disconnect ends it
-   * only when this user has no other socket left in the same pairing.
+   * Leave the current pairing. A skip or close ends it for both sides at once. A disconnect of
+   * this user's last socket in the pairing holds it for the grace window: the partner sees them
+   * paused, and the match ends only if they do not rejoin in time.
    */
   const end = (reason: SparkLeaveReason) => {
     if (!pairing) return;
@@ -301,10 +319,19 @@ export function attachSparkRoom(socket: Socket, userId: string): void {
     const lastSocket = !hasOtherSocketInPairing(userId, socket.id, ended);
     unregister(userId, socket.id);
     pairing = null;
-    if (reason !== "left" || lastSocket) {
-      for (const s of partnerSockets(userId, ended)) s.emit("spark:ended", { reason });
-      void markPairingEnded(ended);
+    if (reason === "left") {
+      if (!lastSocket) return;
+      for (const s of partnerSockets(userId, ended)) s.emit("spark:partner-paused", { reason: "away" });
+      sparkHolds.hold(ownSideKey(ended), () => {
+        for (const s of partnerSockets(userId, ended)) s.emit("spark:ended", { reason: "left" });
+        void markPairingEnded(ended);
+      });
+      return;
     }
+    sparkHolds.cancel(ownSideKey(ended));
+    sparkHolds.cancel(partnerSideKey(ended));
+    for (const s of partnerSockets(userId, ended)) s.emit("spark:ended", { reason });
+    void markPairingEnded(ended);
   };
 
   // Any client-provided partner id is ignored: the server resolves the pair itself.
@@ -334,7 +361,9 @@ export function attachSparkRoom(socket: Socket, userId: string): void {
       register(userId, socket, found);
       const present = partnerSockets(userId, found).length > 0;
       relay("spark:partner-joined", {});
-      reply({ ok: true, partner_present: present });
+      // Back within the grace window: the partner sees this side resume.
+      if (sparkHolds.cancel(ownSideKey(found))) relay("spark:partner-resumed", {});
+      reply({ ok: true, partner_present: present, partner_paused: sparkHolds.isHeld(partnerSideKey(found)) });
     } catch (err) {
       console.error("[spark-room] join failed:", err instanceof Error ? err.message : "unknown");
       reply({ ok: false, message: "Could not open the match room" });

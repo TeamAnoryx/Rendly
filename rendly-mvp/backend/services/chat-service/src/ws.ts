@@ -4,6 +4,7 @@ import { getCurrentUserFromRequest } from "./auth";
 import { isGroupMember, parseConversationId } from "./db";
 import { attachHuddleRoom } from "./huddle-room";
 import { attachSparkRoom } from "./spark-room";
+import { createCallTracker } from "./call-grace";
 
 export type MessageReceivedPayload = {
   id: string;
@@ -24,6 +25,11 @@ export type MessageReceivedPayload = {
 };
 
 let io: Server | null = null;
+
+/** Live 1:1 calls and the 2-minute disconnect grace for them. */
+const calls = createCallTracker((userId, event, payload) => {
+  io?.to(userId).emit(event, payload);
+});
 
 /** Presence: userId -> Set of socket ids (multiple tabs per user). */
 const presenceByUser = new Map<string, Set<string>>();
@@ -109,6 +115,8 @@ export function attachSocketIo(httpServer: HttpServer): Server {
 
     const becameOnline = addPresence(userId, socket.id);
     if (becameOnline && io) io.emit("user:online", { user_id: userId });
+    // Back within the grace window of a call: tell the other side the call resumes.
+    if (becameOnline) calls.userOnline(userId);
 
     // Only parties to a whisper, or members of a group, may join its room (rooms carry message broadcasts).
     socket.on("join:conversation", async (data: { conversation_id?: string; user_id?: string }) => {
@@ -166,6 +174,7 @@ export function attachSocketIo(httpServer: HttpServer): Server {
       const parsed = parseConversationId(convId, calleeId);
       if (!parsed || parsed.type !== "whisper") return;
       const callerId = parsed.otherUserId;
+      calls.accepted(convId, callerId, calleeId);
       socket.to(callerId).emit("call:accepted", {
         conversation_id: convId,
         call_log_id: data?.call_log_id ?? null,
@@ -180,6 +189,7 @@ export function attachSocketIo(httpServer: HttpServer): Server {
       const parsed = parseConversationId(convId, rejecterId);
       if (!parsed || parsed.type !== "whisper") return;
       const otherId = parsed.otherUserId;
+      calls.ended(convId);
       socket.to(otherId).emit("call:rejected", { conversation_id: convId, call_log_id: data?.call_log_id ?? null });
     });
 
@@ -190,6 +200,7 @@ export function attachSocketIo(httpServer: HttpServer): Server {
       const parsed = parseConversationId(convId, enderId);
       if (!parsed || parsed.type !== "whisper") return;
       const otherId = parsed.otherUserId;
+      calls.ended(convId);
       socket.to(otherId).emit("call:ended", {
         conversation_id: convId,
         call_log_id: data?.call_log_id ?? null,
@@ -245,9 +256,21 @@ export function attachSocketIo(httpServer: HttpServer): Server {
       socket.to(parsed.otherUserId).emit("call:screen", { conversation_id: convId, stream_id: streamId });
     });
 
+    // Pause / resume in a live call: the other side shows this person's tile frozen.
+    socket.on("call:pause", (data: { conversation_id?: string; paused?: unknown }) => {
+      const convId = data?.conversation_id;
+      if (!convId || typeof data?.paused !== "boolean" || !calls.isActive(convId)) return;
+      const parsed = parseConversationId(convId, userId);
+      if (!parsed || parsed.type !== "whisper") return;
+      const event = data.paused ? "call:peer-paused" : "call:peer-resumed";
+      socket.to(parsed.otherUserId).emit(event, { conversation_id: convId, user_id: userId, reason: "manual" });
+    });
+
     socket.on("disconnect", () => {
       const wentOffline = removePresence(userId, socket.id);
       if (wentOffline && io) io.emit("user:offline", { user_id: userId });
+      // Hold any live call for the grace window instead of leaving the peer waiting forever.
+      if (wentOffline) calls.userOffline(userId);
     });
   });
 

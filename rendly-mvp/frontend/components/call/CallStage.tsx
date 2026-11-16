@@ -9,6 +9,9 @@ import { getUserCard, otherPartyOf, type UserCard } from '@/services/usersApi';
 import { Icon } from '@/components/shell/Icon';
 import { Avatar } from '@/components/shell/AppShell';
 import { VideoTile } from './VideoTile';
+import { CallMiniBar } from './CallMiniBar';
+import { pauseLabelFor } from '@/lib/mediaPause';
+import { useOngoingNotification } from '@/hooks/useOngoingNotification';
 import './call.css';
 import { withBasePath } from '@/lib/basePath';
 
@@ -60,6 +63,11 @@ export function CallControls({ compact = false, onMinimize }: { compact?: boolea
           <Icon name="screen" />
         </button>
       ) : null}
+      {c.callState === 'active' ? (
+        <button type="button" className={`call-ctl ${c.isPaused ? 'call-ctl--off' : ''}`} onClick={c.togglePause} aria-label={c.isPaused ? 'Resume call' : 'Pause call'} aria-pressed={c.isPaused} title={c.isPaused ? 'Resume' : 'Pause'}>
+          <Icon name={c.isPaused ? 'play' : 'pause'} />
+        </button>
+      ) : null}
       {onMinimize ? (
         <button type="button" className="call-ctl" onClick={onMinimize} aria-label="Minimise call" title="Minimise">
           <Icon name="grid" />
@@ -78,6 +86,8 @@ export function CallMedia({ peer }: { peer: UserCard | null }) {
   const { user } = useCurrentUser();
   const peerName = peer?.username ? `@${peer.username}` : 'Them';
   const sharing = c.screenStream ?? c.remoteScreenStream;
+  const peerPaused = pauseLabelFor(c.peerPaused);
+  const mePaused = c.isPaused ? 'Paused' : null;
   const audioOnly = c.callType === 'audio';
 
   if (sharing) {
@@ -91,8 +101,8 @@ export function CallMedia({ peer }: { peer: UserCard | null }) {
           className="call-tile--screen"
         />
         <div className="call-strip">
-          <VideoTile stream={c.remoteStream} label={peerName} avatarUrl={peer?.avatar_url} />
-          <VideoTile stream={c.localStream} label="You" avatarUrl={user?.avatar_url} muted mirror forceAvatar={c.isVideoOff} />
+          <VideoTile stream={c.remoteStream} label={peerName} avatarUrl={peer?.avatar_url} pausedLabel={peerPaused} />
+          <VideoTile stream={c.localStream} label="You" avatarUrl={user?.avatar_url} muted mirror forceAvatar={c.isVideoOff} pausedLabel={mePaused} />
         </div>
       </div>
     );
@@ -100,9 +110,9 @@ export function CallMedia({ peer }: { peer: UserCard | null }) {
 
   return (
     <div className="call-media">
-      <VideoTile stream={c.remoteStream} label={peerName} avatarUrl={peer?.avatar_url} className="call-tile--main" forceAvatar={audioOnly} />
+      <VideoTile stream={c.remoteStream} label={peerName} avatarUrl={peer?.avatar_url} className="call-tile--main" forceAvatar={audioOnly} pausedLabel={peerPaused} />
       {!audioOnly ? (
-        <VideoTile stream={c.localStream} label="You" avatarUrl={user?.avatar_url} muted mirror className="call-tile--pip" forceAvatar={c.isVideoOff} />
+        <VideoTile stream={c.localStream} label="You" avatarUrl={user?.avatar_url} muted mirror className="call-tile--pip" forceAvatar={c.isVideoOff} pausedLabel={mePaused} />
       ) : null}
     </div>
   );
@@ -121,6 +131,19 @@ export function CallStage() {
   const [elapsed, setElapsed] = useState(0);
   const ringRef = useRef<HTMLAudioElement | null>(null);
   const embedded = pathname.startsWith('/dashboard/match');
+  const peerHandle = peer?.username ? `@${peer.username}` : 'Someone';
+  const callKind = c.callType === 'video' ? 'video' : 'audio';
+
+  // Phone lock / app switch mid-call: a notification brings the user back to the call.
+  useOngoingNotification(
+    c.callState === 'active'
+      ? { title: `Ongoing ${callKind} call`, body: `With ${peerHandle}. Tap to return.`, path: `${pathname || '/dashboard'}` }
+      : null,
+    () => {
+      setMinimized(false);
+      c.setPaused(false);
+    },
+  );
 
   // Errors (offline callee, declined, no camera) become a pop-up.
   useEffect(() => {
@@ -199,14 +222,9 @@ export function CallStage() {
 
   if (minimized) {
     return (
-      <div className="call-mini" role="status">
-        <button type="button" className="call-mini-open" onClick={() => setMinimized(false)} aria-label="Return to call">
-          <span className="rd-badge rd-badge--live">LIVE</span>
-          <span>{peerName}</span>
-          <span className="rd-muted">{formatDuration(elapsed)}</span>
-        </button>
+      <CallMiniBar callType={callKind} peerName={peerName} elapsed={formatDuration(elapsed)} onResume={() => setMinimized(false)}>
         <CallControls compact />
-      </div>
+      </CallMiniBar>
     );
   }
 

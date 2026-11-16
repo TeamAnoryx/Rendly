@@ -39,6 +39,8 @@ import TipHostCard from './room/TipHostCard';
 import PermissionPrompt from './room/PermissionPrompt';
 import TokenEvent, { type TokenEventKind } from './room/TokenEvent';
 import PersonMenu, { PersonMenuTrigger, type PersonMenuItem } from './room/PersonMenu';
+import { PausedOverlay, useFreezeVideo, useFrozenWhile } from '@/components/call/OngoingCard';
+import { applyPauseEvent, pauseLabel, pauseMapFromList, type PauseMap } from '@/lib/mediaPause';
 import './huddle-room.css';
 
 const MAIN_ROOM = 'main';
@@ -65,6 +67,8 @@ type JoinAck = {
   video_slot?: boolean;
   leaders?: Record<string, string>;
   recording?: string | null;
+  /** People in this room who are paused (froze themselves, or reconnecting). */
+  paused?: string[];
 };
 
 /** 75 -> "1:15" */
@@ -122,6 +126,7 @@ function Tile({
   screen,
   camOff,
   micOff,
+  pausedLabel = null,
 }: {
   stream: MediaStream | null;
   name: string;
@@ -132,15 +137,19 @@ function Tile({
   screen?: boolean;
   camOff?: boolean;
   micOff?: boolean;
+  /** "Paused" / "Reconnecting…": the tile holds its last frame under an overlay. */
+  pausedLabel?: string | null;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const frozen = !!pausedLabel;
+  useFreezeVideo(ref, frozen, stream);
   const speaking = useSpeaking(stream, !screen);
   const hasVideo = useHasVideo(stream, !!screen);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     if (el.srcObject !== stream) el.srcObject = stream;
-    if (!stream || !el.paused) return;
+    if (!stream || !el.paused || frozen) return;
     // Mobile browsers can refuse to autoplay unmuted video; retry on the next tap.
     let retry: (() => void) | null = null;
     el.play().catch(() => {
@@ -150,8 +159,8 @@ function Tile({
     return () => {
       if (retry) document.removeEventListener('pointerdown', retry);
     };
-  }, [stream]);
-  const showVideo = hasVideo && !camOff;
+  }, [stream, frozen]);
+  const showVideo = useFrozenWhile(frozen, hasVideo && !camOff);
   return (
     <div className={`hr-tile ${speaking && !micOff ? 'hr-tile--speaking' : ''} ${screen ? 'hr-tile--screen' : ''}`}>
       <video ref={ref} autoPlay playsInline muted={muted} className={mirror ? 'hr-mirror' : ''} style={{ opacity: showVideo ? 1 : 0, objectFit: screen ? 'contain' : 'cover' }} />
@@ -169,6 +178,7 @@ function Tile({
         <span className="hr-tile-label">{name}</span>
         {badge ? <em>{badge}</em> : null}
       </span>
+      <PausedOverlay label={pausedLabel} />
     </div>
   );
 }
@@ -178,11 +188,16 @@ export default function HuddleRoom({
   onLeave,
   onEnd,
   canLeave,
+  paused = false,
+  onTogglePause,
 }: {
   huddle: HuddleDetail;
   onLeave: () => void;
   onEnd?: () => void;
   canLeave: boolean;
+  /** I paused: my mic and camera are frozen for everyone (owned by HuddleSessionProvider). */
+  paused?: boolean;
+  onTogglePause?: () => void;
 }) {
   const huddleId = huddle.id;
   // The host can make someone an admin mid-huddle, so the role follows the roster.
@@ -236,6 +251,10 @@ export default function HuddleRoom({
   const [videoSlot, setVideoSlot] = useState(true);
   /** Who is recording this room, or null. */
   const [recordingBy, setRecordingBy] = useState<string | null>(null);
+  /** Who in this room is paused or reconnecting. */
+  const [pausedPeers, setPausedPeers] = useState<PauseMap>({});
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
 
   const pcs = useRef<Record<string, RTCPeerConnection>>({});
   /** STUN/TURN servers; loaded from the server before joining so peers behind NAT can connect. */
@@ -432,6 +451,9 @@ export default function HuddleRoom({
         setLeaders(res.leaders ?? {});
         setVideoSlot(res.video_slot !== false);
         setRecordingBy(res.recording ?? null);
+        setPausedPeers(pauseMapFromList(res.paused));
+        // A rejoin (reconnect, room move) keeps my pause: tell the room again.
+        if (pausedRef.current) websocket.emit('huddle:pause', { huddle_id: huddleId, room: name, paused: true });
         screenIds.current = { ...(res.screens ?? {}) };
         for (const id of res.peers ?? []) {
           setPeers((cur) => ({ ...cur, [id]: cur[id] ?? { cam: null, screen: null, screenId: null } }));
@@ -494,10 +516,21 @@ export default function HuddleRoom({
     const offs = [
       offStatus,
       websocket.on<{ user_id: string }>('huddle:peer-joined', ({ user_id }) => {
+        // A returning peer (reconnect) builds new connections: drop the stale one first.
+        if (pcs.current[user_id]) dropPeer(user_id);
         setPeers((cur) => ({ ...cur, [user_id]: cur[user_id] ?? { cam: null, screen: null, screenId: null } }));
         connectionFor(user_id);
       }),
-      websocket.on<{ user_id: string }>('huddle:peer-left', ({ user_id }) => dropPeer(user_id)),
+      websocket.on<{ user_id: string }>('huddle:peer-left', ({ user_id }) => {
+        dropPeer(user_id);
+        setPausedPeers((cur) => applyPauseEvent(applyPauseEvent(cur, user_id, 'resumed', 'manual'), user_id, 'resumed'));
+      }),
+      websocket.on<{ user_id: string; reason?: string }>('huddle:peer-paused', ({ user_id, reason }) =>
+        setPausedPeers((cur) => applyPauseEvent(cur, user_id, 'paused', reason)),
+      ),
+      websocket.on<{ user_id: string; reason?: string }>('huddle:peer-resumed', ({ user_id, reason }) =>
+        setPausedPeers((cur) => applyPauseEvent(cur, user_id, 'resumed', reason)),
+      ),
       websocket.on<{ from: string; data: { type?: string; sdp?: string; candidate?: RTCIceCandidateInit } }>('huddle:signal', ({ from, data }) => void handleSignal(from, data)),
       websocket.on<{ from: string; stream_id: string | null }>('huddle:screen', ({ from, stream_id }) => {
         screenIds.current[from] = stream_id;
@@ -569,15 +602,25 @@ export default function HuddleRoom({
   useEffect(() => {
     const s = localRef.current;
     if (!s) return;
-    s.getAudioTracks().forEach((t) => (t.enabled = micOn && canSpeak && !mutedByHost));
-    s.getVideoTracks().forEach((t) => (t.enabled = camOn));
-    // Send no video at all while the camera is off (a disabled track still sends black frames).
-    camOnRef.current = camOn;
+    s.getAudioTracks().forEach((t) => (t.enabled = micOn && canSpeak && !mutedByHost && !paused));
+    s.getVideoTracks().forEach((t) => (t.enabled = camOn && !paused));
+    // Send no video at all while the camera is off or paused (a disabled track still sends black
+    // frames; no track at all leaves the others on my last frame).
+    const sending = camOn && !paused;
+    camOnRef.current = sending;
     const cam = s.getVideoTracks()[0] ?? null;
     Object.values(camSenders.current).forEach((sender) => {
-      void sender.replaceTrack(camOn ? cam : null).catch(() => undefined);
+      void sender.replaceTrack(sending ? cam : null).catch(() => undefined);
     });
-  }, [micOn, camOn, canSpeak, mutedByHost, local]);
+  }, [micOn, camOn, canSpeak, mutedByHost, local, paused]);
+
+  // Tell the room when I pause or resume (not on first render).
+  const announcedPause = useRef(false);
+  useEffect(() => {
+    if (announcedPause.current === paused) return;
+    announcedPause.current = paused;
+    websocket.emit('huddle:pause', { huddle_id: huddleId, room: roomRef.current, paused });
+  }, [paused, huddleId]);
 
   // Roster (names, roles, permissions). Hosts also see the waiting list.
   const loadMembers = useCallback(async () => {
@@ -721,10 +764,10 @@ export default function HuddleRoom({
 
   const tiles = (
     <>
-      <Tile stream={local} name={`${meName} (you)`} avatarUrl={user?.avatar_url} muted mirror camOff={!camOn} micOff={!micLive} badge={role !== 'participant' ? roleLabel(role) : undefined} />
+      <Tile stream={local} name={`${meName} (you)`} avatarUrl={user?.avatar_url} muted mirror camOff={!camOn} micOff={!micLive} badge={role !== 'participant' ? roleLabel(role) : undefined} pausedLabel={paused ? 'Paused' : null} />
       {peerIds.map((id) => {
         const m = members.find((x) => x.user_id === id);
-        return <Tile key={id} stream={peers[id].cam} name={nameOf(id)} avatarUrl={avatarOf(id)} micOff={m?.is_muted === true} badge={m?.role === 'host' || m?.role === 'co_host' ? roleLabel(m.role) : undefined} />;
+        return <Tile key={id} stream={peers[id].cam} name={nameOf(id)} avatarUrl={avatarOf(id)} micOff={m?.is_muted === true} badge={m?.role === 'host' || m?.role === 'co_host' ? roleLabel(m.role) : undefined} pausedLabel={pauseLabel(pausedPeers[id])} />;
       })}
     </>
   );
@@ -792,6 +835,11 @@ export default function HuddleRoom({
               aria-pressed={isRecording}
             >
               <Icon name="record" />
+            </button>
+          ) : null}
+          {onTogglePause ? (
+            <button type="button" className={`rd-icon-btn hr-dock-btn ${paused ? 'hr-dock-btn--off' : ''}`} onClick={onTogglePause} aria-label={paused ? 'Resume' : 'Pause'} title={paused ? 'Resume your camera and mic' : 'Pause your camera and mic'} aria-pressed={paused}>
+              <Icon name={paused ? 'play' : 'pause'} />
             </button>
           ) : null}
           <span className="hr-controls-sep" aria-hidden="true" />

@@ -19,6 +19,7 @@ import {
   hasVideoSlot,
   roomOfUser,
 } from "./breakout-rules";
+import { GraceTimers } from "./grace";
 
 export const MAIN_ROOM = "main";
 const ROOM_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,19}$/;
@@ -40,6 +41,18 @@ const leaders = new Map<string, Map<string, string>>();
 
 /** roomKey -> user recording that room. */
 const recordings = new Map<string, string>();
+
+/** roomKey -> people who paused themselves (camera and mic frozen) in that room. */
+const pausedByUser = new Map<string, Set<string>>();
+
+/**
+ * Seats held after someone's last socket in a room dropped (tab closed, app switched). The
+ * person stays in the room with no sockets until they rejoin or the grace window runs out.
+ */
+const seatHolds = new GraceTimers();
+
+/** The bit of the Socket.IO server the room bookkeeping needs (a fake in tests). */
+export type RoomIo = { to(room: string): { emit(event: string, payload: unknown): unknown } };
 
 function leadersOf(huddleId: string): Record<string, string> {
   return Object.fromEntries(leaders.get(huddleId) ?? []);
@@ -118,7 +131,7 @@ function isUuidLike(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-function addToRoom(roomKey: string, userId: string, socketId: string): void {
+export function addToRoom(roomKey: string, userId: string, socketId: string): void {
   let members = rooms.get(roomKey);
   if (!members) {
     members = new Map();
@@ -145,6 +158,88 @@ function removeFromRoom(roomKey: string, userId: string, socketId: string): bool
   return true;
 }
 
+function holdKey(roomKey: string, userId: string): string {
+  return `${roomKey}|${userId}`;
+}
+
+/** Who is in a room, including people whose seat is held (no sockets). */
+export function membersOf(roomKey: string): string[] {
+  return Array.from(rooms.get(roomKey)?.keys() ?? []);
+}
+
+/** People in a room who are paused: held seats and those who paused themselves. */
+export function pausedIn(roomKey: string): string[] {
+  const members = rooms.get(roomKey);
+  if (!members) return [];
+  const manual = pausedByUser.get(roomKey);
+  return Array.from(members.entries())
+    .filter(([id, sockets]) => sockets.size === 0 || manual?.has(id))
+    .map(([id]) => id);
+}
+
+function setManualPause(roomKey: string, userId: string, paused: boolean): void {
+  let set = pausedByUser.get(roomKey);
+  if (paused) {
+    if (!set) {
+      set = new Set();
+      pausedByUser.set(roomKey, set);
+    }
+    set.add(userId);
+  } else if (set) {
+    set.delete(userId);
+    if (set.size === 0) pausedByUser.delete(roomKey);
+  }
+}
+
+/** Someone is no longer in a room: tell the others and free their screen, recording and video slot. */
+function announceGone(io: RoomIo, roomKey: string, userId: string, before: string[]): void {
+  const cut = roomKey.indexOf(":");
+  const huddleId = roomKey.slice(0, cut);
+  const room = roomKey.slice(cut + 1);
+  screens.get(huddleId)?.delete(userId);
+  setManualPause(roomKey, userId, false);
+  io.to(roomKey).emit("huddle:peer-left", { user_id: userId });
+  if (recordings.get(roomKey) === userId) {
+    recordings.delete(roomKey);
+    io.to(roomKey).emit("huddle:recording", { room, by: null });
+  }
+  // A freed main-room video slot goes to the next person in join order.
+  const after = membersOf(roomKey);
+  for (const id of after) {
+    if (!hasVideoSlot(room, before, id, "participant") && hasVideoSlot(room, after, id, "participant")) {
+      for (const sid of socketsOf(roomKey, id)) io.to(sid).emit("huddle:video-slot", { room, has_slot: true });
+    }
+  }
+}
+
+/**
+ * A socket dropped without leaving. If it was the user's last socket in the room, keep their
+ * seat for the grace window and tell the room they are paused; when the window runs out with
+ * no rejoin, they leave the room as if they had left themselves.
+ */
+export function holdSeat(io: RoomIo, roomKey: string, userId: string, socketId: string): void {
+  const sockets = rooms.get(roomKey)?.get(userId);
+  if (!sockets) return;
+  sockets.delete(socketId);
+  if (sockets.size > 0) return;
+  io.to(roomKey).emit("huddle:peer-paused", { user_id: userId, reason: "away" });
+  seatHolds.hold(holdKey(roomKey, userId), () => {
+    const members = rooms.get(roomKey);
+    if (!members || members.get(userId)?.size !== 0) return; // rejoined or already gone
+    const before = Array.from(members.keys());
+    members.delete(userId);
+    if (members.size === 0) rooms.delete(roomKey);
+    announceGone(io, roomKey, userId, before);
+  });
+}
+
+/** The user rejoined a room while their seat was held: clear the hold. True when one was held. */
+export function resumeSeat(io: RoomIo, roomKey: string, userId: string): boolean {
+  if (!seatHolds.cancel(holdKey(roomKey, userId))) return false;
+  io.to(roomKey).emit("huddle:peer-resumed", { user_id: userId });
+  return true;
+}
+
 /** Attach huddle room handlers to a connected, authenticated socket. */
 export function attachHuddleRoom(io: Server, socket: Socket, userId: string): void {
   // Rooms this socket has joined, so a disconnect can leave them all.
@@ -154,25 +249,11 @@ export function attachHuddleRoom(io: Server, socket: Socket, userId: string): vo
     if (!joined.has(roomKey)) return;
     joined.delete(roomKey);
     socket.leave(roomKey);
-    const before = Array.from(rooms.get(roomKey)?.keys() ?? []);
+    const before = membersOf(roomKey);
     const wentAway = removeFromRoom(roomKey, userId, socket.id);
     if (wentAway) {
-      const cut = roomKey.indexOf(":");
-      const huddleId = roomKey.slice(0, cut);
-      const room = roomKey.slice(cut + 1);
-      screens.get(huddleId)?.delete(userId);
-      io.to(roomKey).emit("huddle:peer-left", { user_id: userId });
-      if (recordings.get(roomKey) === userId) {
-        recordings.delete(roomKey);
-        io.to(roomKey).emit("huddle:recording", { room, by: null });
-      }
-      // A freed main-room video slot goes to the next person in join order.
-      const after = Array.from(rooms.get(roomKey)?.keys() ?? []);
-      for (const id of after) {
-        if (!hasVideoSlot(room, before, id, "participant") && hasVideoSlot(room, after, id, "participant")) {
-          for (const sid of socketsOf(roomKey, id)) io.to(sid).emit("huddle:video-slot", { room, has_slot: true });
-        }
-      }
+      seatHolds.cancel(holdKey(roomKey, userId));
+      announceGone(io, roomKey, userId, before);
     }
   };
 
@@ -209,6 +290,8 @@ export function attachHuddleRoom(io: Server, socket: Socket, userId: string): vo
       return;
     }
     const peers = occupants.filter((id) => id !== userId);
+    // Coming back within the grace window keeps the seat (and its place in the video order).
+    resumeSeat(io, key, userId);
     addToRoom(key, userId, socket.id);
     joined.add(key);
     socket.join(key);
@@ -227,7 +310,18 @@ export function attachHuddleRoom(io: Server, socket: Socket, userId: string): vo
       video_slot: hasVideoSlot(room, Array.from(rooms.get(key)?.keys() ?? []), userId, seat.role),
       leaders: leadersOf(huddleId),
       recording: recordings.get(key) ?? null,
+      paused: pausedIn(key).filter((id) => id !== userId),
     });
+  });
+
+  /** Pause / resume: the person froze their camera and mic; the room shows their tile paused. */
+  socket.on("huddle:pause", (data: { huddle_id?: unknown; room?: unknown; paused?: unknown }) => {
+    if (!isUuidLike(data?.huddle_id) || !validRoom(data?.room) || typeof data?.paused !== "boolean") return;
+    const key = roomKeyFor(data.huddle_id, data.room);
+    if (!joined.has(key)) return;
+    setManualPause(key, userId, data.paused);
+    const event = data.paused ? "huddle:peer-paused" : "huddle:peer-resumed";
+    socket.to(key).emit(event, { user_id: userId, reason: "manual" });
   });
 
   /** Host/co-host: the huddle's rooms and who is in each (for breakouts and peeking). */
@@ -522,8 +616,13 @@ export function attachHuddleRoom(io: Server, socket: Socket, userId: string): vo
     reply({ ok: true });
   });
 
+  // A dropped socket (closed tab, switched app, lost network) holds the seat for the grace
+  // window instead of leaving; only an explicit huddle:leave leaves at once.
   socket.on("disconnect", () => {
-    for (const key of Array.from(joined)) leave(key);
+    for (const key of Array.from(joined)) {
+      joined.delete(key);
+      holdSeat(io, key, userId, socket.id);
+    }
   });
 }
 

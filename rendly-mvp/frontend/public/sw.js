@@ -32,6 +32,22 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const path = (event.notification.data && event.notification.data.url) || '/dashboard';
   const target = appUrl(path);
+  if (event.notification.tag === 'rendly-ongoing') {
+    // An ongoing call or huddle lives in the open tab: focus it rather than reloading it
+    // (a navigation would drop the call). The page resumes itself on the message.
+    event.waitUntil(
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+        const same = wins.filter((w) => new URL(w.url).origin === self.location.origin);
+        const win = same.find((w) => w.focused) || same[0];
+        if (win) {
+          win.postMessage({ type: 'rendly-ongoing-resume', url: path });
+          return win.focus();
+        }
+        return self.clients.openWindow(target);
+      }),
+    );
+    return;
+  }
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
       for (const w of wins) {

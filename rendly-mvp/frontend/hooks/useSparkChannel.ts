@@ -11,7 +11,10 @@ import websocket from '@/services/websocket';
 export type SparkSignalKind = 'offer' | 'answer' | 'ice';
 export type SparkSignal = { kind: SparkSignalKind; data: unknown };
 /** p2p: this side consents to a direct (non-relayed) connection that can expose its network address. */
-export type SparkMediaState = { video: boolean; audio: boolean; p2p: boolean };
+export type SparkMediaState = { video: boolean; audio: boolean; p2p: boolean; paused?: boolean };
+/** Why the partner is paused: they froze their media, or their connection dropped (held 120 s). */
+export type SparkPausePayload = { reason?: string };
+export type SparkJoinAck = { ok?: boolean; partner_present?: boolean; partner_paused?: boolean };
 export type SparkChatPayload = { text: string; client_id: string; at: string };
 export type SparkTypingPayload = { typing: boolean };
 export type SparkEndedPayload = { reason: string };
@@ -23,6 +26,8 @@ type SparkEventMap = {
   'spark:ended': SparkEndedPayload;
   'spark:signal': SparkSignal;
   'spark:media': SparkMediaState;
+  'spark:partner-paused': SparkPausePayload;
+  'spark:partner-resumed': SparkPausePayload;
 };
 
 export type SparkEventName = keyof SparkEventMap;
@@ -48,6 +53,7 @@ let joinRetries = 0;
 let joinRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let queuedSignals: SparkSignal[] = [];
 let queuedMedia: SparkMediaState | null = null;
+const joinListeners = new Set<(ack: SparkJoinAck) => void>();
 
 function flushQueued(): void {
   if (queuedMedia) {
@@ -72,13 +78,14 @@ function requestJoin(): void {
   if (!websocket.isConnected()) return; // onConnected() joins again
   joining = true;
   websocket
-    .emitWithAck<{ ok?: boolean }>('spark:join', {})
+    .emitWithAck<SparkJoinAck>('spark:join', {})
     .then((res) => {
       joining = false;
       if (res?.ok) {
         joined = true;
         joinRetries = 0;
         flushQueued();
+        joinListeners.forEach((cb) => cb(res));
         return;
       }
       throw new Error('join refused');
@@ -154,6 +161,13 @@ export const sparkChannel = {
   },
   on<E extends SparkEventName>(event: E, cb: (payload: SparkEventMap[E]) => void): () => void {
     return websocket.on<SparkEventMap[E]>(event, cb);
+  },
+  /** Fires with the acknowledgement of every successful spark:join (e.g. partner_paused). */
+  onJoined(cb: (ack: SparkJoinAck) => void): () => void {
+    joinListeners.add(cb);
+    return () => {
+      joinListeners.delete(cb);
+    };
   },
   /** Fires with `true` whenever the socket (re)connects. */
   onConnected(cb: () => void): () => void {
