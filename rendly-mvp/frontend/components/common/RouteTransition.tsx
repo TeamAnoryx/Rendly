@@ -9,9 +9,13 @@ export const MIN_VISIBLE_MS = 300;
 /** Hard cap: the loader never blocks the screen longer than this, even if a page stalls. */
 export const MAX_VISIBLE_MS = 5000;
 
-/** True for a plain left-click on an internal link that leads to a different page. */
+/**
+ * True for a plain left-click on an internal link that leads to a different page.
+ * Read in the capture phase: next/link calls preventDefault() before a bubbling listener runs,
+ * so `defaultPrevented` cannot be used to skip clicks here.
+ */
 export function isInternalNavigation(event: MouseEvent, anchor: HTMLAnchorElement, currentPath: string): boolean {
-  if (event.defaultPrevented || event.button !== 0) return false;
+  if (event.button !== 0) return false;
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return false;
   if (anchor.target && anchor.target !== '_self') return false;
   if (anchor.hasAttribute('download')) return false;
@@ -23,6 +27,38 @@ export function isInternalNavigation(event: MouseEvent, anchor: HTMLAnchorElemen
   }
   if (url.origin !== window.location.origin) return false;
   return url.pathname !== currentPath;
+}
+
+/** Next paint, or 60 ms if frames are paused (background tab), whichever comes first. */
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 60);
+    requestAnimationFrame(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+/** A promise that gives up after `ms`, so one slow font or stylesheet cannot hold the loader. */
+function withTimeout(p: Promise<unknown>, ms: number): Promise<void> {
+  return Promise.race([p.then(() => undefined), new Promise<void>((resolve) => setTimeout(resolve, ms))]);
+}
+
+/** Resolves when every <link rel="stylesheet"> on the page has loaded (or failed). */
+export function stylesheetsReady(root: Document = document): Promise<void> {
+  const pending = Array.from(root.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')).filter(
+    (link) => !link.sheet,
+  );
+  return Promise.all(
+    pending.map(
+      (link) =>
+        new Promise<void>((resolve) => {
+          link.addEventListener('load', () => resolve(), { once: true });
+          link.addEventListener('error', () => resolve(), { once: true });
+        }),
+    ),
+  ).then(() => undefined);
 }
 
 /**
@@ -52,9 +88,9 @@ export default function RouteTransition() {
       setVisible(true);
       capTimer.current = setTimeout(() => setVisible(false), MAX_VISIBLE_MS);
     };
-    document.addEventListener('click', onClick);
+    document.addEventListener('click', onClick, true);
     return () => {
-      document.removeEventListener('click', onClick);
+      document.removeEventListener('click', onClick, true);
       clearTimers();
     };
   }, []);
@@ -68,9 +104,12 @@ export default function RouteTransition() {
       const remaining = Math.max(0, MIN_VISIBLE_MS - (Date.now() - shownAt.current));
       hideTimer.current = setTimeout(() => setVisible(false), remaining);
     };
-    const fonts = typeof document !== 'undefined' ? document.fonts?.ready : undefined;
-    if (fonts) fonts.then(reveal, reveal);
-    else reveal();
+    // Next adds the new route's stylesheets around the commit: wait two frames, then for every
+    // stylesheet and the fonts, so the page is never shown unstyled.
+    nextFrame()
+      .then(nextFrame)
+      .then(() => withTimeout(Promise.all([stylesheetsReady(), document.fonts?.ready ?? Promise.resolve()]), 3000))
+      .then(reveal, reveal);
     return () => {
       cancelled = true;
     };
