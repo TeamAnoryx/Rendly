@@ -393,6 +393,7 @@ export async function createHuddle(createdBy: string, input: CreateHuddleInput):
     allow_self_exit: input.allow_self_exit,
     rewards_enabled: input.rewards_enabled,
     rewards_receive_enabled: input.rewards_receive_enabled,
+    tips_enabled: input.tips_enabled,
     show_waitlist_count: input.show_waitlist_count,
   };
   const { data, error } = await client.from("huddles").insert(row).select("*").single();
@@ -762,6 +763,7 @@ export type HuddleSettingsPatch = Partial<{
   allow_self_exit: boolean;
   rewards_enabled: boolean;
   rewards_receive_enabled: boolean;
+  tips_enabled: boolean;
   show_waitlist_count: boolean;
 }>;
 

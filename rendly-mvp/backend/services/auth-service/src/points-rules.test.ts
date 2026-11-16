@@ -160,3 +160,19 @@ describe("parseIdempotencyKey", () => {
     expect(parseIdempotencyKey(raw).ok).toBe(false);
   });
 });
+
+describe("validateHuddleTipBody", () => {
+  const { validateHuddleTipBody } = require("./points-rules") as typeof import("./points-rules");
+
+  test("accepts an amount with an optional note", () => {
+    expect(validateHuddleTipBody({ amount: 25, note: "great talk" })).toEqual({ ok: true, value: { amount: 25, note: "great talk" } });
+    expect(validateHuddleTipBody({ amount: 1 })).toEqual({ ok: true, value: { amount: 1, note: null } });
+  });
+
+  test("rejects amounts outside 1..1000 and non-numbers", () => {
+    expect(validateHuddleTipBody({ amount: 0 }).ok).toBe(false);
+    expect(validateHuddleTipBody({ amount: 1001 }).ok).toBe(false);
+    expect(validateHuddleTipBody({ amount: "5" }).ok).toBe(false);
+    expect(validateHuddleTipBody(null).ok).toBe(false);
+  });
+});

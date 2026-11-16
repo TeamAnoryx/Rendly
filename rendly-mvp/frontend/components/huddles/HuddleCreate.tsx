@@ -69,6 +69,7 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
   const [showWaitlistCount, setShowWaitlistCount] = useState(false);
   const [rewardsGive, setRewardsGive] = useState(true);
   const [rewardsReceive, setRewardsReceive] = useState(false);
+  const [tipsEnabled, setTipsEnabled] = useState(true);
   const [intents, setIntents] = useState<string[]>([]);
   const [intentDraft, setIntentDraft] = useState('');
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -94,25 +95,44 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
     };
   }, []);
 
-  const addIntent = useCallback(() => {
-    const tag = normaliseIntent(intentDraft);
-    if (!tag) return;
+  /**
+   * Commits the typed intent and returns the resulting list, or null when it is invalid.
+   * Used by Enter, comma, the Add button, leaving the field and submit, so touch keyboards
+   * (whose Enter or comma may not fire a usable keydown) can always add an intent.
+   */
+  const addIntent = useCallback((raw: string = intentDraft): string[] | null => {
+    const tag = normaliseIntent(raw);
+    if (!tag) {
+      setIntentDraft('');
+      return intents;
+    }
     if (!INTENT_PATTERN.test(tag)) {
       setSubmitError('Intents use lowercase letters, digits and hyphens (30 characters at most)');
-      return;
+      return null;
     }
     if (intents.includes(tag)) {
       setIntentDraft('');
-      return;
+      return intents;
     }
     if (intents.length >= MAX_INTENTS) {
       setSubmitError(`A huddle can have at most ${MAX_INTENTS} intents`);
+      return null;
+    }
+    const next = [...intents, tag];
+    setSubmitError(null);
+    setIntents(next);
+    setIntentDraft('');
+    return next;
+  }, [intentDraft, intents]);
+
+  /** Touch keyboards often insert the comma instead of reporting it as a key: commit on input. */
+  const onIntentChange = (value: string) => {
+    if (/[,\n]/.test(value)) {
+      addIntent(value.replace(/[,\n]/g, ''));
       return;
     }
-    setSubmitError(null);
-    setIntents([...intents, tag]);
-    setIntentDraft('');
-  }, [intentDraft, intents]);
+    setIntentDraft(value);
+  };
 
   const pickThumb = async (file: File | undefined) => {
     if (fileRef.current) fileRef.current.value = '';
@@ -142,6 +162,9 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
     setSubmitError(null);
     const trimmedTitle = title.trim().replace(/^@/, '');
     if (!trimmedTitle) return setSubmitError('Give your huddle a name');
+    // An intent still sitting in the field (no Enter on a touch keyboard) is part of the huddle.
+    const finalIntents = intentDraft.trim() ? addIntent() : intents;
+    if (!finalIntents) return;
     if (durationMinutes < 1 || durationMinutes > 30) return setSubmitError('Duration must be between 1 and 30 minutes');
     let scheduledAt: string | null = null;
     if (type !== 'instant' && date && time) {
@@ -164,7 +187,8 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
       show_waitlist_count: waitingRoom && showWaitlistCount,
         rewards_enabled: rewardsGive,
         rewards_receive_enabled: rewardsReceive,
-        intents,
+        tips_enabled: tipsEnabled,
+        intents: finalIntents,
         invitee_ids: inviteeIds,
       });
       let thumbError: string | null = null;
@@ -283,16 +307,31 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
               id="hc-intent"
               className="rd-input hc-intent-input"
               value={intentDraft}
-              onChange={(e) => setIntentDraft(e.target.value)}
+              enterKeyHint="done"
+              autoCapitalize="none"
+              autoCorrect="off"
+              onChange={(e) => onIntentChange(e.target.value)}
               onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing) return;
                 if (e.key === 'Enter' || e.key === ',') {
                   e.preventDefault();
                   addIntent();
                 }
               }}
-              placeholder="#ai, #design… press Enter"
+              onBlur={() => {
+                if (intentDraft.trim()) addIntent();
+              }}
+              placeholder="#ai, #design…"
               disabled={intents.length >= MAX_INTENTS}
             />
+            <button
+              type="button"
+              className="rd-btn rd-btn--sm hc-intent-add"
+              onClick={() => addIntent()}
+              disabled={!intentDraft.trim() || intents.length >= MAX_INTENTS}
+            >
+              <Icon name="plus" size={14} /> Add
+            </button>
           </div>
 
           {connections.length ? (
@@ -356,8 +395,9 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
 
           <span className="rd-label">Rewards</span>
           <div className="hc-switches hc-rewards">
-            <Switch checked={rewardsGive} onChange={setRewardsGive} title="Give rewards" hint="Free Rendly Tokens for quizzes and best answers (not taken from you)." />
-            <Switch checked={rewardsReceive} onChange={setRewardsReceive} title="Send tokens" hint="Pay participants Rendly Tokens from your own balance." />
+            <Switch checked={rewardsGive} onChange={setRewardsGive} title="Give free rewards" hint="Free Rendly Tokens for quizzes and best answers (not taken from you)." />
+            <Switch checked={rewardsReceive} onChange={setRewardsReceive} title="Pay participants" hint="Send Rendly Tokens from your own balance to people in the room." />
+            <Switch checked={tipsEnabled} onChange={setTipsEnabled} title="Receive tokens" hint="Participants can send you Rendly Tokens during the huddle." />
           </div>
         </div>
       </div>

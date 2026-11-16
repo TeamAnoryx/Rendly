@@ -139,6 +139,28 @@ describe("resolveOAuthSignIn", () => {
     });
   });
 
+  test("relinks LinkedIn when the same verified email arrives with a new id (new LinkedIn app)", () => {
+    const r = resolveOAuthSignIn({
+      provider: "linkedin",
+      providerId: "li-new-app",
+      verifiedEmail: "jane@acme.io",
+      byProviderId: null,
+      byEmail: [account({ linkedin_id: "li-old-app", email_verified: true })],
+    });
+    expect(r).toEqual({ action: "link", userId: "u1", clearPassword: false });
+  });
+
+  test("LinkedIn without a verified email still never relinks", () => {
+    const r = resolveOAuthSignIn({
+      provider: "linkedin",
+      providerId: "li-new-app",
+      verifiedEmail: null,
+      byProviderId: null,
+      byEmail: [],
+    });
+    expect(r).toEqual({ action: "create", email: null });
+  });
+
   test("conflict when several legacy accounts share the email", () => {
     const r = resolveOAuthSignIn({
       provider: "github",

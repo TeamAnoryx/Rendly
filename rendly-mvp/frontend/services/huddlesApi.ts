@@ -1,5 +1,23 @@
 import { authFetch } from '@/lib/api';
 
+/** STUN fallback when the huddle ICE config cannot be loaded. */
+export const DEFAULT_HUDDLE_ICE_SERVERS: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302'] }];
+
+/**
+ * STUN/TURN servers for a huddle's video mesh. TURN relays video when two people cannot reach each
+ * other directly (mobile networks, strict routers). Falls back to STUN only if the call fails.
+ */
+export async function getHuddleIceServers(huddleId: string): Promise<RTCIceServer[]> {
+  try {
+    const res = await authFetch(`/api/huddles/${encodeURIComponent(huddleId)}/ice`);
+    if (!res.ok) return DEFAULT_HUDDLE_ICE_SERVERS;
+    const data = (await res.json()) as { iceServers?: unknown };
+    return Array.isArray(data.iceServers) && data.iceServers.length ? (data.iceServers as RTCIceServer[]) : DEFAULT_HUDDLE_ICE_SERVERS;
+  } catch {
+    return DEFAULT_HUDDLE_ICE_SERVERS;
+  }
+}
+
 export type HuddleType = 'public' | 'private' | 'instant';
 
 export type HuddleListItem = {
@@ -28,6 +46,8 @@ export type HuddleListItem = {
   rewards_enabled?: boolean;
   /** Host can send Rendly Tokens from their own balance (coin). */
   rewards_receive_enabled?: boolean;
+  /** Participants can send Rendly Tokens to the host. */
+  tips_enabled?: boolean;
   cancelled_at?: string | null;
   /** Last host edit of the details. */
   edited_at?: string | null;
@@ -107,6 +127,7 @@ export type CreateHuddlePayload = {
   allow_self_exit?: boolean;
   rewards_enabled?: boolean;
   rewards_receive_enabled?: boolean;
+  tips_enabled?: boolean;
   show_waitlist_count?: boolean;
 };
 
@@ -194,6 +215,7 @@ export async function createHuddle(payload: CreateHuddlePayload): Promise<Create
       ...(payload.allow_self_exit !== undefined && { allow_self_exit: payload.allow_self_exit }),
       ...(payload.rewards_enabled !== undefined && { rewards_enabled: payload.rewards_enabled }),
       ...(payload.rewards_receive_enabled !== undefined && { rewards_receive_enabled: payload.rewards_receive_enabled }),
+      ...(payload.tips_enabled !== undefined && { tips_enabled: payload.tips_enabled }),
       ...(payload.show_waitlist_count !== undefined && { show_waitlist_count: payload.show_waitlist_count }),
     }),
   });
@@ -301,6 +323,7 @@ export type HuddleSettingsPatch = Partial<{
   allow_self_exit: boolean;
   rewards_enabled: boolean;
   rewards_receive_enabled: boolean;
+  tips_enabled: boolean;
   show_waitlist_count: boolean;
 }>;
 

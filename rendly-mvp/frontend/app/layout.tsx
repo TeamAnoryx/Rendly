@@ -3,13 +3,15 @@ import { Inter } from 'next/font/google';
 import '@/styles/globals.css';
 import '@/styles/rendly-theme.css';
 import LoadingProviderClient from '@/components/common/LoadingProviderClient';
+import RouteTransition from '@/components/common/RouteTransition';
 import JsonLd from '@/components/seo/JsonLd';
 import { siteConfig } from '@/lib/site';
 
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-sans',
-  display: 'swap',
+  // 'block' holds text for a moment instead of flashing the fallback font, then swapping.
+  display: 'block',
 });
 
 export const viewport: Viewport = {
@@ -63,6 +65,7 @@ export default function RootLayout({
       </head>
       <body className="bg-background text-foreground antialiased">
         <LoadingProviderClient>{children}</LoadingProviderClient>
+        <RouteTransition />
       </body>
     </html>
   );

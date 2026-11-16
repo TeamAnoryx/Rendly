@@ -46,6 +46,7 @@ const PATHS: Record<string, React.ReactNode> = {
   grid: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" /></>,
   door: <><path d="M13 4h5a2 2 0 0 1 2 2v14.5H4V6a2 2 0 0 1 2-2h3" /><path d="M13 4v16.5M9.5 12h.01" /></>,
   eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
+  compass: <><circle cx="12" cy="12" r="9.5" /><path d="m15.8 8.2-2.1 5.5-5.5 2.1 2.1-5.5Z" /></>,
   globe: <><circle cx="12" cy="12" r="9.5" /><path d="M2.5 12h19M12 2.5a14.5 14.5 0 0 1 0 19M12 2.5a14.5 14.5 0 0 0 0 19" /></>,
   lock: <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11" /></>,
   shield: <><path d="M12 2.8 4.5 5.6v6.1c0 4.6 3.1 8 7.5 9.5 4.4-1.5 7.5-4.9 7.5-9.5V5.6L12 2.8Z" /><path d="m8.8 12 2.2 2.2 4.2-4.4" /></>,

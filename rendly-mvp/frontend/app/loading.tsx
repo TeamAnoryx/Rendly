@@ -1,9 +1,6 @@
-import { PageSkeleton } from '@/components/common/SkeletonLoader';
+import { RouteLoader } from '@/components/common/RouteLoader';
 
-/**
- * Instant skeleton at 0ms on route load. No blank page.
- * Spinner (DelayedLoader) is shown only after 300ms if context isLoading is true.
- */
+/** Branded full-screen loader while a route loads; styled inline so it never flashes unstyled. */
 export default function Loading() {
-  return <PageSkeleton />;
+  return <RouteLoader />;
 }

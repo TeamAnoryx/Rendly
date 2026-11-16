@@ -13,6 +13,8 @@ import {
   updateHuddleSettings,
   type HuddleDetail,
   type HuddleMember,
+  DEFAULT_HUDDLE_ICE_SERVERS,
+  getHuddleIceServers,
 } from '@/services/huddlesApi';
 import {
   awardPoints,
@@ -32,10 +34,10 @@ import { TokenAmount, TokenCoin } from '@/components/brand/TokenCoin';
 import RoomsPanel from './room/RoomsPanel';
 import { ADMIN_ROOM, canManageRoom, ledRoom, matchesPerson, roleLabel, roomLabel } from './room/roomRules';
 import { recordingFileName, useRoomRecorder, type RecordSource } from '@/hooks/useRoomRecorder';
+import TipHostCard from './room/TipHostCard';
 import './huddle-room.css';
 
 const MAIN_ROOM = 'main';
-const ICE_SERVERS: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302'] }];
 const MEMBERS_POLL_MS = 5000;
 const ROOM_NAME = /^[a-z0-9][a-z0-9-]{0,19}$/;
 
@@ -43,7 +45,7 @@ type Role = 'host' | 'co_host' | 'participant';
 type Peer = { cam: MediaStream | null; screen: MediaStream | null; screenId: string | null };
 type ChatLine = { id: string; from: string; text: string; at: string; tokens?: { to: string; amount: number } };
 type Panel = 'people' | 'chat' | 'rooms' | 'host' | null;
-type RewardFlags = { rewards_enabled: boolean; rewards_receive_enabled: boolean };
+type RewardFlags = { rewards_enabled: boolean; rewards_receive_enabled: boolean; tips_enabled: boolean };
 const SEND_MIN = 1;
 const SEND_MAX = 1000;
 const SEND_NOTE_MAX = 140;
@@ -134,7 +136,16 @@ function Tile({
     const el = ref.current;
     if (!el) return;
     if (el.srcObject !== stream) el.srcObject = stream;
-    if (stream && el.paused) el.play().catch(() => undefined);
+    if (!stream || !el.paused) return;
+    // Mobile browsers can refuse to autoplay unmuted video; retry on the next tap.
+    let retry: (() => void) | null = null;
+    el.play().catch(() => {
+      retry = () => void el.play().catch(() => undefined);
+      document.addEventListener('pointerdown', retry, { once: true });
+    });
+    return () => {
+      if (retry) document.removeEventListener('pointerdown', retry);
+    };
   }, [stream]);
   const showVideo = hasVideo && !camOff;
   return (
@@ -181,6 +192,11 @@ export default function HuddleRoom({
   const [room, setRoom] = useState(MAIN_ROOM);
   const [local, setLocal] = useState<MediaStream | null>(null);
   const [screen, setScreen] = useState<MediaStream | null>(null);
+  /** Whether this browser can capture the screen at all (iPhone/iPad and most phone browsers cannot). */
+  const [canCapture, setCanCapture] = useState(true);
+  useEffect(() => {
+    setCanCapture(!!navigator.mediaDevices && 'getDisplayMedia' in navigator.mediaDevices);
+  }, []);
   const [micOn, setMicOn] = useState(false);
   const [camOn, setCamOn] = useState(false);
   const [mutedByHost, setMutedByHost] = useState(false);
@@ -193,6 +209,7 @@ export default function HuddleRoom({
   const [rewardFlags, setRewardFlags] = useState<RewardFlags>({
     rewards_enabled: huddle.rewards_enabled !== false,
     rewards_receive_enabled: huddle.rewards_receive_enabled === true,
+    tips_enabled: huddle.tips_enabled !== false,
   });
   const [unreadChat, setUnreadChat] = useState(0);
   const [draft, setDraft] = useState('');
@@ -206,6 +223,9 @@ export default function HuddleRoom({
   const [recordingBy, setRecordingBy] = useState<string | null>(null);
 
   const pcs = useRef<Record<string, RTCPeerConnection>>({});
+  /** STUN/TURN servers; loaded from the server before joining so peers behind NAT can connect. */
+  const iceServersRef = useRef<RTCIceServer[]>(DEFAULT_HUDDLE_ICE_SERVERS);
+  const iceLoaded = useRef<Promise<void> | null>(null);
   const pendingIce = useRef<Record<string, RTCIceCandidateInit[]>>({});
   const screenIds = useRef<Record<string, string | null>>({});
   const streamsByPeer = useRef<Record<string, Map<string, MediaStream>>>({});
@@ -288,7 +308,7 @@ export default function HuddleRoom({
     (id: string): RTCPeerConnection => {
       const existing = pcs.current[id];
       if (existing) return existing;
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       pcs.current[id] = pc;
       const l = localRef.current;
       if (l) l.getTracks().forEach((t) => pc.addTrack(t, l));
@@ -313,8 +333,16 @@ export default function HuddleRoom({
       pc.onnegotiationneeded = () => {
         if (pc.signalingState === 'stable' && (pc.localDescription || (myId && myId < id))) void renegotiate(id);
       };
+      // A failed path (often NAT on mobile networks) gets one ICE restart before the peer is dropped.
+      let restarted = false;
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'failed') dropPeer(id);
+        if (pc.connectionState !== 'failed') return;
+        if (!restarted && typeof pc.restartIce === 'function') {
+          restarted = true;
+          pc.restartIce();
+          return;
+        }
+        dropPeer(id);
       };
       return pc;
     },
@@ -357,6 +385,10 @@ export default function HuddleRoom({
     async (name: string): Promise<boolean> => {
       if (!websocket.isConnected()) return false;
       try {
+        iceLoaded.current ??= getHuddleIceServers(huddleId).then((servers) => {
+          iceServersRef.current = servers;
+        });
+        await iceLoaded.current;
         const res = await websocket.emitWithAck<JoinAck>('huddle:join', { huddle_id: huddleId, room: name });
         if (!res?.ok) {
           setNotice(res?.message ?? 'Could not join the room');
@@ -699,7 +731,7 @@ export default function HuddleRoom({
           <button type="button" className={`rd-icon-btn hr-dock-btn ${camOn ? '' : 'hr-dock-btn--off'}`} disabled={!local || !videoSlot} onClick={() => setCamOn((v) => !v)} aria-label="Camera" title={videoSlot ? 'Camera' : 'The main room is full for video. Audio and chat only, or join a breakout room.'} aria-pressed={camOn}>
             <Icon name={camOn ? 'video' : 'video-off'} />
           </button>
-          <button type="button" className={`rd-icon-btn hr-dock-btn ${screen ? 'rd-icon-btn--on hr-dock-btn--on' : ''}`} disabled={!canShare} onClick={() => void startShare()} aria-label="Share screen" title={canShare ? 'Share screen' : 'Ask the host for permission to share'} aria-pressed={!!screen}>
+          <button type="button" className={`rd-icon-btn hr-dock-btn ${screen ? 'rd-icon-btn--on hr-dock-btn--on' : ''}`} disabled={!canShare || !canCapture} onClick={() => void startShare()} aria-label="Share screen" title={!canCapture ? "Screen sharing isn't supported by this browser" : canShare ? 'Share screen' : 'Ask the host for permission to share'} aria-pressed={!!screen}>
             <Icon name="screen" />
           </button>
           {canManageHere ? (
@@ -854,6 +886,7 @@ function PeoplePanel({
   const canSendTokens = isHost && flags.rewards_receive_enabled;
   const waiting = members.filter((m) => !m.admitted);
   const inRoom = members.filter((m) => m.admitted);
+  const hostMember = inRoom.find((m) => m.role === 'host') ?? null;
   const [query, setQuery] = useState('');
   const searching = query.trim().length > 0;
   const shown = inRoom.filter((m) => matchesPerson(query, m.display_name, m.username));
@@ -949,6 +982,9 @@ function PeoplePanel({
   return (
     <div className="hr-people rd-scroll">
       {err ? <p className="hr-err">{err}</p> : null}
+      {!isHost && flags.tips_enabled && hostMember && hostMember.user_id !== myId ? (
+        <TipHostCard huddleId={huddle.id} room={room} hostId={hostMember.user_id} hostName={name(hostMember)} />
+      ) : null}
       {isManager && waiting.length > 0 ? (
         <>
           <div className="hr-waiting-head">
@@ -1168,9 +1204,10 @@ function HostSettings({ huddle, isHost, flags, onFlagsChange }: { huddle: Huddle
     allow_self_exit: huddle.allow_self_exit !== false,
     rewards_enabled: flags.rewards_enabled,
     rewards_receive_enabled: flags.rewards_receive_enabled,
+    tips_enabled: flags.tips_enabled,
   });
   const [err, setErr] = useState<string | null>(null);
-  const isRewardKey = (key: keyof typeof state): key is keyof RewardFlags => key === 'rewards_enabled' || key === 'rewards_receive_enabled';
+  const isRewardKey = (key: keyof typeof state): key is keyof RewardFlags => key === 'rewards_enabled' || key === 'rewards_receive_enabled' || key === 'tips_enabled';
   const toggle = async (key: keyof typeof state) => {
     if (!isHost) return;
     const next = !state[key];
@@ -1187,8 +1224,9 @@ function HostSettings({ huddle, isHost, flags, onFlagsChange }: { huddle: Huddle
   const rows: { key: keyof typeof state; title: string; hint: string }[] = [
     { key: 'waiting_room', title: 'Waiting room', hint: 'You admit each person before they enter.' },
     { key: 'allow_self_exit', title: 'People can leave freely', hint: 'Off: you control entry and exit, including breakout rooms.' },
-    { key: 'rewards_enabled', title: 'Give rewards', hint: 'Free Rendly Tokens for quizzes and best answers (not taken from you).' },
-    { key: 'rewards_receive_enabled', title: 'Send tokens', hint: 'Pay participants Rendly Tokens from your own balance.' },
+    { key: 'rewards_enabled', title: 'Give free rewards', hint: 'Free Rendly Tokens for quizzes and best answers (not taken from you).' },
+    { key: 'rewards_receive_enabled', title: 'Pay participants', hint: 'Send Rendly Tokens from your own balance to people in the room.' },
+    { key: 'tips_enabled', title: 'Receive tokens', hint: 'Participants can send you Rendly Tokens during the huddle.' },
   ];
   return (
     <div className="hr-settings rd-scroll">

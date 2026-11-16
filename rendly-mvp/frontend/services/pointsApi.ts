@@ -168,6 +168,20 @@ export async function sendHuddleTokens(huddleId: string, input: HuddleSendTokens
   return data ?? {};
 }
 
+/** A participant sends Rendly Tokens to the huddle host from their own balance. */
+export async function tipHuddleHost(
+  huddleId: string,
+  input: { amount: number; note?: string | null; idempotency_key?: string },
+): Promise<{ sent?: number; transfer_id?: string }> {
+  const res = await authFetch(`/api/huddles/${encodeURIComponent(huddleId)}/tip-host`, {
+    method: 'POST',
+    headers: { ...JSON_HEADERS, 'Idempotency-Key': input.idempotency_key ?? newIdempotencyKey() },
+    body: JSON.stringify({ amount: input.amount, note: input.note ?? null }),
+  });
+  const data = await readJson<{ sent?: number; transfer_id?: string } | null>(res, 'Could not send Rendly Tokens');
+  return data ?? {};
+}
+
 /** Tell the shell (and any open cards) to re-fetch the balance. No-op during SSR. */
 export function emitPointsChanged(): void {
   if (typeof window === 'undefined') return;

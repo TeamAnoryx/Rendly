@@ -142,7 +142,7 @@ function SheetBody({ mode, anonymous, note, matchAny, onMatchAnyChange, onClose,
   const motionProps = reduce
     ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
     : phone
-      ? { initial: { y: '100%' }, animate: { y: 0 }, exit: { y: '100%' } }
+      ? { initial: { y: '-100%' }, animate: { y: 0 }, exit: { y: '-100%' } }
       : {
           initial: { opacity: 0, scale: 0.96, x: -12 },
           animate: { opacity: 1, scale: 1, x: 0 },

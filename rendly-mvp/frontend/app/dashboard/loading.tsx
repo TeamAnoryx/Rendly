@@ -1,9 +1,6 @@
-import { DashboardSkeleton } from '@/components/common/SkeletonLoader';
+import { RouteLoader } from '@/components/common/RouteLoader';
 
-/**
- * Shown inside the app shell while a dashboard route segment loads: same layout as Home,
- * so the swap to real content does not jump.
- */
+/** Loader inside the app shell while a dashboard page loads, so the rail stays in place. */
 export default function DashboardLoading() {
-  return <DashboardSkeleton />;
+  return <RouteLoader inline />;
 }

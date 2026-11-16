@@ -119,11 +119,13 @@ import {
   getPointsHistory,
   getPointsSummary,
   huddleSendTokens,
+  huddleTipHost,
   transferTokens,
   type HuddleSendOutcome,
+  type HuddleTipOutcome,
   type TransferFailure,
 } from "./points";
-import { parseIdempotencyKey, validateHuddleSendBody, validateTransferBody } from "./points-rules";
+import { parseIdempotencyKey, validateHuddleSendBody, validateHuddleTipBody, validateTransferBody } from "./points-rules";
 import { isPaidIntentSource, parseIntentSort, validateCreateIntentBody, validateLocationBody, type IntentSource } from "./intents-rules";
 import {
   clearUserLocation,
@@ -2271,7 +2273,7 @@ app.patch("/api/huddles/:id/settings", async (req, res) => {
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
     const patch: HuddleSettingsPatch = {};
-    for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled", "rewards_receive_enabled", "show_waitlist_count"] as const) {
+    for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled", "rewards_receive_enabled", "tips_enabled", "show_waitlist_count"] as const) {
       if (body[key] === undefined) continue;
       if (typeof body[key] !== "boolean") {
         res.status(400).json({ message: `${key} must be true or false` });
@@ -2777,6 +2779,103 @@ app.post("/api/huddles/:id/send-tokens", tokenLimiter, async (req, res) => {
   } catch (err) {
     console.error("POST /api/huddles/:id/send-tokens error:", err);
     res.status(500).json({ message: "Failed to send tokens" });
+  }
+});
+
+const HUDDLE_TIP_RESPONSES: Record<Exclude<HuddleTipOutcome, "ok">, [number, string]> = {
+  not_found: [404, "Huddle not found"],
+  is_host: [400, "You are the host of this huddle"],
+  tips_off: [403, "The host is not receiving tokens in this huddle"],
+  not_in_room: [409, "Join the huddle to send tokens to the host"],
+  bad_amount: [400, "Send between 1 and 1000 Rendly Tokens"],
+  bad_note: [400, "The note must be at most 140 characters"],
+  bad_input: [400, "Invalid request"],
+  insufficient: [409, "You do not have enough Rendly Tokens"],
+  duplicate: [409, "This send was already made"],
+};
+
+/**
+ * POST /api/huddles/:id/tip-host – a participant sends Rendly Tokens to the host from their own
+ * balance. Body: { amount, note? }. 201 { sent, transfer_id }. Idempotency-Key works as for send-tokens.
+ */
+app.post("/api/huddles/:id/tip-host", tokenLimiter, async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    const idempotencyKey = readIdempotencyKey(req, res);
+    if (idempotencyKey === undefined) return;
+    if (!isUuid(req.params.id)) {
+      res.status(404).json({ message: "Huddle not found" });
+      return;
+    }
+    const validation = validateHuddleTipBody(req.body);
+    if (!validation.ok) {
+      res.status(400).json({ message: validation.error });
+      return;
+    }
+    const body = validation.value;
+    const transferId = idempotencyKey ?? crypto.randomUUID();
+    const outcome = await huddleTipHost({
+      huddleId: req.params.id,
+      senderId: current.userId,
+      amount: body.amount,
+      note: body.note,
+      transferId,
+    });
+    if (outcome === "duplicate" && idempotencyKey) {
+      const original = await findOwnDebit(current.userId, idempotencyKey, "huddle_tip");
+      if (original && original.huddle_id === req.params.id) {
+        res.status(200).json({ sent: Math.abs(original.amount), transfer_id: idempotencyKey });
+        return;
+      }
+    }
+    if (outcome !== "ok") {
+      const [status, message] = HUDDLE_TIP_RESPONSES[outcome];
+      res.status(status).json({ message });
+      return;
+    }
+    const huddle = await getHuddleById(req.params.id);
+    if (huddle?.created_by) {
+      const senderName = current.user.username ? `@${current.user.username}` : "A participant";
+      await notifyUser(huddle.created_by, {
+        type: "tokens_received",
+        title: `${senderName} sent you ${body.amount} Rendly Tokens`,
+        body: body.note || "Sent during your huddle",
+        payload: { huddle_id: req.params.id, amount: body.amount, transfer_id: transferId },
+      });
+    }
+    res.status(201).json({ sent: body.amount, transfer_id: transferId });
+  } catch (err) {
+    console.error("POST /api/huddles/:id/tip-host error:", err);
+    res.status(500).json({ message: "Failed to send tokens" });
+  }
+});
+
+/**
+ * GET /api/huddles/:id/ice – STUN/TURN servers for a huddle's video mesh. Admitted members only,
+ * because TURN credentials relay traffic. Same shape as /api/match/ice.
+ */
+app.get("/api/huddles/:id/ice", async (req, res) => {
+  try {
+    const current = await requireUser(req, res);
+    if (!current) return;
+    const membership = isUuid(req.params.id) ? await getMembership(req.params.id, current.userId) : null;
+    if (!membership || !membership.admitted) {
+      res.status(403).json({ message: "Join the huddle first" });
+      return;
+    }
+    res.set("Cache-Control", "no-store");
+    res.json(
+      buildIceConfig({
+        turnUrls: process.env.TURN_URLS,
+        sharedSecret: process.env.TURN_SHARED_SECRET,
+        nowMs: Date.now(),
+        randomHex8: crypto.randomBytes(4).toString("hex"),
+      })
+    );
+  } catch (err) {
+    console.error("GET /api/huddles/:id/ice error:", err instanceof Error ? err.name : "unknown");
+    res.status(500).json({ message: "Failed to load call servers" });
   }
 });
 

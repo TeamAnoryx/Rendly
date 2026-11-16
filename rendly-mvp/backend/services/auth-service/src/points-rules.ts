@@ -93,6 +93,18 @@ export function validateTransferBody(body: unknown): RulesResult<TransferBody> {
   };
 }
 
+export type HuddleTipBody = { amount: number; note: string | null };
+
+/** Validate a POST /api/huddles/:id/tip-host body: amount 1..1000 and an optional short note. */
+export function validateHuddleTipBody(body: unknown): RulesResult<HuddleTipBody> {
+  const input = asRecord(body);
+  const amount = validateAmount(input.amount, HUDDLE_SEND_MIN_AMOUNT, HUDDLE_SEND_MAX_AMOUNT);
+  if (!amount.ok) return amount;
+  const note = validateNote(input.note);
+  if (!note.ok) return note;
+  return { ok: true, value: { amount: amount.value, note: note.value } };
+}
+
 /** Validate a POST /api/huddles/:id/send-tokens body. A note is required when purpose is "other". */
 export function validateHuddleSendBody(body: unknown): RulesResult<HuddleSendBody> {
   const input = asRecord(body);

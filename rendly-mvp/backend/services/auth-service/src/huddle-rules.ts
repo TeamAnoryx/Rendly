@@ -55,6 +55,8 @@ export type HuddleRow = {
   rewards_enabled?: boolean;
   /** Host may send Rendly Tokens from their own balance to participants. */
   rewards_receive_enabled?: boolean;
+  /** Participants may send Rendly Tokens to the host. */
+  tips_enabled?: boolean;
   show_waitlist_count?: boolean;
   cancelled_at?: string | null;
   /** Last time the host edited the details (description, intents, time). */
@@ -78,6 +80,7 @@ export type CreateHuddleInput = {
   allow_self_exit: boolean;
   rewards_enabled: boolean;
   rewards_receive_enabled: boolean;
+  tips_enabled: boolean;
   show_waitlist_count: boolean;
 };
 
@@ -225,7 +228,7 @@ export function validateCreateHuddleInput(body: unknown, now: number = Date.now(
     }
     mode = input.mode as HuddleMode;
   }
-  for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled", "rewards_receive_enabled", "show_waitlist_count"] as const) {
+  for (const key of ["waiting_room", "allow_self_exit", "rewards_enabled", "rewards_receive_enabled", "tips_enabled", "show_waitlist_count"] as const) {
     if (input[key] != null && typeof input[key] !== "boolean") {
       return { ok: false, message: `${key} must be true or false` };
     }
@@ -252,6 +255,7 @@ export function validateCreateHuddleInput(body: unknown, now: number = Date.now(
       allow_self_exit: input.allow_self_exit !== false,
       rewards_enabled: input.rewards_enabled === true,
       rewards_receive_enabled: input.rewards_receive_enabled === true,
+      tips_enabled: input.tips_enabled !== false,
       show_waitlist_count: input.show_waitlist_count === true,
     },
   };

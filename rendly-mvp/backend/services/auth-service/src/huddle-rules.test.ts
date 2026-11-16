@@ -102,6 +102,7 @@ describe("validateCreateHuddleInput", () => {
         allow_self_exit: true,
         rewards_enabled: false,
         rewards_receive_enabled: false,
+        tips_enabled: true,
         show_waitlist_count: false,
       },
     });

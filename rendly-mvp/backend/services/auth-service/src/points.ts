@@ -26,7 +26,7 @@ function requireClient() {
   return supabase;
 }
 
-export type PointsCategory = "signup" | "huddle_award" | "huddle_send" | "transfer" | "intent_purchase" | "intent_royalty";
+export type PointsCategory = "signup" | "huddle_award" | "huddle_send" | "huddle_tip" | "transfer" | "intent_purchase" | "intent_royalty";
 
 export type PointsEntry = {
   id: string;
@@ -274,6 +274,37 @@ export async function huddleSendTokens(input: {
     throw new PointsStoreError("huddle send", `unexpected result: ${String(data)}`);
   }
   return data as HuddleSendOutcome;
+}
+
+export type HuddleTipOutcome =
+  | "ok" | "not_found" | "is_host" | "tips_off" | "not_in_room" | "bad_amount" | "bad_note"
+  | "bad_input" | "insufficient" | "duplicate";
+
+const HUDDLE_TIP_OUTCOMES: HuddleTipOutcome[] = [
+  "ok", "not_found", "is_host", "tips_off", "not_in_room", "bad_amount", "bad_note", "bad_input", "insufficient", "duplicate",
+];
+
+/** A participant sends tokens to the huddle host from their own balance (huddle_tip_host). */
+export async function huddleTipHost(input: {
+  huddleId: string;
+  senderId: string;
+  amount: number;
+  note: string | null;
+  transferId: string;
+}): Promise<HuddleTipOutcome> {
+  const client = requireClient();
+  const { data, error } = await client.rpc("huddle_tip_host", {
+    p_huddle_id: input.huddleId,
+    p_sender_id: input.senderId,
+    p_amount: input.amount,
+    p_note: input.note,
+    p_transfer_id: input.transferId,
+  });
+  if (error) throw new PointsStoreError("huddle tip", error);
+  if (!HUDDLE_TIP_OUTCOMES.includes(data as HuddleTipOutcome)) {
+    throw new PointsStoreError("huddle tip", `unexpected result: ${String(data)}`);
+  }
+  return data as HuddleTipOutcome;
 }
 
 /** The caller's own debit row of one transfer, used to answer an idempotent retry. */

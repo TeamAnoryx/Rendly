@@ -22,8 +22,9 @@ const POINTS_LIVE_REFRESH_MS = 10_000;
 type NavItem = { href: string; label: string; short?: string; icon: string; match: (p: string) => boolean };
 
 const WORKSPACE: NavItem[] = [
-  { href: '/', label: 'Home', icon: 'home', match: (p) => p === '/' },
-  { href: '/dashboard', label: 'Dashboard', icon: 'grid', match: (p) => p === '/dashboard' },
+  // Dashboard carries the house icon: it is the app's home base, where thumbs expect "home".
+  { href: '/dashboard', label: 'Dashboard', icon: 'home', match: (p) => p === '/dashboard' },
+  { href: '/', label: 'Home', icon: 'compass', match: (p) => p === '/' },
   { href: '/dashboard/match', label: 'Spark', icon: 'spark', match: (p) => p.startsWith('/dashboard/match') },
   { href: '/dashboard/chat', label: 'Whispers', icon: 'chat', match: (p) => p.startsWith('/dashboard/chat') },
   { href: '/dashboard/huddles', label: 'Huddles', icon: 'huddle', match: (p) => p.startsWith('/dashboard/huddles') },
@@ -164,7 +165,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setLoggingOut(true);
     try {
       await auth.logout();
-      router.push('/login');
+      // Replace, not push: Back must never return to a signed-out dashboard.
+      router.replace('/');
     } catch {
       setLoggingOut(false);
     }

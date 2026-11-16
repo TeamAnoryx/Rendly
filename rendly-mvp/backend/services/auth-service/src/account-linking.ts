@@ -112,7 +112,10 @@ export function resolveOAuthSignIn(input: OAuthResolutionInput): OAuthResolution
 
   const account = matches[0];
   const existingId = providerIdOf(account, provider);
-  if (existingId && existingId !== providerId) {
+  // LinkedIn's OIDC `sub` is scoped to the LinkedIn app, so replacing the app gives every user a
+  // new id. LinkedIn has verified this email for the new id, so move the binding instead of
+  // locking the user out. GitHub ids are global, so a different GitHub id stays a conflict.
+  if (existingId && existingId !== providerId && provider !== "linkedin") {
     return {
       action: "conflict",
       status: 409,

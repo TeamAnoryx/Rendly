@@ -1,8 +1,6 @@
-import { PageSkeleton } from '@/components/common/SkeletonLoader';
+import { RouteLoader } from '@/components/common/RouteLoader';
 
-/**
- * Instant skeleton at 0ms when navigating to auth routes.
- */
+/** Branded full-screen loader while an auth route loads. */
 export default function AuthLoading() {
-  return <PageSkeleton />;
+  return <RouteLoader />;
 }

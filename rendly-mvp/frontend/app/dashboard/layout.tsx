@@ -8,6 +8,7 @@ import { NotificationsProvider } from '@/context/NotificationsContext';
 import { SocketProvider } from '@/context/SocketContext';
 import { AppShell } from '@/components/shell/AppShell';
 import { CallStage } from '@/components/call/CallStage';
+import { RequireAuth } from '@/components/auth/RequireAuth';
 import './dashboard.css';
 
 function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
@@ -30,15 +31,17 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <CurrentUserProvider>
-      <SocketProvider>
-        <NotificationsProvider>
-          <CallProvider>
-            <DashboardLayoutInner>{children}</DashboardLayoutInner>
-            <CallStage />
-          </CallProvider>
-        </NotificationsProvider>
-      </SocketProvider>
-    </CurrentUserProvider>
+    <RequireAuth>
+      <CurrentUserProvider>
+        <SocketProvider>
+          <NotificationsProvider>
+            <CallProvider>
+              <DashboardLayoutInner>{children}</DashboardLayoutInner>
+              <CallStage />
+            </CallProvider>
+          </NotificationsProvider>
+        </SocketProvider>
+      </CurrentUserProvider>
+    </RequireAuth>
   );
 }

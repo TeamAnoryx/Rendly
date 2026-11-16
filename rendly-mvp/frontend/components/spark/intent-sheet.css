@@ -253,14 +253,22 @@
 
 /* Bottom-sheet chrome (everything except the wide "fit" layout). */
 @media not all and (orientation: landscape) and (min-width: 900px) and (min-height: 560px) {
+  /* Portrait phones and tablets: drop down from the top so both cards start at the top edge. */
+  .is-sheet {
+    top: 0;
+    bottom: auto;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+    transform-origin: center top;
+  }
+
   .is-sheet-summary {
     padding: 0 12px;
   }
 
   .is-sheet-panel {
-    border-radius: 20px 20px 0 0;
-    border-bottom: 0;
-    padding: 10px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+    border-radius: 0 0 20px 20px;
+    border-top: 0;
+    padding: 10px 16px 14px;
   }
 
   .is-sheet-handle {
