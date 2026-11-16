@@ -298,13 +298,15 @@ export function attachHuddleRoom(io: Server, socket: Socket, userId: string): vo
    * A token transfer the sender just completed, shown in the room's chat. `from` is always the
    * socket's own user, so a client can only announce its own sends.
    */
-  socket.on("huddle:tokens", (data: { huddle_id?: unknown; room?: unknown; to?: unknown; amount?: unknown }) => {
+  socket.on("huddle:tokens", (data: { huddle_id?: unknown; room?: unknown; to?: unknown; amount?: unknown; kind?: unknown }) => {
     if (!isUuidLike(data?.huddle_id) || !validRoom(data?.room) || !isUuidLike(data?.to)) return;
     const amount = typeof data.amount === "number" ? Math.floor(data.amount) : 0;
     if (amount < 1 || amount > 1_000_000) return;
     const key = roomKeyFor(data.huddle_id, data.room);
     if (!joined.has(key)) return;
-    io.to(key).emit("huddle:tokens", { from: userId, to: data.to, amount, room: data.room, at: new Date().toISOString() });
+    // Only labels the chat card ("Host reward" / "Tip to host"); the transfer itself happened over REST.
+    const kind = data.kind === "reward" || data.kind === "tip" ? data.kind : "transfer";
+    io.to(key).emit("huddle:tokens", { from: userId, to: data.to, amount, kind, room: data.room, at: new Date().toISOString() });
     // The recipient may be in another room of this huddle: refresh their balance either way.
     io.to(data.to).emit("points:changed");
   });
@@ -473,6 +475,21 @@ export function attachHuddleRoom(io: Server, socket: Socket, userId: string): vo
       reply({ ok: true });
     }
   );
+
+  /**
+   * Host only: after changing someone's role over REST, tell that person's clients at once.
+   * The role relayed is read from the database, never taken from the request.
+   */
+  socket.on("huddle:role", async (data: { huddle_id?: unknown; target?: unknown }) => {
+    if (!isUuidLike(data?.huddle_id) || !isUuidLike(data?.target)) return;
+    const actor = await seatFor(data.huddle_id, userId);
+    if (!actor || actor.role !== "host") return;
+    const target = await seatFor(data.huddle_id, data.target);
+    if (!target || target.role === "host") return;
+    for (const sid of socketsByUser(io, data.target)) {
+      io.to(sid).emit("huddle:role", { huddle_id: data.huddle_id, role: target.role });
+    }
+  });
 
   /** Host (any room) or the room's leader: start or stop recording; everyone in the room is told. */
   socket.on("huddle:recording", async (data: { huddle_id?: unknown; room?: unknown; on?: unknown }, ack?: (r: unknown) => void) => {

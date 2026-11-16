@@ -3,6 +3,7 @@
 import React, { useId, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { SparkMode } from '@/services/sparkApi';
+import type { SparkNotifyState } from '@/hooks/useSparkActive';
 import Segmented from '@/components/spark/setup/Segmented';
 import SparkButton from '@/components/spark/SparkButton';
 import { TokenCoin } from '@/components/brand/TokenCoin';
@@ -20,6 +21,11 @@ export type SparkLaunchCardProps = {
   onAnonymousChange: (a: boolean) => void;
   onNoteChange: (n: string) => void;
   onSpark: () => void;
+  /** People on Spark right now; null while unknown (Spark stays enabled). */
+  activeCount?: number | null;
+  notifyState?: SparkNotifyState;
+  notifyMessage?: string | null;
+  onNotify?: () => void;
 };
 
 /** Matches backend MATCH_NOTE_MAX in backend/services/auth-service/src/spark-rules.ts. */
@@ -33,6 +39,19 @@ const FORMAT_OPTIONS = [
   { value: 'text', label: 'Text first', icon: 'chat' },
   { value: 'video', label: 'Video', icon: 'video' },
 ] as const;
+
+function BellIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    </svg>
+  );
+}
+
+function activeLabel(n: number): string {
+  return `${n} ${n === 1 ? 'person' : 'people'} on Spark now`;
+}
 
 const PRIVACY_OPTIONS = [
   { value: 'public', label: 'Public', icon: 'user' },
@@ -50,7 +69,12 @@ export default function SparkLaunchCard({
   onAnonymousChange,
   onNoteChange,
   onSpark,
+  activeCount = null,
+  notifyState = 'idle',
+  notifyMessage = null,
+  onNotify,
 }: SparkLaunchCardProps) {
+  const nobodyOn = activeCount === 0;
   const reduce = useReducedMotion();
   const uid = useId();
   const noteId = `${uid}-note`;
@@ -78,6 +102,13 @@ export default function SparkLaunchCard({
       animate="show"
     >
       <span className="sl-card__ring" aria-hidden="true" />
+
+      {typeof activeCount === 'number' && activeCount > 0 && (
+        <motion.p className="sl-live" variants={item} aria-live="polite">
+          <span className="sl-live__dot" aria-hidden="true" />
+          {activeLabel(activeCount)}
+        </motion.p>
+      )}
 
       <motion.div className="sl-field" variants={item}>
         <span className="sl-label" aria-hidden="true">
@@ -141,7 +172,28 @@ export default function SparkLaunchCard({
       </motion.div>
 
       <motion.div className="sl-cta" variants={item}>
-        <SparkButton busy={busy} disabled={false} onClick={onSpark} label="Spark" />
+        <SparkButton busy={busy} disabled={nobodyOn} onClick={onSpark} label="Spark" />
+
+        {nobodyOn && (
+          <div className="sl-empty" aria-live="polite">
+            <p className="sl-empty__text">No active users for you to match right now</p>
+            {notifyState === 'done' ? (
+              <p className="sl-notify sl-notify--done">
+                <BellIcon /> We&apos;ll notify you
+              </p>
+            ) : (
+              <button
+                type="button"
+                className="sl-notify"
+                onClick={onNotify}
+                disabled={!onNotify || notifyState === 'busy'}
+              >
+                <BellIcon /> {notifyState === 'busy' ? 'Turning on…' : 'Notify me'}
+              </button>
+            )}
+            {notifyState === 'error' && notifyMessage && <p className="sl-empty__error">{notifyMessage}</p>}
+          </div>
+        )}
 
         {typeof cost === 'number' && (
           <p className="sl-cost">

@@ -2,6 +2,11 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import '@/styles/globals.css';
 import '@/styles/rendly-theme.css';
+// Dashboard + app-shell styles live in the root layout so they are already in the <head> when a
+// client-side navigation (e.g. the redirect after sign-in) commits the dashboard: otherwise the
+// page paints for a moment before its route stylesheet arrives. Both files are class-scoped.
+import '@/components/shell/shell.css';
+import './dashboard/dashboard.css';
 import LoadingProviderClient from '@/components/common/LoadingProviderClient';
 import RouteTransition from '@/components/common/RouteTransition';
 import JsonLd from '@/components/seo/JsonLd';

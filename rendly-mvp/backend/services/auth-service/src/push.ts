@@ -97,6 +97,48 @@ export async function addHuddlePushReminder(huddleId: string, userId: string): P
 
 type SubscriptionRow = { endpoint: string; p256dh: string; auth: string };
 
+export type PushPayload = { title: string; body: string; url: string; tag?: string };
+
+/**
+ * Send one push payload to every subscription of the given users. Only push-service hosts
+ * are contacted (no SSRF); expired subscriptions (404/410) are removed. Throws only when
+ * the subscriptions cannot be read; per-endpoint failures are logged.
+ */
+export async function sendPushToUsers(userIds: string[], payload: PushPayload): Promise<void> {
+  if (!supabase || !pushConfigured() || userIds.length === 0) return;
+  const { data: subs, error: subErr } = await supabase
+    .from("push_subscriptions")
+    .select("endpoint, p256dh, auth")
+    .in("user_id", userIds);
+  if (subErr) throw subErr;
+
+  const body = JSON.stringify(payload);
+  await Promise.all(
+    ((subs ?? []) as SubscriptionRow[])
+      .filter((s) => isPushServiceEndpoint(s.endpoint))
+      .map(async (s) => {
+        try {
+          await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body, {
+            TTL: PUSH_TTL_SECONDS,
+          });
+        } catch (err) {
+          const status = (err as { statusCode?: number }).statusCode;
+          if (status === 404 || status === 410) {
+            const { error: delErr } = (await supabase?.from("push_subscriptions").delete().eq("endpoint", s.endpoint)) ?? {};
+            if (delErr) console.error("[push] expired subscription not removed:", delErr);
+          } else {
+            console.error("[push] send failed:", status ?? err);
+          }
+        }
+      }),
+  );
+}
+
+/** Send one push payload to every subscription of a single user. */
+export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
+  await sendPushToUsers([userId], payload);
+}
+
 /**
  * Push "your huddle is live" to everyone who asked for it, then clear their reminders.
  * Expired subscriptions (404/410) are removed. Never throws: callers fire and forget.
@@ -112,35 +154,12 @@ export async function notifyHuddleLive(huddleId: string, title: string): Promise
     const userIds = (reminders ?? []).map((r: { user_id: string }) => r.user_id);
     if (userIds.length === 0) return;
 
-    const { data: subs, error: subErr } = await supabase
-      .from("push_subscriptions")
-      .select("endpoint, p256dh, auth")
-      .in("user_id", userIds);
-    if (subErr) throw subErr;
-
-    const payload = JSON.stringify({
+    await sendPushToUsers(userIds, {
       title: "Your huddle is live",
       body: `${title} has started. Tap to join.`,
       url: `/dashboard/huddles/${huddleId}`,
       tag: `huddle-live-${huddleId}`,
     });
-    await Promise.all(
-      ((subs ?? []) as SubscriptionRow[]).map(async (s) => {
-        try {
-          await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, {
-            TTL: PUSH_TTL_SECONDS,
-          });
-        } catch (err) {
-          const status = (err as { statusCode?: number }).statusCode;
-          if (status === 404 || status === 410) {
-            const { error: delErr } = (await supabase?.from("push_subscriptions").delete().eq("endpoint", s.endpoint)) ?? {};
-            if (delErr) console.error("[push] expired subscription not removed:", delErr);
-          } else {
-            console.error("[push] send failed:", status ?? err);
-          }
-        }
-      }),
-    );
     const { error: clearErr } = await supabase.from("huddle_push_reminders").delete().eq("huddle_id", huddleId);
     if (clearErr) console.error("[push] reminders not cleared:", clearErr);
   } catch (err) {

@@ -109,8 +109,10 @@ function messageOf(data: unknown, fallback: string): string {
 
 function buildBody(input: JoinSparkInput): Record<string, unknown> {
   const note = normalizeNote(input.note ?? '');
-  const base = { mode: input.mode, intents: input.intents, anonymous: input.anonymous };
-  return note === undefined ? base : { ...base, note };
+  const base: Record<string, unknown> = { mode: input.mode, intents: input.intents, anonymous: input.anonymous };
+  // Default (guaranteed match) must reach the server, or a Default request is queued without it.
+  const withAny = typeof input.match_any === 'boolean' ? { ...base, match_any: input.match_any } : base;
+  return note === undefined ? withAny : { ...withAny, note };
 }
 
 function insufficientError(data: unknown): SparkInsufficientError {

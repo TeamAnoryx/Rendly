@@ -145,6 +145,16 @@ describe('joinSparkWithLimits', () => {
     expect(body).toEqual({ mode: 'text', intents: ['Brainstorm'], anonymous: false });
   });
 
+  test('sends match_any when set', async () => {
+    mockedFetch.mockResolvedValue(fakeResponse(200, { status: 'idle' }));
+
+    await joinSparkWithLimits({ ...INPUT, match_any: false });
+    await joinSparkWithLimits({ ...INPUT, match_any: true });
+
+    expect(JSON.parse(String(mockedFetch.mock.calls[0][1]?.body)).match_any).toBe(false);
+    expect(JSON.parse(String(mockedFetch.mock.calls[1][1]?.body)).match_any).toBe(true);
+  });
+
   test('sends a normalized note when present', async () => {
     mockedFetch.mockResolvedValue(fakeResponse(200, { status: 'idle' }));
 

@@ -8,7 +8,7 @@ import './charge-notice.css';
 const SEEN_KEY = 'rendly.spark.chargeNoticeSeen';
 const EASE = [0.2, 0.8, 0.2, 1] as const;
 const RULE_TITLE =
-  'Tokens are only deducted once a chat lasts 30 seconds. End it sooner and neither of you pays.';
+  'Charged only for intents you share, once a chat lasts 30 seconds. Skip sooner and neither of you pays; after that you both do.';
 
 /** True until the 30 s notice has been shown this session. */
 export function shouldShowChargeNotice(): boolean {
@@ -86,7 +86,7 @@ export default function ChargeNotice({ open, secondsLeft, progress, onDismiss }:
         >
           <Ring radius={14} stroke={2.5} progress={progress} label={String(seconds)} />
           <p className="cn-text">
-            Tokens are only deducted if this chat lasts 30 seconds. Skip before then and neither of you pays.
+            Free for the first 30 seconds: skip before then and neither of you pays. After that you both pay, only for intents you share.
           </p>
           <button type="button" className="cn-dismiss" aria-label="Dismiss" onClick={onDismiss}>
             <Icon name="close" size={16} />
@@ -113,7 +113,7 @@ export function ChargeChip({ state, secondsLeft, cost, className }: ChargeChipPr
       {state === 'pending' && (
         <>
           <Ring radius={5} stroke={1.5} progress={1 - Math.min(1, seconds / 30)} />
-          <span>Free for {seconds}s</span>
+          <span>{seconds > 0 ? `Free for ${seconds}s` : 'Settling…'}</span>
         </>
       )}
       {state === 'charged' && (

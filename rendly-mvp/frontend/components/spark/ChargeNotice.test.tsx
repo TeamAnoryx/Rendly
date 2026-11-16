@@ -2,7 +2,8 @@ import '@testing-library/jest-dom';
 import { fireEvent, render, screen } from '@testing-library/react';
 import ChargeNotice, { ChargeChip, markChargeNoticeSeen, shouldShowChargeNotice } from './ChargeNotice';
 
-const COPY = 'Tokens are only deducted if this chat lasts 30 seconds. Skip before then and neither of you pays.';
+const COPY =
+  'Free for the first 30 seconds: skip before then and neither of you pays. After that you both pay, only for intents you share.';
 
 describe('ChargeNotice', () => {
   beforeEach(() => window.sessionStorage.clear());
@@ -34,6 +35,12 @@ describe('ChargeChip', () => {
   it('shows the free countdown while pending', () => {
     render(<ChargeChip state="pending" secondsLeft={12.3} cost={10} />);
     expect(screen.getByText('Free for 13s')).toBeInTheDocument();
+  });
+
+  it('shows settling instead of a stuck zero once the window is over', () => {
+    render(<ChargeChip state="pending" secondsLeft={0} cost={10} />);
+    expect(screen.getByText('Settling…')).toBeInTheDocument();
+    expect(screen.queryByText('Free for 0s')).not.toBeInTheDocument();
   });
 
   it('shows the charged amount', () => {

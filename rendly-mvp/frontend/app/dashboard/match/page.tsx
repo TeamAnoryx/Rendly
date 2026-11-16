@@ -26,6 +26,7 @@ import {
   rateLimitMessage,
 } from '@/components/spark/launch/sparkLaunch';
 import { useSparkQuote } from '@/hooks/useSparkQuote';
+import { useSparkActiveCount, useSparkNotify } from '@/hooks/useSparkActive';
 import MatchPreview from '@/components/spark/MatchPreview';
 import { SparkRoom } from '@/components/spark/SparkRoom';
 import { hashtagLabel } from '@/components/spark/setupUtils';
@@ -57,8 +58,10 @@ function writeDefaultMatch(on: boolean): void {
   }
 }
 
-/** How often the queue is polled while waiting for a partner. */
-const POLL_MS = 3000;
+/** Queue polling while waiting: fast for the first FAST_POLL_WINDOW_MS, then slower. */
+const FAST_POLL_MS = 1500;
+const SLOW_POLL_MS = 3000;
+const FAST_POLL_WINDOW_MS = 10_000;
 const NOT_ENOUGH = 'Not enough tokens';
 const NO_INTENTS: readonly string[] = [];
 
@@ -77,7 +80,7 @@ function WaitingScreen({ info, matchAny, onCancel }: { info: WaitingInfo; matchA
       className="sw-root"
       initial={reduce ? false : { opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
+      transition={{ duration: 0.15 }}
       role="status"
       aria-live="polite"
     >
@@ -107,7 +110,7 @@ function WaitingScreen({ info, matchAny, onCancel }: { info: WaitingInfo; matchA
         ) : null}
       </div>
       <p className="sw-cost">
-        <TokenCoin size={16} /> {info.cost} tokens, charged only after 30s together
+        <TokenCoin size={16} /> Charged only for intents you share, after 30s together
       </p>
       <button type="button" className="sw-cancel" onClick={onCancel}>
         Cancel
@@ -126,6 +129,8 @@ export default function SparkPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastInputRef = useRef<JoinSparkInput | null>(null);
+  /** True while a join is in flight: a status poll then may still see the pairing being skipped. */
+  const joiningRef = useRef(false);
   const [mode, setMode] = useState<SparkMode>('text');
   const [anonymous, setAnonymous] = useState(false);
   const [matchAny, setMatchAny] = useState(true);
@@ -140,6 +145,8 @@ export default function SparkPage() {
   /** Matches the user asked for in this run (from the sheet's limiter); null = no cap. */
   const matchBudgetRef = useRef<number | null>(null);
   const quote = useSparkQuote(lastIntents);
+  const activeCount = useSparkActiveCount(phase === 'choose');
+  const sparkNotify = useSparkNotify();
   const phaseRef = useRef<Phase>(phase);
   phaseRef.current = phase;
 
@@ -184,17 +191,29 @@ export default function SparkPage() {
     };
   }, [applyView]);
 
-  // Poll while waiting.
+  // Poll while waiting: at once, then every 1.5s for the first 10s, then every 3s.
   useEffect(() => {
     if (phase !== 'waiting') return;
-    const id = window.setInterval(() => {
+    let alive = true;
+    let timer: number | undefined;
+    const startedAt = Date.now();
+    const poll = () => {
       getSparkStatus()
         .then((view) => {
-          if (phaseRef.current === 'waiting') applyView(view, true);
+          if (alive && !joiningRef.current && phaseRef.current === 'waiting') applyView(view, true);
         })
-        .catch(() => undefined);
-    }, POLL_MS);
-    return () => window.clearInterval(id);
+        .catch(() => undefined)
+        .finally(() => {
+          if (!alive || phaseRef.current !== 'waiting') return;
+          const delay = Date.now() - startedAt < FAST_POLL_WINDOW_MS ? FAST_POLL_MS : SLOW_POLL_MS;
+          timer = window.setTimeout(poll, delay);
+        });
+    };
+    poll();
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
   }, [phase, applyView]);
 
   // Leave the queue if the page unmounts mid-search.
@@ -211,6 +230,7 @@ export default function SparkPage() {
       setLastIntents(input.intents);
       setError(null);
       setBusy(true);
+      joiningRef.current = true;
       try {
         applyView(await joinSparkWithLimits(input), false);
       } catch (e) {
@@ -219,6 +239,7 @@ export default function SparkPage() {
         else setError(e instanceof Error ? e.message : 'Could not start your Spark');
         setPhase('choose');
       } finally {
+        joiningRef.current = false;
         setBusy(false);
       }
     },
@@ -255,19 +276,31 @@ export default function SparkPage() {
     await leaveSparkQueue().catch(() => undefined);
   }, []);
 
+  /**
+   * Skip: show the searching screen at once (no blank frame), then re-queue. Joining the queue
+   * ends and settles the old pairing server-side, so no separate leave call is needed.
+   */
   const skip = useCallback(async () => {
     const input = lastInputRef.current;
     setMatch(null);
-    phaseRef.current = 'waiting';
-    await leaveSparkQueue().catch(() => undefined);
     if (matchBudgetRef.current === 0) {
       matchBudgetRef.current = null;
-      setError('That was your last match for this run. Spark again for more.');
+      phaseRef.current = 'choose';
       setPhase('choose');
+      setError('That was your last match for this run. Spark again for more.');
+      await leaveSparkQueue().catch(() => undefined);
       return;
     }
-    if (input) await join(input);
-    else setPhase('choose');
+    if (!input) {
+      phaseRef.current = 'choose';
+      setPhase('choose');
+      await leaveSparkQueue().catch(() => undefined);
+      return;
+    }
+    setWaiting((prev) => prev ?? { intents: input.intents, cost: sparkMatchCost(input.intents), mode: input.mode });
+    phaseRef.current = 'waiting';
+    setPhase('waiting');
+    await join(input);
   }, [join]);
 
   /** End the match server-side too, so it settles (charged after 30s, waived before) instead of staying pending. */
@@ -316,6 +349,10 @@ export default function SparkPage() {
                   onAnonymousChange={setAnonymous}
                   onNoteChange={setNote}
                   onSpark={onLaunch}
+                  activeCount={activeCount}
+                  notifyState={sparkNotify.state}
+                  notifyMessage={sparkNotify.message}
+                  onNotify={sparkNotify.notify}
                 />
                 {lastIntents.length > 0 && hasSeenIntentSheet() && (
                   <div className="spark-last-intents">

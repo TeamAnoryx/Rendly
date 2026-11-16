@@ -5,6 +5,7 @@ import websocket from '@/services/websocket';
 import { emitPointsChanged, newIdempotencyKey, notifyPointsPeers, tipHuddleHost } from '@/services/pointsApi';
 import { useNotifications } from '@/context/NotificationsContext';
 import { Icon } from '@/components/shell/Icon';
+import { TokenCoin } from '@/components/brand/TokenCoin';
 
 const TIP_MIN = 1;
 const TIP_MAX = 1000;
@@ -16,11 +17,14 @@ export default function TipHostCard({
   room,
   hostId,
   hostName,
+  variant = 'pill',
 }: {
   huddleId: string;
   room: string;
   hostId: string;
   hostName: string;
+  /** 'composer': a round token button beside the chat input that opens the form as a popover. */
+  variant?: 'pill' | 'composer';
 }) {
   const { pushToast } = useNotifications();
   const [open, setOpen] = useState(false);
@@ -45,7 +49,7 @@ export default function TipHostCard({
       attemptRef.current = null;
       emitPointsChanged();
       notifyPointsPeers([hostId]);
-      websocket.emit('huddle:tokens', { huddle_id: huddleId, room, to: hostId, amount: amt });
+      websocket.emit('huddle:tokens', { huddle_id: huddleId, room, to: hostId, amount: amt, kind: 'tip' });
       pushToast({ icon: 'coin', title: `Sent ${amt} Rendly Tokens to ${hostName}` });
       setOpen(false);
       setNote('');
@@ -56,6 +60,20 @@ export default function TipHostCard({
     }
   };
 
+  if (!open && variant === 'composer') {
+    return (
+      <button
+        type="button"
+        className="hr-tip-fab"
+        onClick={() => setOpen(true)}
+        aria-label={`Send host tokens to ${hostName}`}
+      >
+        <TokenCoin size={20} />
+        <span className="hr-tip-fab-label" role="tooltip">Send host tokens</span>
+      </button>
+    );
+  }
+
   if (!open) {
     return (
       <button type="button" className="rd-btn rd-btn--sm hr-tip-open" onClick={() => setOpen(true)}>
@@ -65,7 +83,7 @@ export default function TipHostCard({
   }
 
   return (
-    <div className="hr-tip" role="group" aria-label={`Send Rendly Tokens to ${hostName}`}>
+    <div className={`hr-tip ${variant === 'composer' ? 'hr-tip--pop' : ''}`} role="group" aria-label={`Send Rendly Tokens to ${hostName}`}>
       <div className="hr-tip-quick">
         {QUICK_AMOUNTS.map((n) => (
           <button key={n} type="button" className={`rd-chip ${amount === n ? 'rd-chip--on' : ''}`} onClick={() => setAmount(n)}>

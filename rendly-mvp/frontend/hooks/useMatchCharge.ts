@@ -9,8 +9,13 @@ import { emitPointsChanged } from '@/services/pointsApi';
 export const SPARK_FREE_SECONDS = 30;
 
 const TICK_MS = 250;
-const RETRY_MS = 2000;
+/** Settle is retried this often while the server still reports pending (or fails). */
+export const SETTLE_RETRY_MS = 1500;
+/** Settle attempts before giving up; status polling still adopts the final state. */
+export const SETTLE_MAX_TRIES = 10;
 const FREE_MS = SPARK_FREE_SECONDS * 1000;
+/** The server charges a settle up to 1 s early, so the client only waives before this margin. */
+const SETTLE_TOLERANCE_MS = 1000;
 
 export type MatchChargeView = {
   state: 'pending' | 'charged' | 'waived';
@@ -85,28 +90,37 @@ export function useMatchCharge(
     return () => clearInterval(id);
   }, [state, expired]);
 
-  // Settle exactly once when the window elapses (one retry on error).
+  // Settle when the window elapses. While the server still answers pending (clock drift),
+  // has no pairing yet, or fails, retry every SETTLE_RETRY_MS up to SETTLE_MAX_TRIES times.
   useEffect(() => {
     if (state !== 'pending' || !expired || settlingRef.current) return;
     settlingRef.current = true;
     const generation = generationRef.current;
 
-    const attempt = (retriesLeft: number) => {
+    const retry = (triesLeft: number) => {
+      if (generation !== generationRef.current) return;
+      if (triesLeft <= 0) {
+        settlingRef.current = false;
+        return;
+      }
+      retryTimerRef.current = setTimeout(() => attempt(triesLeft), SETTLE_RETRY_MS);
+    };
+
+    const attempt = (triesLeft: number) => {
       settleMatch()
         .then((res) => {
           if (generation !== generationRef.current) return;
-          if (res.charge) {
-            if (res.charge.state !== 'pending') setState(res.charge.state);
-            setCost(res.charge.cost);
-          }
           notifySparkLimitsChanged(res.limits);
+          if (res.charge) setCost(res.charge.cost);
+          if (res.charge && res.charge.state !== 'pending') {
+            setState(res.charge.state);
+            return;
+          }
+          retry(triesLeft - 1);
         })
-        .catch(() => {
-          if (generation !== generationRef.current || retriesLeft <= 0) return;
-          retryTimerRef.current = setTimeout(() => attempt(retriesLeft - 1), RETRY_MS);
-        });
+        .catch(() => retry(triesLeft - 1));
     };
-    attempt(1);
+    attempt(SETTLE_MAX_TRIES);
   }, [state, expired]);
 
   // Once charged, the balance and token history changed: refresh them everywhere.
@@ -116,8 +130,10 @@ export function useMatchCharge(
 
   useEffect(() => clearRetry, [clearRetry]);
 
+  // Skipping inside the free window: neither side pays. After it (or within the server's
+  // 1 s tolerance) both pay, so the settle above resolves the charge instead.
   const markEnded = useCallback(() => {
-    if (stateRef.current === 'pending' && Date.now() < deadlineRef.current) {
+    if (stateRef.current === 'pending' && Date.now() < deadlineRef.current - SETTLE_TOLERANCE_MS) {
       generationRef.current += 1;
       clearRetry();
       setState('waived');

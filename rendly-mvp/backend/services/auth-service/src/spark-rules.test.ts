@@ -10,6 +10,9 @@ import {
   parseQuoteIntents,
   partnerDisplayName,
   sharedIntents,
+  sharedMatchCost,
+  sparkMinMatchCost,
+  SPARK_DEFAULT_FEE,
   sparkIntentPrice,
   sparkMatchCost,
   SPARK_PRESETS,
@@ -158,6 +161,32 @@ describe("chargeSettlesAt", () => {
   });
 });
 
+describe("sharedMatchCost", () => {
+  test("charges only the intents both sides picked", () => {
+    expect(sharedMatchCost(["Light chat", "Startup ideas", "Brainstorm"], ["brainstorm", "Hiking"])).toBe(5);
+    expect(sharedMatchCost(["Light chat", "Startup ideas"], ["startup ideas", "light chat"])).toBe(15);
+  });
+
+  test("is symmetric", () => {
+    const a = ["Light chat", "Startup ideas", "Motivation"];
+    const b = ["Startup ideas", "Motivation", "Chess"];
+    expect(sharedMatchCost(a, b)).toBe(sharedMatchCost(b, a));
+  });
+
+  test("a pair with nothing shared (Default) costs the Default fee", () => {
+    expect(sharedMatchCost(["Light chat"], ["Chess"])).toBe(SPARK_DEFAULT_FEE);
+    expect(sharedMatchCost([], [])).toBe(SPARK_DEFAULT_FEE);
+  });
+});
+
+describe("sparkMinMatchCost", () => {
+  test("is the cheapest intent, or the Default fee when Default is on", () => {
+    expect(sparkMinMatchCost(["Startup ideas", "Light chat"], false)).toBe(5);
+    expect(sparkMinMatchCost(["Startup ideas", "Chess"], false)).toBe(10);
+    expect(sparkMinMatchCost(["Startup ideas", "Chess"], true)).toBe(SPARK_DEFAULT_FEE);
+  });
+});
+
 describe("decideSettlement", () => {
   const matchedAt = new Date("2026-11-15T10:00:00.000Z");
   const at = (ms: number) => new Date(matchedAt.getTime() + ms);
@@ -172,8 +201,20 @@ describe("decideSettlement", () => {
     expect(decide("pending", at(31_000), true)).toBe("charge");
   });
 
-  test("waives a pending pairing ended at 29.9 seconds", () => {
-    expect(decide("pending", at(29_900), true)).toBe("waive");
+  test("charges a settle that arrives within the 1 second tolerance", () => {
+    expect(decide("pending", at(29_500), false)).toBe("charge");
+  });
+
+  test("waives a pending pairing ended at 28.9 seconds", () => {
+    expect(decide("pending", at(28_900), true)).toBe("waive");
+  });
+
+  test("skip before the free window: neither pays", () => {
+    expect(decide("pending", at(60_000), false, at(5_000))).toBe("waive");
+  });
+
+  test("skip after the free window: both pay", () => {
+    expect(decide("pending", at(60_000), false, at(45_000))).toBe("charge");
   });
 
   test("keeps a pending pairing under 30 seconds that is not ending", () => {

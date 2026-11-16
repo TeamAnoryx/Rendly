@@ -74,8 +74,11 @@ import {
   getDashboardStats,
   findInvitablePartner,
   getMatchStatus,
+  getSparkActiveCount,
   getSparkLimits,
   hasActivePairing,
+  notifySparkWatchersIfBusy,
+  requestSparkNotify,
   ONLINE_WINDOW_SECONDS,
   recordHeartbeat,
   SparkAlreadySearchingError,
@@ -346,6 +349,9 @@ const matchLimitsLimiter = perUserLimiter(60);
 const matchSettleLimiter = perUserLimiter(30);
 const matchQuoteLimiter = perUserLimiter(60);
 const matchLeaveLimiter = perUserLimiter(30);
+/** Live "people on Spark" count, polled every 10s while the Spark page is visible. */
+const matchActiveLimiter = perUserLimiter(30);
+const matchNotifyLimiter = perUserLimiter(10);
 const matchIceLimiter = perUserLimiter(30);
 /** Geocoding per user, on top of the per-IP geoLimiter. */
 const geoUserLimiter = perUserLimiter(10);
@@ -3249,6 +3255,8 @@ app.post("/api/match/queue", tokenLimiter, async (req, res) => {
       return;
     }
     res.json(await enqueueForMatch(current.userId, validation.value));
+    // Fire and forget: tell "notify me" users once Spark is busy. Never fails the enqueue.
+    void notifySparkWatchersIfBusy();
   } catch (err) {
     if (sendSparkError(res, err)) return;
     console.error("POST /api/match/queue error:", err);
@@ -3333,6 +3341,42 @@ app.delete("/api/match/queue", matchLeaveLimiter, async (req, res) => {
     if (sendSparkError(res, err)) return;
     console.error("DELETE /api/match/queue error:", err);
     res.status(500).json({ message: "Failed to leave the match queue" });
+  }
+});
+
+/** GET /api/match/active – how many people are on Spark right now (waiting or in a live match): { active }. */
+app.get("/api/match/active", matchActiveLimiter, async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    res.json({ active: await getSparkActiveCount() });
+  } catch (err) {
+    if (sendSparkError(res, err)) return;
+    console.error("GET /api/match/active error:", err);
+    res.status(500).json({ message: "Failed to read the Spark count" });
+  }
+});
+
+/**
+ * POST /api/match/notify – ask for a push once people are matching on Spark again. The browser
+ * subscribes first (POST /api/push/subscribe). 200 { status: 'ok' }.
+ */
+app.post("/api/match/notify", matchNotifyLimiter, async (req, res) => {
+  try {
+    const current = await getCurrentUserFromRequest(req);
+    if (!current) {
+      res.status(401).json({ message: "Missing or invalid authorization" });
+      return;
+    }
+    await requestSparkNotify(current.userId);
+    res.json({ status: "ok" });
+  } catch (err) {
+    if (sendSparkError(res, err)) return;
+    console.error("POST /api/match/notify error:", err);
+    res.status(500).json({ message: "Failed to save the notification request" });
   }
 });
 

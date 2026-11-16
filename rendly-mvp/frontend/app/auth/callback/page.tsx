@@ -6,6 +6,7 @@ import { useOAuth } from '@/hooks/useOAuth';
 import { LINKEDIN_PKCE_STORAGE_KEY } from '@/lib/pkce';
 import { LINK_TO_GITHUB_ID_KEY, RENDLY_SESSION_TOKEN } from '@/lib/auth-storage';
 import AuthShell, { Enter, FormError } from '@/components/auth/AuthShell';
+import { startRouteTransition } from '@/components/common/RouteTransition';
 import { withBasePath } from '@/lib/basePath';
 
 const GITHUB_STORAGE_KEY = 'rendly_oauth_github';
@@ -78,10 +79,14 @@ export default function CallbackPage() {
         if (isLoginFlow) {
           continueToDashboard()
             .then((redirectUrl) => {
-              if (!cancelled) router.replace(redirectUrl);
+              if (cancelled) return;
+              startRouteTransition();
+              router.replace(redirectUrl);
             })
             .catch(() => {
-              if (!cancelled) router.replace('/dashboard');
+              if (cancelled) return;
+              startRouteTransition();
+              router.replace('/dashboard');
             });
         } else {
           router.replace(`/auth/sign-up?verified=${provider}`);

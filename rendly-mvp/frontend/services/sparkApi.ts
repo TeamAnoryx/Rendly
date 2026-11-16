@@ -297,3 +297,17 @@ export async function getSparkIceConfig(): Promise<SparkIceConfig> {
     iceServers: Array.isArray(data?.iceServers) ? data.iceServers : [],
   };
 }
+
+/** How many people are on Spark right now (waiting or in a live match). */
+export async function getSparkActiveCount(): Promise<number> {
+  const res = await authFetch('/api/match/active');
+  const data = await parseOrThrow<{ active?: unknown } | null>(res, 'Could not read the Spark count');
+  const n = Number(data?.active ?? 0);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+/** Ask for a push once people are matching on Spark (the browser must be subscribed first). */
+export async function requestSparkNotify(): Promise<void> {
+  const res = await authFetch('/api/match/notify', { method: 'POST' });
+  await parseOrThrow<unknown>(res, 'Could not save your notification request');
+}

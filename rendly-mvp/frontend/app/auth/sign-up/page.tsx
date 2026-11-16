@@ -8,6 +8,7 @@ import TermsCheckbox from '@/components/auth/TermsCheckbox';
 import ContinueButton from '@/components/auth/ContinueButton';
 import AuthShell, { ButtonSpinner, Enter, FormError } from '@/components/auth/AuthShell';
 import PasswordInput from '@/components/auth/PasswordInput';
+import { startRouteTransition } from '@/components/common/RouteTransition';
 import { CheckIcon, GitHubIcon, InfoIcon, LinkedInIcon } from '@/components/auth/AuthIcons';
 import { isNetworkError, networkErrorMessage, NETWORK_ERROR_MESSAGE } from '@/components/auth/network';
 import {
@@ -214,6 +215,7 @@ function SignUpContent() {
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         });
         const continueData = await continueRes.json().catch(() => ({}));
+        startRouteTransition();
         router.push(continueData?.redirectUrl || '/profile-setup');
       } catch (err) {
         const offline = typeof navigator !== 'undefined' && !navigator.onLine;

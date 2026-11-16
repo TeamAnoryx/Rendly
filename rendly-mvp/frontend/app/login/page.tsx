@@ -8,6 +8,7 @@ import { clearAuthStorage, RENDLY_SESSION_TOKEN } from '@/lib/auth-storage';
 import { useOAuth } from '@/hooks/useOAuth';
 import AuthShell, { ButtonSpinner, Enter, FormError } from '@/components/auth/AuthShell';
 import PasswordInput from '@/components/auth/PasswordInput';
+import { startRouteTransition } from '@/components/common/RouteTransition';
 import { GitHubIcon, LinkedInIcon } from '@/components/auth/AuthIcons';
 import { isNetworkError, networkErrorMessage, NETWORK_ERROR_MESSAGE } from '@/components/auth/network';
 
@@ -78,6 +79,7 @@ export default function LoginPage() {
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         });
         const continueData = await continueRes.json().catch(() => ({}));
+        startRouteTransition();
         router.push(continueData?.redirectUrl || '/dashboard');
       } catch (err) {
         const offline = typeof navigator !== 'undefined' && !navigator.onLine;

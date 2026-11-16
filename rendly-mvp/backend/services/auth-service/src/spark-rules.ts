@@ -152,6 +152,27 @@ export function sharedIntents(mine: readonly string[], theirs: readonly string[]
   return mine.filter((x) => other.has(x.toLowerCase()));
 }
 
+/**
+ * What each side of a pair is charged: the sum of the prices of the intents they share.
+ * Intents only one side picked cost nothing. A pair with no shared intent was made by the
+ * Default fallback and costs SPARK_DEFAULT_FEE each. Mirrors match_cost in
+ * 20261122_spark_shared_pricing.sql.
+ */
+export function sharedMatchCost(mine: readonly string[], theirs: readonly string[]): number {
+  const shared = sharedIntents(mine, theirs);
+  return shared.length === 0 ? SPARK_DEFAULT_FEE : sparkMatchCost(shared);
+}
+
+/**
+ * The least a request can end up costing: its cheapest intent (a pair always shares at least
+ * one), or the Default fee when Default matching is on. The balance must cover this to queue.
+ */
+export function sparkMinMatchCost(intents: readonly string[], matchAny: boolean): number {
+  const prices = intents.map(sparkIntentPrice);
+  if (matchAny) prices.push(SPARK_DEFAULT_FEE);
+  return prices.length === 0 ? 0 : Math.min(...prices);
+}
+
 /** What the partner is shown as: '@username' when public, '@Anonymous' otherwise. */
 export function partnerDisplayName(anonymous: boolean, username: string | null | undefined): string {
   return !anonymous && username ? `@${username}` : "@Anonymous";
@@ -214,9 +235,15 @@ export function chargeSettlesAt(matchedAt: Date | string): string {
 }
 
 /**
- * What to do with a pairing's charge now. Pending and lasted >= 30s (measured to endedAt
- * when ended) -> charge; pending and ending/ended before 30s -> waive; otherwise keep.
+ * What to do with a pairing's charge now. Pending and lasted >= 30s (less a 1s tolerance;
+ * measured to endedAt when ended) -> charge; pending and ending/ended before 30s -> waive; otherwise keep.
  */
+/**
+ * A settle that arrives up to this early still charges: clocks drift and the client's
+ * countdown fires on its own timer. Mirrors the 1 second tolerance in spark_settle_pairing.
+ */
+export const SPARK_SETTLE_TOLERANCE_MS = 1000;
+
 export function decideSettlement(input: {
   state: SparkChargeState;
   matchedAt: Date;
@@ -227,7 +254,7 @@ export function decideSettlement(input: {
   if (input.state !== "pending") return "keep";
   const until = input.endedAt ?? input.now;
   const elapsedMs = until.getTime() - input.matchedAt.getTime();
-  if (elapsedMs >= SPARK_CHARGE_AFTER_SECONDS * 1000) return "charge";
+  if (elapsedMs >= SPARK_CHARGE_AFTER_SECONDS * 1000 - SPARK_SETTLE_TOLERANCE_MS) return "charge";
   if (input.ending || input.endedAt) return "waive";
   return "keep";
 }

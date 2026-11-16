@@ -29,6 +29,18 @@ export function isInternalNavigation(event: MouseEvent, anchor: HTMLAnchorElemen
   return url.pathname !== currentPath;
 }
 
+type StartListener = () => void;
+const startListeners = new Set<StartListener>();
+
+/**
+ * Shows the route loader for a programmatic navigation (router.push / router.replace), which the
+ * link-click listener cannot see. Call it right before navigating; the loader then hides itself
+ * once the next page and its stylesheets are ready (bounded by MAX_VISIBLE_MS).
+ */
+export function startRouteTransition(): void {
+  startListeners.forEach((listener) => listener());
+}
+
 /** Next paint, or 60 ms if frames are paused (background tab), whichever comes first. */
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => {
@@ -80,17 +92,22 @@ export default function RouteTransition() {
       if (capTimer.current) clearTimeout(capTimer.current);
       if (hideTimer.current) clearTimeout(hideTimer.current);
     };
-    const onClick = (event: MouseEvent) => {
-      const anchor = (event.target as Element | null)?.closest?.('a');
-      if (!anchor || !isInternalNavigation(event, anchor, pathRef.current)) return;
+    const show = () => {
       clearTimers();
       shownAt.current = Date.now();
       setVisible(true);
       capTimer.current = setTimeout(() => setVisible(false), MAX_VISIBLE_MS);
     };
+    const onClick = (event: MouseEvent) => {
+      const anchor = (event.target as Element | null)?.closest?.('a');
+      if (!anchor || !isInternalNavigation(event, anchor, pathRef.current)) return;
+      show();
+    };
     document.addEventListener('click', onClick, true);
+    startListeners.add(show);
     return () => {
       document.removeEventListener('click', onClick, true);
+      startListeners.delete(show);
       clearTimers();
     };
   }, []);

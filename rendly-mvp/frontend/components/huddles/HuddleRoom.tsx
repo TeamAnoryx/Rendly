@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import websocket from '@/services/websocket';
 import { useHasVideo } from '@/components/call/VideoTile';
@@ -35,6 +36,9 @@ import RoomsPanel from './room/RoomsPanel';
 import { ADMIN_ROOM, canManageRoom, ledRoom, matchesPerson, roleLabel, roomLabel } from './room/roomRules';
 import { recordingFileName, useRoomRecorder, type RecordSource } from '@/hooks/useRoomRecorder';
 import TipHostCard from './room/TipHostCard';
+import PermissionPrompt from './room/PermissionPrompt';
+import TokenEvent, { type TokenEventKind } from './room/TokenEvent';
+import PersonMenu, { PersonMenuTrigger, type PersonMenuItem } from './room/PersonMenu';
 import './huddle-room.css';
 
 const MAIN_ROOM = 'main';
@@ -43,7 +47,7 @@ const ROOM_NAME = /^[a-z0-9][a-z0-9-]{0,19}$/;
 
 type Role = 'host' | 'co_host' | 'participant';
 type Peer = { cam: MediaStream | null; screen: MediaStream | null; screenId: string | null };
-type ChatLine = { id: string; from: string; text: string; at: string; tokens?: { to: string; amount: number } };
+type ChatLine = { id: string; from: string; text: string; at: string; tokens?: { to: string; amount: number; kind: TokenEventKind } };
 type Panel = 'people' | 'chat' | 'rooms' | 'host' | null;
 type RewardFlags = { rewards_enabled: boolean; rewards_receive_enabled: boolean; tips_enabled: boolean };
 const SEND_MIN = 1;
@@ -207,7 +211,12 @@ export default function HuddleRoom({
   const [camOn, setCamOn] = useState(false);
   const [mutedByHost, setMutedByHost] = useState(false);
   const [canSpeak, setCanSpeak] = useState(huddle.your_permissions?.can_speak ?? true);
-  const [canShare, setCanShare] = useState(isManager || (huddle.your_permissions?.can_share_screen ?? false));
+  // Admins can always share; others need the host's permission. Derived, so a promotion takes effect at once.
+  const [sharePermitted, setCanShare] = useState(huddle.your_permissions?.can_share_screen ?? false);
+  const canShare = isManager || sharePermitted;
+  /** Slide-in prompt for permission grants (auto-hides after 3s). */
+  const [grantPrompt, setGrantPrompt] = useState<string | null>(null);
+  const closeGrantPrompt = useCallback(() => setGrantPrompt(null), []);
   const [peers, setPeers] = useState<Record<string, Peer>>({});
   const [members, setMembers] = useState<HuddleMember[]>([]);
   const [chat, setChat] = useState<ChatLine[]>([]);
@@ -246,6 +255,8 @@ export default function HuddleRoom({
   const panelRef = useRef<Panel>(null);
   panelRef.current = panel;
 
+  /** The host, for the composer's "Send host tokens" button. */
+  const chatHost = members.find((m) => m.role === 'host') ?? null;
   const nameOf = useCallback(
     (id: string) => {
       const m = members.find((x) => x.user_id === id);
@@ -502,10 +513,10 @@ export default function HuddleRoom({
         setChat((c) => [...c, { id: `${m.at}_${m.from}_${c.length}`, from: m.from, text: m.text, at: m.at }].slice(-300));
         if (panelRef.current !== 'chat' && m.from !== myId) setUnreadChat((n) => n + 1);
       }),
-      websocket.on<{ from: string; to: string; amount: number; at: string; room: string }>('huddle:tokens', (m) => {
+      websocket.on<{ from: string; to: string; amount: number; at: string; room: string; kind?: TokenEventKind }>('huddle:tokens', (m) => {
         if (m.room !== roomRef.current) return;
         setChat((c) =>
-          [...c, { id: `${m.at}_${m.from}_t${c.length}`, from: m.from, text: '', at: m.at, tokens: { to: m.to, amount: m.amount } }].slice(-300),
+          [...c, { id: `${m.at}_${m.from}_t${c.length}`, from: m.from, text: '', at: m.at, tokens: { to: m.to, amount: m.amount, kind: m.kind ?? 'transfer' } }].slice(-300),
         );
         if (m.to === myId) emitPointsChanged();
         if (panelRef.current !== 'chat' && m.from !== myId) setUnreadChat((n) => n + 1);
@@ -526,7 +537,14 @@ export default function HuddleRoom({
       websocket.on<{ huddle_id: string; can_share_screen: boolean }>('huddle:permissions', ({ huddle_id, can_share_screen }) => {
         if (huddle_id !== huddleId) return;
         setCanShare(can_share_screen);
-        setNotice(can_share_screen ? 'You can share your screen now.' : 'Screen sharing was turned off for you.');
+        if (can_share_screen) setGrantPrompt('The host has given you permission to share your screen.');
+        else setNotice('Screen sharing was turned off for you.');
+      }),
+      websocket.on<{ huddle_id: string; role: Role }>('huddle:role', ({ huddle_id, role: next }) => {
+        if (huddle_id !== huddleId) return;
+        setRole(next);
+        if (next === 'co_host') setGrantPrompt('You are now an admin. You can share your screen and manage people.');
+        else setNotice('You are no longer an admin.');
       }),
       websocket.on<{ huddle_id: string; room: string }>('huddle:assigned', ({ huddle_id, room: next }) => {
         if (huddle_id !== huddleId || next === roomRef.current) return;
@@ -568,8 +586,8 @@ export default function HuddleRoom({
       setMembers(list);
       const me = list.find((m) => m.user_id === myId);
       if (me) setRole((cur) => (me.role === cur ? cur : (me.role as Role)));
+      if (me) setCanShare(!!me.can_share_screen);
       if (me && !isManager) {
-        setCanShare(me.can_share_screen);
         setCanSpeak(me.can_speak);
         // The saved mute state is the source of truth; the socket event only makes it instant.
         setMutedByHost(me.is_muted);
@@ -739,6 +757,7 @@ export default function HuddleRoom({
           ) : null}
         </header>
         {notice ? <div className="hr-notice" role="status">{notice}</div> : null}
+      <PermissionPrompt message={grantPrompt} onClose={closeGrantPrompt} />
         {error ? <div className="hr-notice hr-notice--error" role="alert">{error}</div> : null}
 
         <div className="hr-canvas">
@@ -840,14 +859,15 @@ export default function HuddleRoom({
                 {chat.length === 0 ? <p className="rd-small rd-muted">Messages go to everyone in this room.</p> : null}
                 {chat.map((c) =>
                   c.tokens ? (
-                    <div key={c.id} className="hr-chat-tokens" role="status">
-                      <Icon name="coin" size={14} />
-                      <span>
-                        <strong>{c.from === myId ? 'You' : nameOf(c.from)}</strong> sent{' '}
-                        <strong>{c.tokens.amount.toLocaleString()}</strong> Rendly Tokens to{' '}
-                        <strong>{c.tokens.to === myId ? 'you' : nameOf(c.tokens.to)}</strong>
-                      </span>
-                    </div>
+                    <TokenEvent
+                      key={c.id}
+                      kind={c.tokens.kind}
+                      amount={c.tokens.amount}
+                      fromName={c.from === myId ? 'You' : nameOf(c.from)}
+                      toName={c.tokens.to === myId ? 'You' : nameOf(c.tokens.to)}
+                      fromAvatar={avatarOf(c.from)}
+                      toAvatar={avatarOf(c.tokens.to)}
+                    />
                   ) : (
                   <div key={c.id} className={`hr-chat-line ${c.from === myId ? 'hr-chat-line--me' : ''}`}>
                     <span className="hr-chat-from">{c.from === myId ? 'You' : nameOf(c.from)}</span>
@@ -857,6 +877,15 @@ export default function HuddleRoom({
                 )}
               </div>
               <form className="hr-chat-input" onSubmit={(e) => { e.preventDefault(); sendChat(); }}>
+                {role !== 'host' && rewardFlags.tips_enabled && chatHost && chatHost.user_id !== myId ? (
+                  <TipHostCard
+                    variant="composer"
+                    huddleId={huddleId}
+                    room={room}
+                    hostId={chatHost.user_id}
+                    hostName={chatHost.display_name || (chatHost.username ? `@${chatHost.username}` : 'the host')}
+                  />
+                ) : null}
                 <input className="rd-input" value={draft} maxLength={500} onChange={(e) => setDraft(e.target.value)} placeholder="Message the room" aria-label="Message" />
                 <button type="submit" className="rd-icon-btn" disabled={!draft.trim()} aria-label="Send">
                   <Icon name="send" size={16} />
@@ -917,7 +946,30 @@ function PeoplePanel({
   const hostMember = inRoom.find((m) => m.role === 'host') ?? null;
   const [query, setQuery] = useState('');
   const searching = query.trim().length > 0;
-  const shown = inRoom.filter((m) => matchesPerson(query, m.display_name, m.username));
+  const reduceMotion = useReducedMotion();
+  /** One participant's action menu is open at a time. */
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const closeMenu = () => {
+    setMenuFor(null);
+    setAwardFor(null);
+    setSendFor(null);
+  };
+  const toggleMenu = (id: string) => {
+    if (menuFor === id) {
+      closeMenu();
+      return;
+    }
+    setAwardFor(null);
+    setSendFor(null);
+    setMenuFor(id);
+  };
+  // A search moves matching people to the top (with a highlight) instead of hiding everyone else.
+  const matchIds = new Set(
+    searching ? inRoom.filter((m) => matchesPerson(query, m.display_name, m.username)).map((m) => m.user_id) : [],
+  );
+  const shown = searching
+    ? [...inRoom.filter((m) => matchIds.has(m.user_id)), ...inRoom.filter((m) => !matchIds.has(m.user_id))]
+    : inRoom;
   const leadOf = (id: string) => Object.entries(leaders).find(([, lead]) => lead === id)?.[0] ?? null;
 
   const refreshBalance = useCallback(async () => {
@@ -981,10 +1033,10 @@ function PeoplePanel({
       else void refreshBalance();
       emitPointsChanged();
       notifyPointsPeers([m.user_id]);
-      websocket.emit('huddle:tokens', { huddle_id: huddle.id, room, to: m.user_id, amount: amt });
+      websocket.emit('huddle:tokens', { huddle_id: huddle.id, room, to: m.user_id, amount: amt, kind: 'transfer' });
       pushToast({ icon: 'coin', title: `Sent ${amt} Rendly Tokens to ${name(m)}` });
-      setSendFor(null);
       setSendNote('');
+      closeMenu();
     } catch (e) {
       setSendErr(e instanceof Error ? e.message : 'Could not send Rendly Tokens');
     } finally {
@@ -992,17 +1044,110 @@ function PeoplePanel({
     }
   };
 
-  const act = async (id: string, fn: () => Promise<void>) => {
+  const act = async (id: string, fn: () => Promise<void>): Promise<boolean> => {
     setBusy(id);
     setErr(null);
     try {
       await fn();
       await onChanged();
+      return true;
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Action failed');
+      return false;
     } finally {
       setBusy(null);
     }
+  };
+
+  /** Runs a menu action, then slides the menu closed once it succeeds. */
+  const actAndClose = (id: string, fn: () => Promise<void>) => {
+    void act(id, fn).then((ok) => {
+      if (ok) closeMenu();
+    });
+  };
+
+  const menuItems = (m: HuddleMember, manage: boolean, disabled: boolean): PersonMenuItem[] => {
+    const items: PersonMenuItem[] = [];
+    if (manage) {
+      items.push({
+        key: 'mute',
+        label: m.is_muted ? 'Unmute' : 'Mute',
+        icon: <Icon name={m.is_muted ? 'mic' : 'mic-off'} size={15} />,
+        locked: disabled,
+        onSelect: () =>
+          actAndClose(m.user_id, async () => {
+            await updateHuddleMember(huddle.id, m.user_id, { is_muted: !m.is_muted });
+            websocket.emit('huddle:mute', { huddle_id: huddle.id, target: m.user_id, muted: !m.is_muted });
+          }),
+      });
+    }
+    if (isHost) {
+      const admin = m.role === 'co_host';
+      items.push({
+        key: 'admin',
+        label: admin ? 'Remove admin' : 'Make admin',
+        icon: <Icon name="shield" size={15} />,
+        active: admin,
+        locked: disabled,
+        onSelect: () =>
+          actAndClose(m.user_id, async () => {
+            const nextRole = admin ? 'participant' : 'co_host';
+            await updateHuddleMember(huddle.id, m.user_id, { role: nextRole });
+            // Tell their client at once, so admin powers (like screen sharing) work without a reload.
+            websocket.emit('huddle:role', { huddle_id: huddle.id, target: m.user_id, role: nextRole });
+          }),
+      });
+    }
+    if (manage && m.role !== 'co_host') {
+      items.push({
+        key: 'share',
+        label: m.can_share_screen ? 'Revoke screen share' : 'Allow screen share',
+        icon: <Icon name="screen" size={15} />,
+        active: !!m.can_share_screen,
+        locked: disabled,
+        onSelect: () =>
+          actAndClose(m.user_id, async () => {
+            const res = await websocket.emitWithAck<{ ok: boolean; message?: string }>('huddle:permit', {
+              huddle_id: huddle.id,
+              target: m.user_id,
+              can_share_screen: !m.can_share_screen,
+            });
+            if (!res?.ok) throw new Error(res?.message ?? 'Could not change screen sharing');
+          }),
+      });
+    }
+    items.push({
+      key: 'reward',
+      label: 'Reward tokens',
+      icon: <Icon name="trophy" size={15} />,
+      active: awardFor === m.user_id,
+      locked: !flags.rewards_enabled,
+      lockedHint: 'Turn on free rewards in huddle settings',
+      onSelect: () => {
+        setSendFor(null);
+        setAwardFor(awardFor === m.user_id ? null : m.user_id);
+      },
+    });
+    if (isHost) {
+      items.push({
+        key: 'send',
+        label: 'Send from my balance',
+        icon: <TokenCoin size={15} />,
+        active: sendFor === m.user_id,
+        locked: !canSendTokens,
+        lockedHint: 'Turn on paying participants in huddle settings',
+        onSelect: () => openSend(m.user_id),
+      });
+    }
+    items.push({
+      key: 'remove',
+      label: 'Remove from huddle',
+      icon: <Icon name="close" size={15} />,
+      danger: true,
+      locked: disabled,
+      onSelect: () => actAndClose(m.user_id, () => removeHuddleMember(huddle.id, m.user_id)),
+    });
+    return items;
   };
 
   const name = (m: HuddleMember) => m.display_name || (m.username ? `@${m.username}` : 'Guest');
@@ -1010,9 +1155,6 @@ function PeoplePanel({
   return (
     <div className="hr-people rd-scroll">
       {err ? <p className="hr-err">{err}</p> : null}
-      {!isHost && flags.tips_enabled && hostMember && hostMember.user_id !== myId ? (
-        <TipHostCard huddleId={huddle.id} room={room} hostId={hostMember.user_id} hostName={name(hostMember)} />
-      ) : null}
       {isManager && waiting.length > 0 ? (
         <>
           <div className="hr-waiting-head">
@@ -1059,17 +1201,23 @@ function PeoplePanel({
         />
       </label>
       <h4 className="hr-subhead">
-        {searching ? `Matches (${shown.length})` : `In the huddle (${inRoom.length})`}
+        {searching ? `Matches (${matchIds.size})` : `In the huddle (${inRoom.length})`}
       </h4>
-      {searching && shown.length === 0 ? <p className="rd-small rd-muted">Nobody matches “{query.trim()}”.</p> : null}
+      {searching && matchIds.size === 0 ? <p className="rd-small rd-muted">Nobody matches “{query.trim()}”.</p> : null}
       {shown.map((m) => {
         const self = m.user_id === myId;
         const disabled = busy === m.user_id;
         const leads = leadOf(m.user_id);
         // Mute and sharing: the host anywhere, a room leader only for people in the room they lead.
         const manage = isHost || (canManageHere && peersInRoom.includes(m.user_id));
+        const hit = matchIds.has(m.user_id);
         return (
-          <div key={m.user_id} className="hr-person-wrap">
+          <motion.div
+            key={m.user_id}
+            layout={reduceMotion ? false : 'position'}
+            transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+            className={`hr-person-wrap ${hit ? 'hr-person-wrap--hit' : ''}`}
+          >
             <div className="hr-person">
               <Avatar url={m.avatar_url} name={m.username} size="sm" />
               <span className="hr-person-name">
@@ -1080,72 +1228,19 @@ function PeoplePanel({
                   {peersInRoom.includes(m.user_id) || self ? '' : ' · other room'}
                 </span>
               </span>
-              {isHost && searching && !self && m.role !== 'host' ? (
-                <button
-                  type="button"
-                  className={`hr-admin-pill ${m.role === 'co_host' ? 'hr-admin-pill--on' : ''}`}
-                  disabled={disabled}
-                  aria-pressed={m.role === 'co_host'}
-                  onClick={() => act(m.user_id, () => updateHuddleMember(huddle.id, m.user_id, { role: m.role === 'co_host' ? 'participant' : 'co_host' }))}
-                >
-                  <Icon name="shield" size={14} />
-                  {m.role === 'co_host' ? 'Remove admin' : 'Assign admin'}
-                </button>
-              ) : null}
               {isManager && !self && m.role !== 'host' ? (
-                <div className="hr-person-actions">
-                  {manage ? (
-                  <>
-                  <button type="button" className={`rd-icon-btn ${m.is_muted ? 'rd-icon-btn--on' : ''}`} title={m.is_muted ? 'Unmute' : 'Mute'} disabled={disabled}
-                    onClick={() => act(m.user_id, async () => {
-                      await updateHuddleMember(huddle.id, m.user_id, { is_muted: !m.is_muted });
-                      websocket.emit('huddle:mute', { huddle_id: huddle.id, target: m.user_id, muted: !m.is_muted });
-                    })}>
-                    <Icon name={m.is_muted ? 'mic-off' : 'mic'} size={15} />
-                  </button>
-                  {m.role === 'co_host' ? (
-                    <span className="hr-admin-pill hr-admin-pill--on" title="Admins can always share their screen">
-                      <Icon name="screen" size={14} /> Can share
-                    </span>
-                  ) : (
-                    <button type="button" className={`hr-admin-pill ${m.can_share_screen ? 'hr-admin-pill--on' : ''}`} aria-pressed={!!m.can_share_screen} disabled={disabled}
-                      title={m.can_share_screen ? 'Stop this person sharing their screen' : 'Let this person share their screen'}
-                      onClick={() => act(m.user_id, async () => {
-                        const res = await websocket.emitWithAck<{ ok: boolean; message?: string }>('huddle:permit', { huddle_id: huddle.id, target: m.user_id, can_share_screen: !m.can_share_screen });
-                        if (!res?.ok) throw new Error(res?.message ?? 'Could not change screen sharing');
-                      })}>
-                      <Icon name="screen" size={14} />
-                      {m.can_share_screen ? 'Sharing allowed' : 'Allow screen share'}
-                    </button>
-                  )}
-                  </>
-                  ) : null}
-                  {flags.rewards_enabled ? (
-                    <button type="button" className={`rd-icon-btn ${awardFor === m.user_id ? 'rd-icon-btn--on' : ''}`} title="Give free Rendly Tokens" aria-label={`Give free Rendly Tokens to ${name(m)}`} aria-expanded={awardFor === m.user_id}
-                      onClick={() => { setSendFor(null); setAwardFor(awardFor === m.user_id ? null : m.user_id); }}>
-                      <Icon name="trophy" size={15} />
-                    </button>
-                  ) : null}
-                  {canSendTokens ? (
-                    <button type="button" className={`rd-icon-btn hr-coin-btn ${sendFor === m.user_id ? 'rd-icon-btn--on' : ''}`} title="Send Rendly Tokens from your balance" aria-label={`Send Rendly Tokens to ${name(m)}`} aria-expanded={sendFor === m.user_id}
-                      onClick={() => openSend(m.user_id)}>
-                      <TokenCoin size={15} />
-                    </button>
-                  ) : null}
-                  <button type="button" className="rd-icon-btn rd-icon-btn--danger" title="Remove from huddle" disabled={disabled} onClick={() => act(m.user_id, () => removeHuddleMember(huddle.id, m.user_id))}>
-                    <Icon name="close" size={15} />
-                  </button>
-                </div>
+                <PersonMenuTrigger open={menuFor === m.user_id} onToggle={() => toggleMenu(m.user_id)} label={name(m)} disabled={disabled} />
               ) : null}
             </div>
+            <PersonMenu open={menuFor === m.user_id} items={menuItems(m, manage, disabled)}>
             {awardFor === m.user_id ? (
               <form
                 className="hr-award"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void act(m.user_id, async () => {
+                  actAndClose(m.user_id, async () => {
                     await awardPoints(huddle.id, m.user_id, amount, note.trim() || undefined);
-                    setAwardFor(null);
+                    websocket.emit('huddle:tokens', { huddle_id: huddle.id, room, to: m.user_id, amount, kind: 'reward' });
                     setNote('');
                   });
                 }}
@@ -1227,7 +1322,8 @@ function PeoplePanel({
                 </div>
               </form>
             ) : null}
-          </div>
+            </PersonMenu>
+          </motion.div>
         );
       })}
     </div>

@@ -15,6 +15,7 @@
 
 import { supabase } from "./supabase-users";
 import { getBalance } from "./points";
+import { sendPushToUsers } from "./push";
 import {
   chargeSettlesAt,
   computeSparkLimits,
@@ -24,7 +25,7 @@ import {
   isSparkPreset,
   partnerDisplayName,
   sharedIntents,
-  sparkMatchCost,
+  sparkMinMatchCost,
   SPARK_WINDOW_MINUTES,
   type MatchIntent,
   type MatchedVia,
@@ -171,6 +172,73 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   };
 }
 
+/** "N people on Spark" at or above this sends the notify-me pushes. */
+export const SPARK_NOTIFY_THRESHOLD = 5;
+/** A notify-me user gets at most one push per hour. */
+const SPARK_NOTIFY_COOLDOWN_MINUTES = 60;
+
+/** People on Spark right now: waiting in the queue (last 10 min) or in a live pairing. */
+export async function getSparkActiveCount(): Promise<number> {
+  const client = requireClient();
+  const { data, error } = await client.rpc("spark_active_count");
+  if (error) throw storeError("active count", error);
+  const n = Number(data ?? 0);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+/** Remember that the user wants a push when Spark gets busy (idempotent). */
+export async function requestSparkNotify(userId: string): Promise<void> {
+  const client = requireClient();
+  const { error } = await client
+    .from("spark_notify_requests")
+    .upsert({ user_id: userId, created_at: new Date().toISOString(), notified_at: null }, { onConflict: "user_id" });
+  if (error) throw storeError("notify request", error);
+}
+
+/**
+ * When at least SPARK_NOTIFY_THRESHOLD people are on Spark, push everyone who asked to be told
+ * (and was not told in the last hour), then clear their requests. Rows are claimed first by
+ * setting notified_at, so two concurrent enqueues never push the same user twice.
+ * Never throws: callers fire and forget.
+ */
+export async function notifySparkWatchersIfBusy(): Promise<void> {
+  try {
+    const active = await getSparkActiveCount();
+    if (active < SPARK_NOTIFY_THRESHOLD) return;
+    const client = requireClient();
+    const nowIso = new Date().toISOString();
+    const cooldownIso = new Date(Date.now() - SPARK_NOTIFY_COOLDOWN_MINUTES * 60 * 1000).toISOString();
+    const { data: claimed, error } = await client
+      .from("spark_notify_requests")
+      .update({ notified_at: nowIso })
+      .or(`notified_at.is.null,notified_at.lt."${cooldownIso}"`)
+      .select("user_id");
+    if (error) throw error;
+    const userIds = ((claimed ?? []) as { user_id: string }[]).map((r) => r.user_id);
+    if (userIds.length === 0) return;
+    try {
+      await sendPushToUsers(userIds, {
+        title: "People are on Spark",
+        body: `${active} people are matching now`,
+        url: "/dashboard/match",
+        tag: "spark-active",
+      });
+    } catch (pushErr) {
+      // Release the claim so the next busy enqueue retries instead of waiting out the cooldown.
+      const { error: releaseError } = await client
+        .from("spark_notify_requests")
+        .update({ notified_at: null })
+        .in("user_id", userIds);
+      if (releaseError) console.error("[spark] notify claim not released:", releaseError);
+      throw pushErr;
+    }
+    const { error: delError } = await client.from("spark_notify_requests").delete().in("user_id", userIds);
+    if (delError) console.error("[spark] notify requests not cleared:", delError);
+  } catch (err) {
+    console.error("[spark] notify watchers failed:", err);
+  }
+}
+
 /** Cancel any earlier waiting entry for this user. Returns how many were cancelled. */
 export async function cancelWaitingEntries(userId: string): Promise<number> {
   const client = requireClient();
@@ -188,13 +256,13 @@ export async function cancelWaitingEntries(userId: string): Promise<number> {
  * End the caller's latest matched pairing (last INVITE_WINDOW_HOURS) and settle its charge:
  * charged for both sides when it lasted 30s, waived otherwise. Sets ended_at on both rows so
  * neither side can rejoin the Spark room or fetch relay credentials for it.
- * Returns true when a pairing was ended.
+ * A pairing already ended elsewhere (the chat service marks ended_at on Skip without settling)
+ * is still settled here, measured to its real end time. Returns true when this call ended it.
  */
 export async function endLatestPairing(userId: string): Promise<boolean> {
-  // An already-ended pairing was settled by whoever ended it; keep the old "false" answer.
-  if (!(await hasActivePairing(userId))) return false;
+  const wasActive = await hasActivePairing(userId);
   const result = await settlePairing(userId, true);
-  return result.ended;
+  return wasActive && result.ended;
 }
 
 /** Match allowance for the rolling window plus the current balance. */
@@ -369,9 +437,12 @@ export async function enqueueForMatch(userId: string, req: MatchRequest): Promis
   const limits = await getSparkLimits(userId);
   if (isRateLimited(limits)) throw new SparkRateLimitedError(limits);
   await assertIntentsHeld(userId, req.intents);
-  // Skip / Next: an un-ended pairing is ended (and settled) before searching again.
-  if (await hasActivePairing(userId)) await endLatestPairing(userId);
-  const cost = sparkMatchCost(req.intents);
+  // Skip / Next: the latest pairing is ended and settled before searching again (also when the
+  // chat service already marked it ended, so its pending charge is never left behind).
+  await endLatestPairing(userId);
+  // A pair is charged only for the intents it shares (or the Default fee), so queueing needs
+  // just the cheapest possible pair; the database checks the real price when it pairs.
+  const cost = sparkMinMatchCost(req.intents, req.match_any);
   const balance = await getBalance(userId);
   if (balance < cost) throw new SparkInsufficientError(cost, balance);
   // One transaction under the user's ledger lock: cancel their waiting rows, insert the new
@@ -531,6 +602,7 @@ type OwnQueueRow = {
   charge_state?: string | null;
   default_fee?: number | null;
   matched_via?: string | null;
+  match_cost?: number | null;
 };
 
 /** The partner's matched row for this pairing (their note and anonymous flag). */
@@ -577,7 +649,7 @@ async function recentView(userId: string): Promise<MatchView> {
     if (userError) throw storeError("partner name", userError);
     username = (user?.username as string | null | undefined) ?? null;
   }
-  const cost = Number(own.cost ?? 0) + Number(own.default_fee ?? 0);
+  const cost = pairingCost(own);
   const charge = chargeFrom(own.charge_state, cost, own.charged ? cost : 0, null, own.matched_at);
   return {
     status: "matched",
@@ -589,6 +661,12 @@ async function recentView(userId: string): Promise<MatchView> {
     partner: partnerView(anonymous, username, partner.note),
     matched_via: toMatchedVia(own.matched_via),
   };
+}
+
+/** What a pairing charges: match_cost (shared intents, or the Default fee) when set, else cost + default_fee. */
+function pairingCost(row: Pick<OwnQueueRow, "cost" | "default_fee" | "match_cost">): number {
+  if (row.match_cost !== null && row.match_cost !== undefined) return Number(row.match_cost);
+  return Number(row.cost ?? 0) + Number(row.default_fee ?? 0);
 }
 
 const OWN_ROW_COLUMNS = "id, status, partner_user_id, mode, intents, cost, charged, cancel_reason, matched_at, ended_at";
@@ -606,6 +684,10 @@ async function fetchOwnRecentRow(userId: string): Promise<OwnQueueRow | null> {
       .order("enqueued_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+  const priced = await query(`${OWN_ROW_COLUMNS}, charge_state, default_fee, matched_via, match_cost`);
+  if (!priced.error) return priced.data as unknown as OwnQueueRow | null;
+  if (!isMissingSchemaError(priced.error)) throw storeError("recent match", priced.error);
+  // Shared-pricing migration not applied yet.
   const full = await query(`${OWN_ROW_COLUMNS}, charge_state, default_fee, matched_via`);
   if (!full.error) return full.data as unknown as OwnQueueRow | null;
   if (!isMissingSchemaError(full.error)) throw storeError("recent match", full.error);

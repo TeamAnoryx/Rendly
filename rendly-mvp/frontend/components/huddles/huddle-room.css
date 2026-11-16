@@ -19,6 +19,13 @@
   grid-template-columns: minmax(0, 1fr) 320px;
 }
 
+/* Tablet landscape and up: a little more room for chat and people. */
+@media (min-width: 1025px) {
+  .hr--panel {
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 26vw, 380px);
+  }
+}
+
 .hr-stage {
   position: relative;
   min-width: 0;
@@ -681,6 +688,7 @@
 }
 
 .hr-chat-input {
+  position: relative;
   flex: none;
   display: flex;
   align-items: center;
@@ -1083,3 +1091,297 @@
 .hr-tip-quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .hr-tip-amount { width: 84px; }
 .hr-tip-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* "Send host tokens": round coin button left of the chat input, label shown below on hover/focus. */
+.hr-tip-fab {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: radial-gradient(circle at 30% 25%, rgba(251, 191, 36, 0.22), rgba(251, 191, 36, 0.05) 70%);
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.hr-tip-fab:hover,
+.hr-tip-fab:focus-visible {
+  transform: translateY(-1px) scale(1.06);
+  border-color: rgba(251, 191, 36, 0.7);
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.12), 0 6px 18px rgba(251, 191, 36, 0.18);
+  outline: none;
+}
+.hr-tip-fab-label {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translate(-50%, -4px);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #111118;
+  border: 1px solid var(--rd-border);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 5;
+}
+.hr-tip-fab:hover .hr-tip-fab-label,
+.hr-tip-fab:focus-visible .hr-tip-fab-label {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+/* The label sits below the button; near the screen bottom flip it above. */
+.hr-chat-input .hr-tip-fab-label {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+.hr-tip--pop {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(100% + 6px);
+  margin: 0;
+  z-index: 6;
+  background: var(--rd-surface, #111118);
+  border: 1px solid var(--rd-border);
+  border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  animation: hr-tip-pop 0.18s ease-out both;
+}
+@keyframes hr-tip-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hr-tip-fab, .hr-tip-fab-label, .hr-tip--pop { transition: none; animation: none; }
+}
+
+/* Per-person "Manage" dropdown. It expands inside the row, so rows below slide with it. */
+.hr-person-wrap {
+  position: relative;
+  border-radius: 12px;
+}
+.hr-pm-trigger {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--rd-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+.hr-pm-trigger:hover,
+.hr-pm-trigger:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.28);
+  outline: none;
+}
+.hr-pm-trigger:active { transform: scale(0.97); }
+.hr-pm-trigger--open {
+  background: #fff;
+  color: #07070d;
+  border-color: #fff;
+}
+.hr-pm-chevron {
+  display: inline-grid;
+  transform: rotate(90deg);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.hr-pm-trigger--open .hr-pm-chevron { transform: rotate(-90deg); }
+.hr-pm { overflow: hidden; }
+.hr-pm-inner {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px;
+  padding: 4px 6px 10px;
+}
+.hr-pm-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--rd-border);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.hr-pm-item:hover:not(:disabled),
+.hr-pm-item:focus-visible { background: rgba(255, 255, 255, 0.08); outline: none; }
+.hr-pm-item:disabled { opacity: 0.42; cursor: not-allowed; }
+.hr-pm-item--on {
+  border-color: rgba(52, 211, 153, 0.5);
+  background: rgba(52, 211, 153, 0.1);
+}
+.hr-pm-item--danger { color: #fca5a5; }
+.hr-pm-item--danger:hover:not(:disabled) { background: rgba(248, 113, 113, 0.12); }
+.hr-pm-icon { display: inline-grid; flex: none; }
+.hr-pm-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hr-pm-lock { display: inline-grid; opacity: 0.8; }
+.hr-pm .hr-award,
+.hr-pm .hr-send { margin: 0 6px 10px; }
+
+/* Search hit: jumps to the top with an animated gradient edge. */
+.hr-person-wrap--hit {
+  background: linear-gradient(rgba(14, 14, 22, 0.96), rgba(14, 14, 22, 0.96)) padding-box,
+    linear-gradient(110deg, #a78bfa, #60a5fa, #34d399, #a78bfa) border-box;
+  background-size: 100% 100%, 300% 100%;
+  border: 1px solid transparent;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1), 0 8px 24px rgba(96, 165, 250, 0.12);
+  animation: hr-hit-flow 3s linear infinite, hr-hit-in 0.5s cubic-bezier(0.22, 1.4, 0.36, 1) both;
+}
+@keyframes hr-hit-flow { to { background-position: 0 0, 300% 0; } }
+@keyframes hr-hit-in {
+  from { transform: translateY(-6px) scale(0.98); }
+  to { transform: none; }
+}
+@media (max-width: 380px) {
+  .hr-pm-inner { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hr-pm-trigger, .hr-pm-chevron, .hr-pm-item { transition: none; }
+  .hr-person-wrap--hit { animation: none; }
+}
+
+/* Permission granted prompt: slides in at the top, auto-hides after 3s, swipe or × to close. */
+.hr-grant {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 50%;
+  translate: -50% 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(440px, calc(100% - 24px));
+  padding: 12px 12px 14px 14px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(17, 17, 26, 0.94);
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 4px rgba(52, 211, 153, 0.08);
+  backdrop-filter: blur(10px);
+  color: #fff;
+  touch-action: pan-y;
+  cursor: grab;
+}
+.hr-grant-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(52, 211, 153, 0.16);
+  color: #34d399;
+}
+.hr-grant-text { flex: 1; margin: 0; font-size: 13.5px; line-height: 1.4; }
+.hr-grant-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  cursor: pointer;
+}
+.hr-grant-close:hover { background: rgba(255, 255, 255, 0.16); }
+.hr-grant-timer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #34d399, #60a5fa);
+  transform-origin: left;
+}
+
+/* Token transfer card in chat: gold for host rewards, violet for tips to the host. */
+.hr-tok {
+  --tok-a: #fbbf24;
+  --tok-b: #f59e0b;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--tok-a) 45%, transparent);
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--tok-a) 22%, transparent), transparent 60%),
+    linear-gradient(160deg, rgba(24, 22, 32, 0.98), rgba(14, 14, 22, 0.98));
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.hr-tok--tip { --tok-a: #a78bfa; --tok-b: #7c3aed; }
+.hr-tok--transfer { --tok-a: #34d399; --tok-b: #059669; }
+.hr-tok-shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.16) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: hr-tok-shine 1.4s ease-out 0.15s 1 forwards;
+  pointer-events: none;
+}
+@keyframes hr-tok-shine { to { transform: translateX(120%); } }
+.hr-tok-head { display: flex; align-items: center; justify-content: space-between; }
+.hr-tok-badge {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #0b0b12;
+  background: linear-gradient(90deg, var(--tok-a), var(--tok-b));
+}
+.hr-tok-coin { display: inline-grid; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--tok-a) 60%, transparent)); }
+.hr-tok-flow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.hr-tok-person { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+.hr-tok-person:last-child { justify-content: flex-end; }
+.hr-tok-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hr-tok-arrow {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--tok-a) 30%, transparent);
+  overflow: hidden;
+}
+.hr-tok-arrow span {
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: var(--tok-a);
+  animation: hr-tok-flow 1.2s ease-in-out infinite;
+}
+@keyframes hr-tok-flow { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+.hr-tok-amount { display: flex; align-items: baseline; gap: 6px; font-size: 18px; font-weight: 800; }
+.hr-tok-unit { font-size: 11.5px; font-weight: 500; opacity: 0.7; }
+@media (prefers-reduced-motion: reduce) {
+  .hr-tok-arrow span { animation: none; }
+}

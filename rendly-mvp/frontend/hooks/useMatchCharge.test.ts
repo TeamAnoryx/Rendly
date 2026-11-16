@@ -6,7 +6,7 @@ jest.mock('@/hooks/useSparkLimits', () => ({ notifySparkLimitsChanged: jest.fn()
 
 import { settleMatch } from '@/services/sparkApi';
 import { notifySparkLimitsChanged } from '@/hooks/useSparkLimits';
-import { SPARK_FREE_SECONDS, useMatchCharge } from './useMatchCharge';
+import { SETTLE_MAX_TRIES, SETTLE_RETRY_MS, SPARK_FREE_SECONDS, useMatchCharge } from './useMatchCharge';
 
 const mockSettle = settleMatch as jest.MockedFunction<typeof settleMatch>;
 const mockNotify = notifySparkLimitsChanged as jest.MockedFunction<typeof notifySparkLimitsChanged>;
@@ -70,7 +70,7 @@ describe('useMatchCharge', () => {
     expect(mockNotify).toHaveBeenCalledWith(limits);
   });
 
-  it('retries settle once after an error', async () => {
+  it('retries settle after an error', async () => {
     mockSettle
       .mockRejectedValueOnce(new Error('boom'))
       .mockResolvedValueOnce({ charge: { state: 'charged', settles_at: null, cost: 10 }, limits });
@@ -78,8 +78,46 @@ describe('useMatchCharge', () => {
 
     await advance(31_000);
     expect(mockSettle).toHaveBeenCalledTimes(1);
-    await advance(2_500);
+    await advance(SETTLE_RETRY_MS);
     expect(mockSettle).toHaveBeenCalledTimes(2);
+    expect(result.current.state).toBe('charged');
+  });
+
+  it('keeps retrying while the server still answers pending', async () => {
+    const pending = { charge: { state: 'pending' as const, settles_at: null, cost: 10 }, limits };
+    mockSettle
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce({ charge: null, limits })
+      .mockResolvedValueOnce({ charge: { state: 'charged', settles_at: null, cost: 10 }, limits });
+    const { result } = renderHook(() => useMatchCharge(pendingCharge()));
+
+    await advance(30_000);
+    expect(mockSettle).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toBe('pending');
+    await advance(SETTLE_RETRY_MS);
+    await advance(SETTLE_RETRY_MS);
+    expect(mockSettle).toHaveBeenCalledTimes(3);
+    expect(result.current.state).toBe('charged');
+  });
+
+  it('gives up after the maximum number of tries', async () => {
+    mockSettle.mockRejectedValue(new Error('down'));
+    renderHook(() => useMatchCharge(pendingCharge()));
+
+    await advance(30_000);
+    for (let i = 0; i < SETTLE_MAX_TRIES + 3; i += 1) await advance(SETTLE_RETRY_MS);
+    expect(mockSettle).toHaveBeenCalledTimes(SETTLE_MAX_TRIES);
+  });
+
+  it('markEnded after the free window does not waive: the settle decides', async () => {
+    mockSettle.mockResolvedValue({ charge: { state: 'charged', settles_at: null, cost: 10 }, limits });
+    const { result } = renderHook(() => useMatchCharge(pendingCharge()));
+    await advance(29_500);
+
+    act(() => result.current.markEnded());
+    expect(result.current.state).toBe('pending');
+
+    await advance(1_000);
     expect(result.current.state).toBe('charged');
   });
 
