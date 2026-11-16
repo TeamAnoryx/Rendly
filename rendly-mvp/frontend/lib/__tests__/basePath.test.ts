@@ -2,7 +2,6 @@ describe('withBasePath', () => {
   const load = (base: string) => {
     jest.resetModules();
     process.env.NEXT_PUBLIC_BASE_PATH = base;
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     return require('../basePath') as typeof import('../basePath');
   };
   afterAll(() => {
