@@ -30,3 +30,24 @@ function getSnapshot(): HTMLElement | null {
 export function useCallDock(): HTMLElement | null {
   return useSyncExternalStore(subscribe, getSnapshot, () => null);
 }
+
+/** Phone video call in Whispers: whether the chat sheet is slid up over your own video. */
+let chatOpen = false;
+const chatListeners = new Set<() => void>();
+
+export function setCallChatOpen(open: boolean): void {
+  if (open === chatOpen) return;
+  chatOpen = open;
+  chatListeners.forEach((fn) => fn());
+}
+
+function subscribeChat(fn: () => void): () => void {
+  chatListeners.add(fn);
+  return () => {
+    chatListeners.delete(fn);
+  };
+}
+
+export function useCallChatOpen(): boolean {
+  return useSyncExternalStore(subscribeChat, () => chatOpen, () => false);
+}

@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { createPortal } from 'react-dom';
-import { useCallDock } from './callDock';
+import { setCallChatOpen, useCallDock } from './callDock';
 import { useCallContext } from '@/context/CallContext';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useNotifications } from '@/context/NotificationsContext';
@@ -228,6 +228,10 @@ export function CallStage() {
   // Whispers has a dock slot beside the chat; the call renders there instead of over the page.
   const liveDock = useCallDock();
   const dockEl = docked ? liveDock : null;
+  const chatSheetActive = !!dockEl && c.callState === 'active' && c.callType === 'video' && !minimized;
+  useEffect(() => {
+    if (!chatSheetActive) setCallChatOpen(false);
+  }, [chatSheetActive]);
 
   useEffect(() => {
     if (c.callState !== 'active') {
@@ -320,7 +324,14 @@ export function CallStage() {
           </div>
         </div>
       ) : null}
-      <CallControls onMinimize={() => setMinimized(true)} recorder={recorder} peerName={peerName} />
+      <div className="call-bottom-bar">
+        <CallControls onMinimize={() => setMinimized(true)} recorder={recorder} peerName={peerName} />
+        {dockEl && !audioOnly ? (
+          <button type="button" className="call-ctl call-chat-toggle" onClick={() => setCallChatOpen(true)} aria-label="Open chat" title="Chat">
+            <Icon name="chat" />
+          </button>
+        ) : null}
+      </div>
     </div>
   );
   return dockEl ? createPortal(stage, dockEl) : stage;

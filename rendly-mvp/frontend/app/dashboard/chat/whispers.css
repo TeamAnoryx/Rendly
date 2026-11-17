@@ -3504,3 +3504,80 @@
   flex: 1 1 auto;
   width: 100%;
 }
+
+/* ---------- Phone video call: both feeds stacked full screen, chat as a sheet over your own feed ---------- */
+.chat-call-sheet-handle {
+  display: none;
+}
+@media (max-width: 767px) {
+  .chat-call-layout:has(.call-stage--docked:not(.call-stage--docked-audio)) {
+    position: relative;
+    overflow: hidden;
+  }
+  .chat-call-layout:has(.call-stage--docked:not(.call-stage--docked-audio)) .chat-call-dock {
+    flex: 1 1 auto;
+    height: 100%;
+  }
+  /* The chat waits below the screen until the chat button slides it up over the lower half. */
+  .chat-call-layout:has(.call-stage--docked:not(.call-stage--docked-audio)) .chat-call-main {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 52%;
+    z-index: 6;
+    flex-direction: column;
+    background: var(--rd-bg, #0b0b0c);
+    border-top-left-radius: 18px;
+    border-top-right-radius: 18px;
+    box-shadow: 0 -18px 48px -12px rgba(0, 0, 0, 0.85);
+    transform: translateY(105%);
+    visibility: hidden;
+    transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.32s;
+    overflow: hidden;
+  }
+  .chat-call-layout--chat-open:has(.call-stage--docked:not(.call-stage--docked-audio)) .chat-call-main {
+    transform: translateY(0);
+    visibility: visible;
+    transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s;
+  }
+  .chat-call-layout:has(.call-stage--docked:not(.call-stage--docked-audio)) .chat-call-main > * {
+    min-height: 0;
+  }
+  .chat-call-layout:has(.call-stage--docked:not(.call-stage--docked-audio)) .chat-call-sheet-handle {
+    display: flex;
+    flex: none;
+    position: relative;
+    align-items: center;
+    justify-content: center;
+    height: 34px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .chat-call-sheet-grip {
+    width: 42px;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.28);
+  }
+  .chat-call-sheet-close {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    cursor: pointer;
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .chat-call-layout:has(.call-stage--docked:not(.call-stage--docked-audio)) .chat-call-main {
+    transition: none;
+  }
+}
