@@ -300,15 +300,21 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req: express.Req
 
   // View-only groups: only admins and the priority member may post.
   if (parsed.type === "group") {
-    const group = await getGroupById(parsed.groupId);
-    if (group && (group as { view_only_mode?: boolean }).view_only_mode) {
-      const members = await getGroupMembersWithUsers(parsed.groupId);
-      const role = members.find((m) => m.user_id === user.userId)?.role;
-      const priority = (group as { priority_user_id?: string | null }).priority_user_id ?? null;
-      if (!canPostInGroup({ viewOnly: true, role, priorityUserId: priority, userId: user.userId })) {
-        res.status(403).json({ message: "Only admins can send messages in this group right now." });
-        return;
+    try {
+      const group = await getGroupById(parsed.groupId);
+      if (group && (group as { view_only_mode?: boolean }).view_only_mode) {
+        const members = await getGroupMembersWithUsers(parsed.groupId);
+        const role = members.find((m) => m.user_id === user.userId)?.role;
+        const priority = (group as { priority_user_id?: string | null }).priority_user_id ?? null;
+        if (!canPostInGroup({ viewOnly: true, role, priorityUserId: priority, userId: user.userId })) {
+          res.status(403).json({ message: "Only admins can send messages in this group right now." });
+          return;
+        }
       }
+    } catch (err) {
+      console.error("[messages] group permission check failed", err);
+      res.status(503).json({ message: "Could not check group permissions. Try again." });
+      return;
     }
   }
 

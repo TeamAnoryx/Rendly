@@ -263,6 +263,8 @@ export function GroupSettingsPanel({ groupId, currentUserId, onGroupUpdated, onL
         setGroup((g) => (g ? { ...g, view_only_mode: checked } : null));
         onGroupUpdated?.();
       }
+    } catch {
+      setPermError('Could not change view-only mode. Try again.');
     } finally {
       setSaving(false);
     }
@@ -279,6 +281,8 @@ export function GroupSettingsPanel({ groupId, currentUserId, onGroupUpdated, onL
         setGroup((g) => (g ? { ...g, priority_user_id: userId } : null));
         onGroupUpdated?.();
       }
+    } catch {
+      setPermError('Could not change priority access. Try again.');
     } finally {
       setSaving(false);
     }
