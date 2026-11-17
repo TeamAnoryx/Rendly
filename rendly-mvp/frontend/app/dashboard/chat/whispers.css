@@ -3490,3 +3490,17 @@
     height: auto;
   }
 }
+
+/* During a Whispers call the conversation list and tabs step aside: call on the left, chat on the right. */
+.chat-call-layout:has(.chat-call-dock:not(:empty)) .chat-pill-wrapper,
+.chat-call-layout:has(.chat-call-dock:not(:empty)) .chat-section-col--left {
+  display: none !important;
+}
+.chat-call-layout:has(.chat-call-dock:not(:empty)) .chat-whispers-section-content {
+  margin-left: 0 !important;
+}
+.chat-call-layout:has(.chat-call-dock:not(:empty)) .chat-section-col--right {
+  display: flex !important;
+  flex: 1 1 auto;
+  width: 100%;
+}

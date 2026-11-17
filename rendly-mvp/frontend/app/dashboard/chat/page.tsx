@@ -2,6 +2,7 @@
 
 import React, { Suspense } from 'react';
 import { ChatPageContent } from './ChatPageContent';
+import { setCallDock } from '@/components/call/callDock';
 import './whispers.css';
 
 export default function ChatPage() {
@@ -24,7 +25,7 @@ export default function ChatPage() {
     >
       {/* A call in Whispers renders into the dock (left, or on top on phones) beside the chat. */}
       <div className="chat-call-layout">
-        <div id="rd-call-dock" className="chat-call-dock" />
+        <div id="rd-call-dock" className="chat-call-dock" ref={setCallDock} />
         <div className="chat-call-main">
           <ChatPageContent />
         </div>

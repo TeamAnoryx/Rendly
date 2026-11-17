@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCurrentUser } from '@/context/CurrentUserContext';
+import { useCallContext } from '@/context/CallContext';
 import { auth } from '@/services/auth';
 import { getMyPoints, emitPointsChanged } from '@/services/pointsApi';
 import websocket from '@/services/websocket';
@@ -16,6 +17,8 @@ import NotificationConsent from '@/components/notifications/NotificationConsent'
 import './shell.css';
 
 const POINTS_REFRESH_MS = 60_000;
+/** Width at which the rail folds to icons on its own (matches styles/rendly-theme.css). */
+const RAIL_AUTO_COLLAPSE_QUERY = '(max-width: 1200px)';
 /** Safety net on live pages; transfers and Spark charges arrive instantly over the socket. */
 const POINTS_LIVE_REFRESH_MS = 10_000;
 
@@ -95,6 +98,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { user } = useCurrentUser();
   const [points, setPoints] = useState<number | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  const { callState } = useCallContext();
+  // null follows the screen width; true/false is the user's choice from the logo button.
+  const [railCollapsed, setRailCollapsed] = useState<boolean | null>(null);
+  const inWhispersCall = callState === 'active' && pathname.startsWith('/dashboard/chat');
+
+  // A Whispers call folds the rail to icons so the call and chat get the room; it reopens after.
+  useEffect(() => {
+    setRailCollapsed(inWhispersCall ? true : null);
+  }, [inWhispersCall]);
+
+  const toggleRail = useCallback(() => {
+    setRailCollapsed((cur) => {
+      const narrow = window.matchMedia(RAIL_AUTO_COLLAPSE_QUERY).matches;
+      const collapsedNow = cur ?? narrow;
+      return !collapsedNow;
+    });
+  }, []);
+  const railClass =
+    railCollapsed === true ? ' rd-shell--rail-collapsed' : railCollapsed === false ? ' rd-shell--rail-open' : '';
 
   const loadPoints = useCallback(async () => {
     try {
@@ -175,14 +197,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       <div className="rd-aurora" aria-hidden />
-      <div className="rd-shell">
+      <div className={`rd-shell${railClass}`}>
         <nav className="rd-rail" aria-label="Main navigation">
-          <Link href="/dashboard" className="rd-rail-logo" aria-label="Rendly home">
+          <button
+            type="button"
+            className="rd-rail-logo"
+            onClick={toggleRail}
+            aria-label={railClass.includes('collapsed') ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!railClass.includes('collapsed')}
+            title="Toggle sidebar"
+          >
             <RendlyLockup className="shell-lockup" />
             <span className="rd-rail-logo-mark shell-collapsed-mark">
               <RendlyMark className="shell-mark" />
             </span>
-          </Link>
+          </button>
 
           <div className="rd-rail-section">Workspace</div>
           {WORKSPACE.map((n) => (

@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { createPortal } from 'react-dom';
+import { useCallDock } from './callDock';
 import { useCallContext } from '@/context/CallContext';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useNotifications } from '@/context/NotificationsContext';
@@ -218,14 +219,8 @@ export function CallStage() {
   }, [c.callState, recorder]);
 
   // Whispers has a dock slot beside the chat; the call renders there instead of over the page.
-  const [dockEl, setDockEl] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    if (!docked) {
-      setDockEl(null);
-      return;
-    }
-    setDockEl(document.getElementById('rd-call-dock'));
-  }, [docked, pathname, c.callState]);
+  const liveDock = useCallDock();
+  const dockEl = docked ? liveDock : null;
 
   useEffect(() => {
     if (c.callState !== 'active') {

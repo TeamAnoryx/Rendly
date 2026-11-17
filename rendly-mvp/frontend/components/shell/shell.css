@@ -322,3 +322,79 @@
     width: auto;
   }
 }
+
+/* ---------- Rail toggle: the logo folds the rail to icons and opens it again ---------- */
+button.rd-rail-logo {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+button.rd-rail-logo:hover {
+  background: var(--rd-bg-3, rgba(255, 255, 255, 0.04));
+}
+@media (min-width: 768px) {
+  .rd-shell {
+    transition: grid-template-columns 0.28s var(--rd-ease, cubic-bezier(0.16, 1, 0.3, 1));
+  }
+  .rd-shell .rd-rail {
+    transition: width 0.28s var(--rd-ease, cubic-bezier(0.16, 1, 0.3, 1)), padding 0.28s ease;
+  }
+
+  /* Folded: icons only, each still a button. */
+  .rd-shell.rd-shell--rail-collapsed {
+    --rd-rail: var(--rd-rail-collapsed, 60px);
+  }
+  .rd-shell--rail-collapsed .rd-rail {
+    padding: 12px 8px;
+    align-items: center;
+  }
+  .rd-shell--rail-collapsed .rd-rail .rd-rail-label,
+  .rd-shell--rail-collapsed .rd-rail .rd-rail-wordmark,
+  .rd-shell--rail-collapsed .rd-rail .rd-rail-section,
+  .rd-shell--rail-collapsed .rd-rail .rd-rail-kbd,
+  .rd-shell--rail-collapsed .shell-lockup {
+    display: none;
+  }
+  .rd-shell--rail-collapsed .rd-rail-item,
+  .rd-shell--rail-collapsed .rd-rail-logo {
+    width: 40px;
+    justify-content: center;
+    padding: 0;
+  }
+  .rd-shell--rail-collapsed .shell-collapsed-mark {
+    display: grid;
+  }
+
+  /* Opened by hand on a screen that folds it by default. */
+  .rd-shell.rd-shell--rail-open {
+    --rd-rail: 232px;
+  }
+  .rd-shell--rail-open .rd-rail {
+    padding: 12px 10px;
+    align-items: stretch;
+  }
+  .rd-shell--rail-open .rd-rail .rd-rail-label,
+  .rd-shell--rail-open .rd-rail .rd-rail-section {
+    display: revert;
+  }
+  .rd-shell--rail-open .rd-rail-item,
+  .rd-shell--rail-open .rd-rail-logo {
+    width: auto;
+    justify-content: flex-start;
+    padding: 0 8px;
+  }
+  .rd-shell--rail-open .shell-lockup {
+    display: block;
+  }
+  .rd-shell--rail-open .shell-collapsed-mark {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rd-shell,
+  .rd-shell .rd-rail {
+    transition: none;
+  }
+}

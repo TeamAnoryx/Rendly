@@ -1644,8 +1644,14 @@ app.post("/api/contact", async (req, res) => {
   }
 });
 
-/** Origin used to build invite links for this request. */
+/**
+ * Base used to build invite links. APP_URL carries the app's sub-path
+ * (https://anoryxtechsolutions.com/rendly.app); the Origin header never does, so it is only
+ * the fallback for local development.
+ */
 function inviteOrigin(req: express.Request): string {
+  const appUrl = (process.env.APP_URL || "").trim().replace(/\/+$/, "");
+  if (/^https?:\/\//i.test(appUrl)) return appUrl;
   return requestOrigin(req.get("origin"), req.get("referer"));
 }
 

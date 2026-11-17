@@ -1335,6 +1335,14 @@ function ChatPageContent() {
     }
   }, [searchParams]);
 
+  // Once a call connects, its conversation is the chat shown beside it on both sides.
+  useEffect(() => {
+    if (callState !== 'active' || !callConversationId) return;
+    setActiveTab('Whispers');
+    setSelectedGroupId(null);
+    setSelectedId(callConversationId);
+  }, [callState, callConversationId]);
+
   // A Spark video match opens its conversation with ?call=video&initiator=1|0. Only the
   // initiator starts the call; the other side gets the normal incoming-call prompt.
   const pendingMatchCallRef = useRef<{ conv: string; initiator: boolean } | null>(null);

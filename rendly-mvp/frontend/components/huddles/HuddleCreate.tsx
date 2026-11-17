@@ -5,6 +5,16 @@ import type { CreateHuddlePayload, CreateHuddleResponse, HuddleMode } from '@/se
 import { HUDDLE_MODE_LABELS, uploadHuddleThumbnail, videoDurationSeconds } from '@/services/huddlesApi';
 import { getConnections, type Connection } from '@/services/connectionsApi';
 import { buildScheduledAt } from '@/lib/huddleSchedule';
+import { withBasePath } from '@/lib/basePath';
+
+/**
+ * The link people open to join: this site's origin plus the app's base path (/rendly.app),
+ * so it lands on the huddle page instead of the main site's 404.
+ */
+function huddleShareUrl(id: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  return `${window.location.origin}${withBasePath(`/dashboard/huddles/${encodeURIComponent(id)}`)}`;
+}
 import { Icon } from '@/components/shell/Icon';
 
 type HuddleCreateProps = {
@@ -200,7 +210,7 @@ export default function HuddleCreate({ onCreate, onCancel, onSuccess }: HuddleCr
           thumbError = err instanceof Error ? err.message : 'The thumbnail could not be uploaded';
         }
       }
-      setCreated({ id: result.id, url: result.invite_url, thumbError });
+      setCreated({ id: result.id, url: huddleShareUrl(result.id, result.invite_url), thumbError });
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to create huddle');
     } finally {
