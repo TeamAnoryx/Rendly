@@ -182,6 +182,8 @@ export function attachSocketIo(httpServer: HttpServer): Server {
         call_log_id: data?.call_log_id ?? null,
         callee_id: calleeId,
       });
+      // The callee's other tabs and devices are still ringing: stop them without declining.
+      socket.to(calleeId).emit("call:handled-elsewhere", { conversation_id: convId });
     });
 
     socket.on("call:reject", (data: { conversation_id?: string; call_log_id?: string; user_id?: string }) => {
@@ -190,9 +192,12 @@ export function attachSocketIo(httpServer: HttpServer): Server {
       if (!convId) return;
       const parsed = parseConversationId(convId, rejecterId);
       if (!parsed || parsed.type !== "whisper") return;
+      // Already answered on another tab or device: a late decline from a second ringer must
+      // not tell the caller "declined" while the call is live.
+      if (calls.isActive(convId)) return;
       const otherId = parsed.otherUserId;
-      calls.ended(convId);
       socket.to(otherId).emit("call:rejected", { conversation_id: convId, call_log_id: data?.call_log_id ?? null });
+      socket.to(rejecterId).emit("call:handled-elsewhere", { conversation_id: convId });
     });
 
     socket.on("call:end", (data: { conversation_id?: string; call_log_id?: string; status?: string; user_id?: string }) => {

@@ -307,6 +307,8 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
 
     websocket.onCallIncoming((payload) => {
       if (stateRef.current !== 'idle') {
+        // A repeat of the call already ringing or live here: ignore it, never decline it.
+        if (payload.conversation_id === convRef.current) return;
         // Busy: decline politely so the caller isn't left ringing.
         websocket.emitCallReject(payload.conversation_id, payload.call_log_id ?? undefined);
         return;
@@ -342,9 +344,15 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
     });
 
     websocket.onCallRejected((payload) => {
-      if (convRef.current !== payload.conversation_id) return;
+      // Once answered, a decline can only be a stale second ringer: keep the call.
+      if (convRef.current !== payload.conversation_id || stateRef.current === 'active') return;
       setCallError('The call was declined.');
       void finish('rejected');
+    });
+
+    websocket.onCallHandledElsewhere((payload) => {
+      if (convRef.current !== payload.conversation_id || stateRef.current !== 'ringing_incoming') return;
+      cleanupMedia();
     });
 
     websocket.onCallEnded((payload) => {
@@ -415,7 +423,7 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
       offPeerPaused();
       offPeerResumed();
     };
-  }, [currentUserId, createPeer, finish, publishRemote]);
+  }, [currentUserId, createPeer, finish, publishRemote, cleanupMedia]);
 
   const startCall = useCallback(
     async (convId: string, type: 'audio' | 'video') => {

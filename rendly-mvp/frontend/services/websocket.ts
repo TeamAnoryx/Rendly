@@ -295,6 +295,11 @@ class WebSocketService {
     this.setSlot("call:rejected", callback);
   }
 
+  /** This user answered or declined the call on another tab or device. */
+  onCallHandledElsewhere(callback: (payload: { conversation_id: string }) => void): void {
+    this.setSlot("call:handled-elsewhere", callback);
+  }
+
   onCallEnded(callback: (payload: { conversation_id: string; call_log_id: string | null; status: string }) => void): void {
     this.setSlot("call:ended", callback);
   }
