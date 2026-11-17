@@ -7,6 +7,10 @@ import { chat } from '@/services/chat';
 import { applyPausedTracks, type PauseReason } from '@/lib/mediaPause';
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
+/** How many times the caller renegotiates a failed connection before giving up. */
+const CALL_ICE_RESTARTS = 2;
+/** How long a failed connection may take to recover before the call ends on both sides. */
+const CALL_RECONNECT_GRACE_MS = 12_000;
 
 
 /** Echo cancellation stops a phone's speaker feeding back into its mic (the high-pitched squeal). */
@@ -34,6 +38,9 @@ export function describeCallError(err: unknown): string {
   if (/offline|not online|callee_offline/i.test(msg)) return msg || "They're offline right now, so the call can't be placed.";
   if (/permission|NotAllowed/i.test(msg)) return 'Allow camera and microphone access to make calls.';
   if (/NotFound|device/i.test(msg)) return 'No camera or microphone was found.';
+  if (/NotReadable|in use|Could not start/i.test(`${msg} ${err instanceof Error ? err.name : ''}`)) {
+    return 'Your camera or microphone is in use by another app.';
+  }
   return msg || 'The call could not be started.';
 }
 
@@ -62,6 +69,8 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
   const [screenStream, setScreenStreamState] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
+  /** Set when the call connects without this side's camera or mic, so the user is told why. */
+  const [mediaNotice, setMediaNotice] = useState<string | null>(null);
   /** I paused (my camera and mic are frozen for the other side). */
   const [isPaused, setIsPaused] = useState(false);
   /** The other side paused, or dropped and may come back (server holds the call for a while). */
@@ -75,6 +84,14 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
   // STUN first so a call never waits; TURN (when configured) is merged in so calls across
   // strict networks still connect instead of dropping right after the callee answers.
   const iceServersRef = useRef<RTCIceServer[]>(ICE_SERVERS);
+  /** Reconnect attempts made since the call last connected. */
+  const iceRestartsRef = useRef(0);
+  /** Ends the call if a failed connection does not recover within the grace window. */
+  const dropTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearDropTimer = () => {
+    if (dropTimerRef.current) clearTimeout(dropTimerRef.current);
+    dropTimerRef.current = null;
+  };
   useEffect(() => {
     if (!currentUserId) return;
     let cancelled = false;
@@ -116,6 +133,9 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
   };
 
   const cleanupMedia = useCallback(() => {
+    if (dropTimerRef.current) clearTimeout(dropTimerRef.current);
+    dropTimerRef.current = null;
+    iceRestartsRef.current = 0;
     screenRef.current?.getTracks().forEach((t) => t.stop());
     screenRef.current = null;
     screenSendersRef.current = [];
@@ -211,10 +231,34 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
         publishRemote();
       };
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'failed') {
-          setCallError('The connection dropped.');
-          void finish('completed');
+        if (pc.connectionState === 'connected') {
+          clearDropTimer();
+          iceRestartsRef.current = 0;
+          return;
         }
+        if (pc.connectionState !== 'failed') return;
+        // A failed path is often recoverable: the caller renegotiates with fresh candidates.
+        if (isCallerRef.current && iceRestartsRef.current < CALL_ICE_RESTARTS) {
+          iceRestartsRef.current += 1;
+          void (async () => {
+            try {
+              const offer = await pc.createOffer({ iceRestart: true });
+              await pc.setLocalDescription(offer);
+              if (currentUserId) websocket.emitWebrtcOffer(convId, currentUserId, offer);
+            } catch (err) {
+              console.error('[call] reconnect attempt failed', err);
+            }
+          })();
+        }
+        if (dropTimerRef.current) return;
+        dropTimerRef.current = setTimeout(() => {
+          dropTimerRef.current = null;
+          if (pcRef.current !== pc || pc.connectionState === 'connected') return;
+          // End it on both sides, so the other device is not left showing a live call.
+          setCallError('The connection dropped.');
+          websocket.emitCallEnd(convId, logRef.current ?? undefined, 'completed');
+          void finish('completed');
+        }, CALL_RECONNECT_GRACE_MS);
       };
       return pc;
     },
@@ -227,13 +271,23 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
     const attempts: MediaStreamConstraints[] =
       type === 'video' ? [{ audio: CALL_AUDIO, video: true }, { audio: CALL_AUDIO }] : [{ audio: CALL_AUDIO }];
     let stream: MediaStream | null = null;
+    let lastError: unknown = null;
     for (const constraints of attempts) {
       try {
         stream = await navigator.mediaDevices.getUserMedia(constraints);
         break;
       } catch (err) {
+        lastError = err;
         console.warn('[call] media unavailable, trying a lighter setup', err);
       }
+    }
+    if (!stream) {
+      console.error('[call] no camera or microphone, joining listen-only', lastError);
+      setMediaNotice(
+        `${describeCallError(lastError)} You can still see and hear them, but they can't hear you until it's fixed.`,
+      );
+    } else if (type === 'video' && stream.getVideoTracks().length === 0) {
+      setMediaNotice("Your camera isn't available, so this call continues as voice only.");
     }
     const result = stream ?? new MediaStream();
     localRef.current = result;
@@ -531,6 +585,8 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
     isScreenSharing,
     callError,
     clearCallError: () => setCallError(null),
+    mediaNotice,
+    clearMediaNotice: () => setMediaNotice(null),
     startCall,
     acceptCall,
     rejectCall,

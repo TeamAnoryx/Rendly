@@ -200,6 +200,13 @@ export function CallStage() {
     c.clearCallError();
   }, [c.callError, c, pushToast]);
 
+  // Joined without camera or mic: say so instead of leaving a silent, faceless tile.
+  useEffect(() => {
+    if (!c.mediaNotice) return;
+    pushToast({ icon: 'mic-off', title: 'Camera or mic unavailable', body: c.mediaNotice, durationMs: 8000 });
+    c.clearMediaNotice();
+  }, [c.mediaNotice, c, pushToast]);
+
   // Ring while a call is incoming.
   useEffect(() => {
     if (c.callState !== 'ringing_incoming') return;
