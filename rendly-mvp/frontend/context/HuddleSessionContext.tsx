@@ -39,6 +39,21 @@ export function useHuddleSession(): HuddleSessionValue {
 
 export const huddlePath = (id: string): string => `/dashboard/huddles/${id}`;
 
+type EndAck = { ok?: boolean };
+
+/**
+ * Tell everyone in an already-cancelled huddle that it ended. Resolves true once the server
+ * confirms; false when it refused, timed out or the socket is offline.
+ */
+export async function notifyHuddleEnded(huddleId: string): Promise<boolean> {
+  try {
+    const res = await websocket.emitWithAck<EndAck>('huddle:end', { huddle_id: huddleId });
+    return res?.ok === true;
+  } catch {
+    return false;
+  }
+}
+
 export function canLeaveHuddle(h: HuddleDetail): boolean {
   return h.your_role === 'host' || h.your_role === 'co_host' || h.allow_self_exit !== false;
 }
@@ -96,17 +111,21 @@ export function HuddleSessionProvider({ children }: { children: React.ReactNode 
 
   const endForAll = useCallback(async () => {
     if (!huddle || !window.confirm('End this huddle for everyone?')) return;
-    // Tell connected participants first: the server checks the host seat, which cancelling closes.
-    websocket.emit('huddle:end', { huddle_id: huddle.id });
+    setLeaveError(null);
+    // Cancel first: if it fails, nobody has been sent away and the huddle stays live.
     try {
       await cancelHuddle(huddle.id);
     } catch (e) {
       setLeaveError(e instanceof Error ? e.message : 'Could not end the huddle');
       return;
     }
+    // Then tell connected participants. The server only accepts this for a cancelled huddle.
+    // If the room can't be told, participants still leave through the ended poll.
+    const told = await notifyHuddleEnded(huddle.id);
+    if (!told) pushToast({ icon: 'close', title: 'Huddle ended. Some people may take a moment to leave.' });
     close();
     router.push('/dashboard/huddles');
-  }, [huddle, close, router]);
+  }, [huddle, close, router, pushToast]);
 
   // The host ended the huddle for everyone: leave the room (socket event, or the poll as a backup).
   const isHost = huddle?.your_role === 'host';

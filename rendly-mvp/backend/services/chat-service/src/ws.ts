@@ -4,6 +4,7 @@ import { getCurrentUserFromRequest } from "./auth";
 import { isGroupMember, parseConversationId } from "./db";
 import { attachHuddleRoom } from "./huddle-room";
 import { attachSparkRoom } from "./spark-room";
+import { attachSparkLobby } from "./spark-lobby";
 import { createCallTracker } from "./call-grace";
 
 export type MessageReceivedPayload = {
@@ -102,6 +103,7 @@ export function attachSocketIo(httpServer: HttpServer): Server {
     socket.join(userId);
     attachHuddleRoom(io!, socket, userId);
     attachSparkRoom(socket, userId);
+    attachSparkLobby(io!, socket, userId);
 
     // A client whose balance-changing action affects other users (a token transfer) asks
     // them to refresh. The event carries no amounts; each client re-reads its own balance.

@@ -123,6 +123,48 @@ export async function seatFor(huddleId: string, userId: string): Promise<Seat | 
   return (data as Seat | null) ?? null;
 }
 
+export type EndAck = { ok: true } | { ok: false; error: "invalid" | "forbidden" };
+
+/** What `huddle:end` needs to know about the huddle row. */
+export type HuddleEndState = { created_by: string; cancelled_at: string | null };
+
+export async function endStateFor(huddleId: string): Promise<HuddleEndState | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("huddles")
+    .select("created_by, cancelled_at")
+    .eq("id", huddleId)
+    .maybeSingle();
+  if (error) {
+    console.error("[huddle-room] end state lookup failed:", error);
+    return null;
+  }
+  return (data as HuddleEndState | null) ?? null;
+}
+
+/**
+ * Only the host may send everyone away, and only once the huddle really is cancelled, so a
+ * failed cancel can never empty a live huddle.
+ */
+export function canEndHuddle(userId: string, seat: Pick<Seat, "role"> | null, state: HuddleEndState | null): boolean {
+  if (!userId || !state || !state.cancelled_at) return false;
+  return state.created_by === userId || seat?.role === "host";
+}
+
+/** Tell every connected participant of every room of the huddle that it ended, and drop its room state. */
+export function endHuddleRooms(io: RoomIo, huddleId: string): void {
+  const prefix = `${huddleId}:`;
+  for (const [key, members] of rooms) {
+    if (!key.startsWith(prefix)) continue;
+    for (const uid of members.keys()) {
+      for (const sid of socketsOf(key, uid)) io.to(sid).emit("huddle:ended", { huddle_id: huddleId });
+    }
+  }
+  leaders.delete(huddleId);
+  assignments.delete(huddleId);
+  for (const key of Array.from(recordings.keys())) if (key.startsWith(prefix)) recordings.delete(key);
+}
+
 function validRoom(name: unknown): name is string {
   return name === MAIN_ROOM || (typeof name === "string" && ROOM_NAME_PATTERN.test(name));
 }
@@ -405,21 +447,19 @@ export function attachHuddleRoom(io: Server, socket: Socket, userId: string): vo
     io.to(data.to).emit("points:changed");
   });
 
-  /** The host ended the huddle for everyone: tell every connected participant to leave. */
-  socket.on("huddle:end", async (data: { huddle_id?: unknown }) => {
-    if (!isUuidLike(data?.huddle_id)) return;
-    const actor = await seatFor(data.huddle_id, userId);
-    if (!actor || actor.role !== "host") return;
-    const prefix = `${data.huddle_id}:`;
-    for (const [key, members] of rooms) {
-      if (!key.startsWith(prefix)) continue;
-      for (const uid of members.keys()) {
-        for (const sid of socketsOf(key, uid)) io.to(sid).emit("huddle:ended", { huddle_id: data.huddle_id });
-      }
-    }
-    leaders.delete(data.huddle_id);
-    assignments.delete(data.huddle_id);
-    for (const key of Array.from(recordings.keys())) if (key.startsWith(prefix)) recordings.delete(key);
+  /**
+   * The host ended the huddle for everyone: tell every connected participant to leave.
+   * The client cancels over REST first and only then sends this, so participants are never sent
+   * away from a huddle that is still live. Cancelling closes the host's seat, so the host is
+   * recognised as the creator of the now-cancelled huddle. Acks `{ ok }`.
+   */
+  socket.on("huddle:end", async (data: { huddle_id?: unknown }, ack?: (res: EndAck) => void) => {
+    const reply = typeof ack === "function" ? ack : () => undefined;
+    if (!isUuidLike(data?.huddle_id)) return reply({ ok: false, error: "invalid" });
+    const [seat, state] = await Promise.all([seatFor(data.huddle_id, userId), endStateFor(data.huddle_id)]);
+    if (!canEndHuddle(userId, seat, state)) return reply({ ok: false, error: "forbidden" });
+    endHuddleRooms(io, data.huddle_id);
+    reply({ ok: true });
   });
 
   // Host and co-host controls. The seat check reads the role from the database.

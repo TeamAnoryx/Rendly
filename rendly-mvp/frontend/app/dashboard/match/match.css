@@ -179,7 +179,28 @@
   .spark-launch-col {
     margin-block: auto;
     max-height: 100%;
-    overflow-y: auto;
+    /* Fit mode never scrolls: spacing below shrinks with the viewport height instead. */
+    overflow: hidden;
+    gap: clamp(10px, 2.2vh, 22px);
+    padding-block: clamp(10px, 3vh, 40px) clamp(10px, 2.5vh, 28px);
+  }
+  .spark-hero__title {
+    font-size: clamp(24px, min(3vw, 4.6vh), 38px);
+  }
+  .spark-hero__eyebrow {
+    margin-bottom: clamp(4px, 0.8vh, 8px);
+  }
+}
+
+/* Short landscape screens (tablets, small laptops): tighten the launch card so it fits. */
+@media (orientation: landscape) and (min-width: 900px) and (max-height: 820px) {
+  .spark-shell:not(.spark-shell--room) .spark-hero__sub {
+    margin-top: 4px;
+    font-size: 12.5px;
+  }
+  .spark-shell:not(.spark-shell--room) .sl-card {
+    gap: clamp(10px, 1.8vh, 20px);
+    padding-block: clamp(12px, 2.2vh, 22px);
   }
 }
 
