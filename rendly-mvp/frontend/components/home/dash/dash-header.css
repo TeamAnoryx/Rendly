@@ -224,7 +224,7 @@
 /* Tablet / narrow: compact */
 @media (max-width: 1100px) {
   .dh-root { gap: 12px; }
-  .dh-eyebrow { display: none; }
+  .dh-eyebrow { font-size: 11.5px; }
   .dh-title { font-size: 19px; }
   .dh-sub { font-size: 12px; }
   .dh-btn { height: 34px; padding: 0 12px; font-size: 12.5px; }
@@ -362,13 +362,41 @@
     font-size: 12px;
     padding: 4px 12px;
   }
+}
+/* Phones: "online now" and "looking for a match" share one row. */
+@media (max-width: 767px) {
+  .dh-pills {
+    flex-wrap: nowrap;
+    gap: 6px;
+    max-width: 100%;
+  }
+  .dh-pill {
+    min-width: 0;
+    white-space: nowrap;
+    gap: 5px;
+    font-size: 11.5px;
+    padding: 4px 9px;
+  }
+  .dh-pill--online {
+    flex: none;
+  }
   .dh-pill--match {
-    width: 100%;
-    justify-content: flex-start;
+    flex: 1 1 auto;
   }
   .dh-match-btn {
     margin-left: auto;
+    flex: none;
   }
+  .dh-eyebrow {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 400px) {
+  .dh-pills { gap: 4px; }
+  .dh-pill { font-size: 10.5px; padding: 3px 7px; gap: 4px; }
+  .dh-pill--match { padding-right: 3px; }
+  .dh-match-btn { height: 24px; padding: 0 8px; font-size: 11px; }
+  .dh-match-btn .dh-btn-arrow { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .dh-match-btn,
