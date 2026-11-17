@@ -481,44 +481,79 @@
   }
 }
 
-/* ---------- Whispers: the call docks beside the chat (desktop) or above it (tablet, phone) ---------- */
-:root {
-  --call-dock-w: min(46vw, 640px);
-  --call-dock-h: 44dvh;
-}
+/* ---------- Whispers: the call docks left of the chat; on phones it sits above it ---------- */
 .call-stage--docked {
-  inset: 0 0 0 auto;
-  width: var(--call-dock-w);
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: -24px 0 64px -32px rgba(0, 0, 0, 0.9);
+  position: relative;
+  inset: auto;
+  z-index: 1;
+  height: 100%;
+  min-height: 0;
+  padding: 12px 14px 14px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  animation: none;
 }
-html.rd-call-docked .rd-main {
-  margin-right: var(--call-dock-w);
+.call-stage--docked .call-media {
+  flex: 1;
+  min-height: 0;
 }
-@media (max-width: 1024px) {
-  .call-stage--docked {
-    inset: 0 0 auto 0;
-    width: auto;
-    height: var(--call-dock-h);
-    gap: 6px;
-    padding-bottom: 8px;
-    border-left: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 24px 64px -32px rgba(0, 0, 0, 0.9);
-  }
-  html.rd-call-docked .rd-main {
-    margin-right: 0;
-    margin-top: var(--call-dock-h);
-    height: calc(100% - var(--call-dock-h));
-  }
+.call-audio-bar {
+  display: none;
 }
 @media (max-width: 767px) {
-  :root {
-    --call-dock-h: 40dvh;
+  .call-stage--docked {
+    padding: 8px 10px 10px;
+    gap: 6px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
   .call-stage--docked .call-stage-head {
-    min-height: 24px;
+    min-height: 22px;
     font-size: 0.8125rem;
+  }
+  /* Voice call on a phone: one slim bar with the person and the buttons. */
+  .call-stage--docked-audio {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 8px 10px;
+  }
+  .call-stage--docked-audio .call-stage-head {
+    display: none;
+  }
+  .call-stage--docked-audio .call-media {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .call-stage--docked-audio .call-audio-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 140px;
+    min-width: 0;
+  }
+  .call-audio-bar-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .call-audio-bar-text strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .call-stage--docked-audio .call-controls {
+    flex: 0 1 auto;
+    padding: 4px;
+    gap: 2px;
+    overflow-x: auto;
+  }
+  .call-stage--docked-audio .call-ctl {
+    width: 36px;
+    height: 36px;
   }
 }
 

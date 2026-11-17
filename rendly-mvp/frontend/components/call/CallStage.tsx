@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { createPortal } from 'react-dom';
 import { useCallContext } from '@/context/CallContext';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useNotifications } from '@/context/NotificationsContext';
@@ -216,12 +217,15 @@ export function CallStage() {
     if (c.callState !== 'active' && recorder.recording) recorder.stop();
   }, [c.callState, recorder]);
 
-  // The page leaves room for a docked call.
+  // Whispers has a dock slot beside the chat; the call renders there instead of over the page.
+  const [dockEl, setDockEl] = useState<HTMLElement | null>(null);
   useEffect(() => {
-    const on = docked && c.callState === 'active' && !minimized;
-    document.documentElement.classList.toggle('rd-call-docked', on);
-    return () => document.documentElement.classList.remove('rd-call-docked');
-  }, [docked, c.callState, minimized]);
+    if (!docked) {
+      setDockEl(null);
+      return;
+    }
+    setDockEl(document.getElementById('rd-call-dock'));
+  }, [docked, pathname, c.callState]);
 
   useEffect(() => {
     if (c.callState !== 'active') {
@@ -286,8 +290,10 @@ export function CallStage() {
     );
   }
 
-  return (
-    <div className={`call-stage${docked ? ' call-stage--docked' : ''}`} role="dialog" aria-label={`Call with ${peerName}`}>
+  const audioOnly = c.callType !== 'video';
+  const stage = (
+    <div
+      className={`call-stage${dockEl ? ` call-stage--docked${audioOnly ? ' call-stage--docked-audio' : ''}` : ''}`} role="dialog" aria-label={`Call with ${peerName}`}>
       <header className="call-stage-head">
         <div>
           <strong>{peerName}</strong>
@@ -303,7 +309,17 @@ export function CallStage() {
         {c.isScreenSharing ? <span className="rd-chip rd-chip--on">You are sharing</span> : null}
       </header>
       <CallMedia peer={peer} />
+      {audioOnly && dockEl ? (
+        <div className="call-audio-bar">
+          <Avatar url={peer?.avatar_url} name={peer?.username} size="sm" />
+          <div className="call-audio-bar-text">
+            <strong>{peerName}</strong>
+            <span className="rd-small rd-muted">Voice call · {formatDuration(elapsed)}</span>
+          </div>
+        </div>
+      ) : null}
       <CallControls onMinimize={() => setMinimized(true)} recorder={recorder} peerName={peerName} />
     </div>
   );
+  return dockEl ? createPortal(stage, dockEl) : stage;
 }
