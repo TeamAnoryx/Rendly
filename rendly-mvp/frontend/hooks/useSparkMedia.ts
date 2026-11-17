@@ -94,9 +94,23 @@ function hasMediaDevices(): boolean {
 
 /** How often an unconnected match is nudged to (re)negotiate. */
 export const SPARK_CONNECT_NUDGE_MS = 2500;
-/** A relay-only link that has not connected by now falls back to a direct (STUN) path. */
-export const SPARK_RELAY_FALLBACK_MS = 10000;
+/** A link that has not connected by now restarts ICE with the latest servers (TURN included). */
+export const SPARK_RELAY_FALLBACK_MS = 6000;
 const FALLBACK_STUN = 'stun:stun.l.google.com:19302';
+const CONNECT_ERROR = 'Could not connect to your match. Try skipping to someone new.';
+/** Clean speech on phones: echo cancellation stops the speaker feeding back into the mic (the squeal). */
+export const SPARK_AUDIO: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+};
+/** A modest capture size starts the camera fast, especially on phones. */
+export const SPARK_VIDEO: MediaTrackConstraints = {
+  facingMode: 'user',
+  width: { ideal: 640 },
+  height: { ideal: 480 },
+  frameRate: { ideal: 24, max: 30 },
+};
 
 export function useSparkMedia(opts: {
   initiator: boolean;
@@ -151,6 +165,7 @@ export function useSparkMedia(opts: {
   /** Set once the relay-only path gave up and the link was reopened allowing direct routes. */
   const relayFallbackRef = useRef(false);
   const lastRestartRef = useRef(0);
+  const iceServersRef = useRef<RTCIceServer[]>([{ urls: FALLBACK_STUN }]);
 
   const stateRef = useRef<SparkMediaState>({ video: false, audio: false, p2p: myConsent });
 
@@ -218,7 +233,7 @@ export function useSparkMedia(opts: {
         sparkChannel.signal('offer', pc.localDescription?.toJSON() ?? offer);
       } catch {
         offeredRef.current = false;
-        if (aliveRef.current) setError('Could not connect to your match. Try skipping to someone new.');
+        if (aliveRef.current) setError(CONNECT_ERROR);
       }
     },
     [initiator],
@@ -284,7 +299,7 @@ export function useSparkMedia(opts: {
         }
       } catch {
         if (aliveRef.current && msg.kind !== 'ice') {
-          setError('Could not connect to your match. Try skipping to someone new.');
+          setError(CONNECT_ERROR);
         }
       }
     },
@@ -323,7 +338,7 @@ export function useSparkMedia(opts: {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia(
-        kind === 'video' ? { video: { facingMode: 'user' }, audio: false } : { audio: true, video: false },
+        kind === 'video' ? { video: SPARK_VIDEO, audio: false } : { audio: SPARK_AUDIO, video: false },
       );
       return stream.getTracks().find((t) => t.kind === kind) ?? null;
     } catch (err) {
@@ -377,16 +392,20 @@ export function useSparkMedia(opts: {
       setUnsupported(true);
       setError('Video is not supported in this browser. You can still chat.');
     } else {
-      setIce({ status: 'loading' });
+      // Like huddles: connect at once over public STUN; the TURN servers join when they arrive.
+      setIce({ status: 'ready', relay: false, iceServers: [{ urls: FALLBACK_STUN }] });
       getSparkIceConfig()
         .then((cfg) => {
-          if (active) setIce({ status: 'ready', ...cfg });
-        })
-        .catch(() => {
           if (!active) return;
-          setIce({ status: 'failed' });
-          setError(VIDEO_UNAVAILABLE);
-        });
+          const servers = [...cfg.iceServers, { urls: FALLBACK_STUN }];
+          iceServersRef.current = servers;
+          try {
+            pcRef.current?.setConfiguration({ iceServers: servers });
+          } catch {
+            /* applied on the next ICE restart */
+          }
+        })
+        .catch(() => undefined);
     }
 
     const offs = [
@@ -448,19 +467,17 @@ export function useSparkMedia(opts: {
     publishState();
   }, [myConsent, publishState]);
 
-  const canConnect =
-    ice.status === 'ready' && !unsupported && (ice.relay || (myConsent && partnerConsent));
+  // Like huddles the link opens without waiting on TURN, but a direct (IP-revealing) link still
+  // needs both people's consent. Video mode consents as soon as the camera starts, so video
+  // matches connect at once; an anonymous person who has not agreed is never connected directly.
+  const canConnect = ice.status === 'ready' && !unsupported && myConsent && partnerConsent;
 
   // Create the peer connection only once connecting cannot leak an address without consent.
   useEffect(() => {
     if (!canConnect || ice.status !== 'ready' || pcRef.current || leftRef.current) return;
     let pc: RTCPeerConnection;
     try {
-      pc = new RTCPeerConnection(
-        ice.relay
-          ? { iceServers: ice.iceServers, iceTransportPolicy: 'relay' }
-          : { iceServers: ice.iceServers },
-      );
+      pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
     } catch {
       setError(VIDEO_UNAVAILABLE);
       return;
@@ -507,6 +524,7 @@ export function useSparkMedia(opts: {
     pc.onconnectionstatechange = () => {
       if (!aliveRef.current) return;
       setConnection(pc.connectionState);
+      if (pc.connectionState === 'connected') setError((e) => (e === CONNECT_ERROR ? null : e));
       if (pc.connectionState === 'failed') maybeOffer();
     };
     setPcReady(true);
@@ -552,20 +570,16 @@ export function useSparkMedia(opts: {
   // both sides sit on "Connecting…". Both people have already agreed to a direct connection
   // (camera on / direct consent), so reopen the link allowing direct routes and restart ICE.
   useEffect(() => {
-    if (!pcReady || ice.status !== 'ready' || !ice.relay) return undefined;
+    if (!pcReady) return undefined;
     const timer = setTimeout(() => {
       void (async () => {
         const pc = pcRef.current;
         if (!pc || leftRef.current || relayFallbackRef.current) return;
         if (pc.connectionState === 'connected') return;
-        if (!myConsentRef.current || !partnerConsentRef.current) return;
         try {
-          pc.setConfiguration({
-            iceServers: [...ice.iceServers, { urls: FALLBACK_STUN }],
-            iceTransportPolicy: 'all',
-          });
+          pc.setConfiguration({ iceServers: iceServersRef.current });
         } catch {
-          return;
+          /* keep the current servers */
         }
         relayFallbackRef.current = true;
         if (!initiator) {
@@ -582,9 +596,9 @@ export function useSparkMedia(opts: {
       })();
     }, SPARK_RELAY_FALLBACK_MS);
     return () => clearTimeout(timer);
-  }, [pcReady, ice, initiator, makeOffer, publishState]);
+  }, [pcReady, initiator, makeOffer, publishState]);
 
-  // Video mode starts with camera + mic on; text mode starts with both off.
+  // Video mode starts with the camera on and the mic off; text mode starts with both off.
   useEffect(() => {
     if (myMode !== 'video') return;
     let cancelled = false;
@@ -595,10 +609,8 @@ export function useSparkMedia(opts: {
       }
       setBusy('video');
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user' },
-          audio: true,
-        });
+        // Mic starts off: people unmute when they want to talk.
+        const stream = await navigator.mediaDevices.getUserMedia({ video: SPARK_VIDEO, audio: false });
         if (cancelled || !aliveRef.current) {
           stream.getTracks().forEach((t) => t.stop());
           return;
@@ -607,14 +619,7 @@ export function useSparkMedia(opts: {
         tracksRef.current.audio = stream.getAudioTracks()[0] ?? null;
       } catch (err) {
         if (cancelled) return;
-        // Fall back to whichever single device works.
-        setError(mediaErrorMessage(err, 'both'));
-        const audio = await acquire('audio');
-        if (cancelled || !aliveRef.current) {
-          audio?.stop();
-          return;
-        }
-        tracksRef.current.audio = audio;
+        setError(mediaErrorMessage(err, 'video'));
       } finally {
         if (!cancelled) setBusy(null);
       }

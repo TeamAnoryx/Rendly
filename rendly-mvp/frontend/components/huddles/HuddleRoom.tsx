@@ -511,7 +511,7 @@ export default function HuddleRoom({
     let cancelled = false;
     (async () => {
       try {
-        const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: true });
         if (cancelled) {
           s.getTracks().forEach((t) => t.stop());
           return;

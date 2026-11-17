@@ -7,6 +7,9 @@ import { applyPausedTracks, type PauseReason } from '@/lib/mediaPause';
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
 
+
+/** Echo cancellation stops a phone's speaker feeding back into its mic (the high-pitched squeal). */
+const CALL_AUDIO: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 export type CallState = 'idle' | 'ringing_outgoing' | 'ringing_incoming' | 'active';
 
 export type IncomingCall = {
@@ -203,7 +206,7 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
   );
 
   const getMedia = async (type: 'audio' | 'video'): Promise<MediaStream> => {
-    const stream = await navigator.mediaDevices.getUserMedia(type === 'video' ? { audio: true, video: true } : { audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia(type === 'video' ? { audio: CALL_AUDIO, video: true } : { audio: CALL_AUDIO });
     localRef.current = stream;
     setLocalStream(stream);
     return stream;
