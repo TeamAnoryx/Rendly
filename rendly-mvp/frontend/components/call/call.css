@@ -480,3 +480,73 @@
     opacity: 0;
   }
 }
+
+/* ---------- Whispers: the call docks beside the chat (desktop) or above it (tablet, phone) ---------- */
+:root {
+  --call-dock-w: min(46vw, 640px);
+  --call-dock-h: 44dvh;
+}
+.call-stage--docked {
+  inset: 0 0 0 auto;
+  width: var(--call-dock-w);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: -24px 0 64px -32px rgba(0, 0, 0, 0.9);
+}
+html.rd-call-docked .rd-main {
+  margin-right: var(--call-dock-w);
+}
+@media (max-width: 1024px) {
+  .call-stage--docked {
+    inset: 0 0 auto 0;
+    width: auto;
+    height: var(--call-dock-h);
+    gap: 6px;
+    padding-bottom: 8px;
+    border-left: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 24px 64px -32px rgba(0, 0, 0, 0.9);
+  }
+  html.rd-call-docked .rd-main {
+    margin-right: 0;
+    margin-top: var(--call-dock-h);
+    height: calc(100% - var(--call-dock-h));
+  }
+}
+@media (max-width: 767px) {
+  :root {
+    --call-dock-h: 40dvh;
+  }
+  .call-stage--docked .call-stage-head {
+    min-height: 24px;
+    font-size: 0.8125rem;
+  }
+}
+
+/* ---------- Recording ---------- */
+.call-ctl--rec,
+.call-ctl--rec:hover {
+  background: #e5484d;
+  border-color: transparent;
+  color: #fff;
+}
+.call-rec-chip {
+  gap: 6px;
+  color: #ffb4b6;
+}
+.call-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e5484d;
+  animation: call-rec-blink 1.2s ease-in-out infinite;
+}
+@keyframes call-rec-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .call-rec-dot {
+    animation: none;
+  }
+}

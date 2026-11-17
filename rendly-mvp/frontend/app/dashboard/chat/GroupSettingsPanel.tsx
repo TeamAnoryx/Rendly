@@ -144,6 +144,7 @@ export function GroupSettingsPanel({ groupId, currentUserId, onGroupUpdated, onL
   const [addUsersOpen, setAddUsersOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [permError, setPermError] = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
@@ -252,10 +253,12 @@ export function GroupSettingsPanel({ groupId, currentUserId, onGroupUpdated, onL
   };
 
   const handleViewOnlyChange = async (checked: boolean) => {
+    setPermError(null);
     if (!groupId || !isAdmin) return;
     setSaving(true);
     try {
       const ok = await groupsApi.updateGroup(groupId, { view_only_mode: checked });
+      if (!ok) setPermError('Could not change view-only mode. Try again.');
       if (ok) {
         setGroup((g) => (g ? { ...g, view_only_mode: checked } : null));
         onGroupUpdated?.();
@@ -266,10 +269,12 @@ export function GroupSettingsPanel({ groupId, currentUserId, onGroupUpdated, onL
   };
 
   const handlePriorityChange = async (userId: string | null) => {
+    setPermError(null);
     if (!groupId || !isAdmin) return;
     setSaving(true);
     try {
       const ok = await groupsApi.updateGroup(groupId, { priority_user_id: userId });
+      if (!ok) setPermError('Could not change priority access. Try again.');
       if (ok) {
         setGroup((g) => (g ? { ...g, priority_user_id: userId } : null));
         onGroupUpdated?.();
@@ -374,7 +379,8 @@ export function GroupSettingsPanel({ groupId, currentUserId, onGroupUpdated, onL
   }
 
   const displayName = (m: GroupMember) => m.display_name || m.username || 'Unknown';
-  const admins = group.members.filter((m) => m.role === 'creator' || m.role === 'admin');
+  /** Admins already post in view-only mode, so priority goes to an ordinary member. */
+  const priorityCandidates = group.members.filter((m) => m.role !== 'creator' && m.role !== 'admin');
 
   return (
     <motion.div
@@ -657,11 +663,16 @@ export function GroupSettingsPanel({ groupId, currentUserId, onGroupUpdated, onL
               />
               <span>View-only mode (only admins can send messages)</span>
             </label>
-            {admins.length > 0 && (
+            {permError ? (
+              <p className="chat-group-settings-error" role="alert">
+                {permError}
+              </p>
+            ) : null}
+            {priorityCandidates.length > 0 && (
               <div className="chat-group-settings-priority">
                 <label className="chat-group-settings-label chat-group-settings-label--with-icon">
                   <CrownIcon />
-                  <span>Priority access (optional)</span>
+                  <span>Priority access (optional): this member can also post in view-only mode</span>
                 </label>
                 <select
                   className="chat-group-settings-select"
@@ -670,9 +681,9 @@ export function GroupSettingsPanel({ groupId, currentUserId, onGroupUpdated, onL
                   disabled={saving}
                 >
                   <option value="">None</option>
-                  {admins.map((m) => (
+                  {priorityCandidates.map((m) => (
                     <option key={m.user_id} value={m.user_id}>
-                      {displayName(m)} {m.role === 'creator' ? '(Creator)' : '(Admin)'}
+                      {displayName(m)}
                     </option>
                   ))}
                 </select>

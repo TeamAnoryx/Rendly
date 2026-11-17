@@ -1250,12 +1250,15 @@ function ChatPageContent() {
   const [groups, setGroups] = useState<GroupListItem[]>([]);
   const [pendingGroupInvites, setPendingGroupInvites] = useState<GroupInvitePending[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const selectedGroupIdRef = useRef<string | null>(null);
+  selectedGroupIdRef.current = selectedGroupId;
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [showCreateGroupForm, setShowCreateGroupForm] = useState(false);
   const [createGroupName, setCreateGroupName] = useState('');
   const [createGroupSubmitting, setCreateGroupSubmitting] = useState(false);
   const [groupViewOnly, setGroupViewOnly] = useState(false);
   const [groupAmAdmin, setGroupAmAdmin] = useState(true);
+  const [groupSettingsVersion, setGroupSettingsVersion] = useState(0);
   const [groupSettingsOpen, setGroupSettingsOpen] = useState(false);
   // Online status comes from the app-wide presence tracker (snapshot + live events).
   const presence = usePresence();
@@ -1760,13 +1763,22 @@ function ChatPageContent() {
         }
         setGroupViewOnly(g.view_only_mode);
         const me = g.members.find((m) => m.user_id === currentUser.id);
-        setGroupAmAdmin(me?.role === 'creator' || me?.role === 'admin');
+        // The priority member may post in view-only mode, like an admin.
+        setGroupAmAdmin(me?.role === 'creator' || me?.role === 'admin' || g.priority_user_id === currentUser.id);
       })
       .catch(() => {
         setGroupViewOnly(false);
         setGroupAmAdmin(true);
       });
-  }, [selectedGroupId, currentUser?.id]);
+  }, [selectedGroupId, currentUser?.id, groupSettingsVersion]);
+
+  // An admin changing view-only or priority access updates every member at once.
+  useEffect(() => {
+    const off = websocket.on<{ group_id?: string }>('group:updated', (data) => {
+      if (data?.group_id && data.group_id === selectedGroupIdRef.current) setGroupSettingsVersion((v) => v + 1);
+    });
+    return off;
+  }, []);
 
   // Restore selected conversation from sessionStorage after conversations load so messages don't vanish on code change/HMR.
   // On mobile/tablet (≤1024px) do not restore so Whispers opens with the list first.
@@ -3642,7 +3654,7 @@ function ChatPageContent() {
                           if (g) {
                             setGroupViewOnly(g.view_only_mode);
                             const me = g.members.find((m) => m.user_id === currentUser.id);
-                            setGroupAmAdmin(me?.role === 'creator' || me?.role === 'admin');
+                            setGroupAmAdmin(me?.role === 'creator' || me?.role === 'admin' || g.priority_user_id === currentUser.id);
                           }
                         }).catch(() => { });
                       }

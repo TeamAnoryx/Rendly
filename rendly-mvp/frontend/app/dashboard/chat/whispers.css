@@ -3443,3 +3443,4 @@
     box-shadow: 0 0 0 1px rgba(246, 196, 83, 0.25);
   }
 }
+.chat-group-settings-error { margin: 6px 0 0; font-size: 0.75rem; color: #ff9b9b; }

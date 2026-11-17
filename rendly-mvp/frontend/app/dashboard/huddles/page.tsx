@@ -57,7 +57,7 @@ export default function HuddlesPage() {
 
         <HuddleSearch className="hp-search" intent={intent} onIntent={setIntent} knownIntents={knownIntents} />
 
-        <HotHuddles className="hp-hot" />
+        <HotHuddles className="hp-hot" showHostCta={false} />
 
         <HuddleBoard
           className="hp-board"

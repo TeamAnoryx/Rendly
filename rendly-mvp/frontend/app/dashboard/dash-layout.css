@@ -35,10 +35,9 @@
   display: grid;
   gap: var(--dl-gap);
   grid-template-columns: minmax(0, 1fr) clamp(280px, 26vw, 380px);
-  grid-template-rows: auto auto minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1.15fr) minmax(0, 1fr);
   grid-template-areas:
-    'head head'
-    'stats stats'
+    'head rank'
     'hot rank'
     'live rank';
 }
@@ -151,7 +150,6 @@
     grid-auto-rows: auto;
     grid-template-areas:
       'head'
-      'stats'
       'live'
       'hot'
       'rank';

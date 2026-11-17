@@ -563,6 +563,19 @@ export function attachHuddleRoom(io: Server, socket: Socket, userId: string): vo
       // One room per leader: drop any room they led before.
       for (const [r, id] of Array.from(map)) if (id === data.user_id) map.delete(r);
       map.set(data.room, data.user_id);
+      // The new leader goes straight into the room they lead.
+      const room = data.room as string;
+      const leaderId = data.user_id;
+      let placed = assignments.get(data.huddle_id);
+      if (!placed) {
+        placed = new Map();
+        assignments.set(data.huddle_id, placed);
+      }
+      if (room === MAIN_ROOM) placed.delete(leaderId);
+      else placed.set(leaderId, room);
+      for (const sid of socketsByUser(io, leaderId)) {
+        io.to(sid).emit("huddle:assigned", { huddle_id: data.huddle_id, room });
+      }
     }
     emitToHuddle(io, data.huddle_id, "huddle:leaders", { leaders: leadersOf(data.huddle_id) });
     reply({ ok: true, leaders: leadersOf(data.huddle_id) });

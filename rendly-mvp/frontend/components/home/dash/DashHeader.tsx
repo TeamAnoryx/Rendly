@@ -72,28 +72,30 @@ export default function DashHeader({ name, stats, className }: DashHeaderProps) 
         <h1 className="dh-title">
           <span className="dh-greet">{greeting},</span> <span className="dh-name">{displayName}</span>
         </h1>
-        <p className="dh-sub" aria-live="polite">
-          {stats ? (
-            <>
-              <span className="dh-live" aria-hidden>
-                <span className="dh-live-core" />
-              </span>
-              <span key={`o-${stats.onlineUsers}`} className="dh-num">
-                {stats.onlineUsers.toLocaleString('en-IN')}
-              </span>{' '}
-              online now
-              <span className="dh-sep" aria-hidden>
-                ·
-              </span>
-              <span key={`l-${stats.lookingForMatch}`} className="dh-num">
-                {stats.lookingForMatch.toLocaleString('en-IN')}
-              </span>{' '}
-              looking to match
-            </>
-          ) : (
-            <span className="dh-sub-idle">Who will you meet today?</span>
-          )}
-        </p>
+        <div className="dh-pills" aria-live="polite">
+          <span className="dh-pill dh-pill--online">
+            <span className="dh-live" aria-hidden>
+              <span className="dh-live-core" />
+            </span>
+            <span key={`o-${stats?.onlineUsers ?? 0}`} className="dh-num">
+              {(stats?.onlineUsers ?? 0).toLocaleString('en-IN')}
+            </span>
+            online now
+          </span>
+          <span className="dh-pill dh-pill--match">
+            <span className="dh-pill-glow" aria-hidden />
+            <Icon name="spark" size={13} className="dh-pill-spark" />
+            <span key={`l-${stats?.lookingForMatch ?? 0}`} className="dh-num">
+              {(stats?.lookingForMatch ?? 0).toLocaleString('en-IN')}
+            </span>
+            looking for a match
+            <Link href="/dashboard/match" className="dh-match-btn">
+              <span className="dh-btn-sheen" aria-hidden />
+              Match now
+              <Icon name="arrow-right" size={12} className="dh-btn-arrow" />
+            </Link>
+          </span>
+        </div>
       </div>
 
     </header>

@@ -10,6 +10,7 @@ import { attachSocketIo, broadcastMessageReceived, broadcastMessageDeleted, emit
 import { getUserById, getUsersByIds, supabase } from "./supabase-users";
 import { markMessageNotificationsRead, notifyMessage, notifyUsers } from "./notify";
 import { isUuid, verifyTransferForMessage } from "./tokens";
+import { canPostInGroup } from "./group-rules";
 import {
   whisperConversationId,
   parseConversationId,
@@ -295,6 +296,20 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req: express.Req
   if (!parsed) {
     res.status(400).json({ message: "Invalid conversation id" });
     return;
+  }
+
+  // View-only groups: only admins and the priority member may post.
+  if (parsed.type === "group") {
+    const group = await getGroupById(parsed.groupId);
+    if (group && (group as { view_only_mode?: boolean }).view_only_mode) {
+      const members = await getGroupMembersWithUsers(parsed.groupId);
+      const role = members.find((m) => m.user_id === user.userId)?.role;
+      const priority = (group as { priority_user_id?: string | null }).priority_user_id ?? null;
+      if (!canPostInGroup({ viewOnly: true, role, priorityUserId: priority, userId: user.userId })) {
+        res.status(403).json({ message: "Only admins can send messages in this group right now." });
+        return;
+      }
+    }
   }
 
   // Token transfer bubble: the tokens already moved in auth-service; here we only prove the
@@ -682,7 +697,14 @@ app.patch("/api/groups/:id", requireAuth, async (req: express.Request & { curren
     if (req.body?.priority_user_id !== undefined) payload.priority_user_id = (req.body.priority_user_id as string) || null;
     if (req.body?.avatar_url !== undefined) payload.avatar_url = (req.body.avatar_url as string) || null;
   }
-  if (Object.keys(payload).length > 0) await updateGroup(groupId, payload);
+  if (Object.keys(payload).length > 0) {
+    if (!(await updateGroup(groupId, payload))) {
+      res.status(500).json({ message: "Could not save the group settings" });
+      return;
+    }
+    // Members see view-only and priority changes at once, not on their next visit.
+    for (const m of members) emitToUser(m.user_id, "group:updated", { group_id: groupId });
+  }
   res.json({ ok: true });
 });
 

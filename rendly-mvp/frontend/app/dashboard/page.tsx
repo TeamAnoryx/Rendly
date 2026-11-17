@@ -4,12 +4,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDashboard, type Huddle } from '@/hooks/useDashboard';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
-import { getLeaderboard, getMyPoints, type LeaderboardRow } from '@/services/pointsApi';
+import { getLeaderboard, type LeaderboardRow } from '@/services/pointsApi';
 import { useNotifications } from '@/context/NotificationsContext';
 import HotHuddles from '@/components/home/HotHuddles';
 import DashBackdrop from '@/components/home/dash/DashBackdrop';
-import DashHeader, { DashActions } from '@/components/home/dash/DashHeader';
-import StatStrip from '@/components/home/dash/StatStrip';
+import DashHeader from '@/components/home/dash/DashHeader';
 import LivePanel from '@/components/home/dash/LivePanel';
 import RankingsPanel from '@/components/home/dash/RankingsPanel';
 import './dash-layout.css';
@@ -20,15 +19,11 @@ export default function DashboardPage() {
   const { pushToast } = useNotifications();
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
-  const [points, setPoints] = useState<{ total: number; rank: number | null } | null>(null);
   const [leaders, setLeaders] = useState<LeaderboardRow[] | null>(null);
 
   usePresenceHeartbeat(Boolean(user));
 
   useEffect(() => {
-    getMyPoints()
-      .then((p) => setPoints({ total: p.total, rank: p.rank }))
-      .catch(() => setPoints(null));
     getLeaderboard()
       .then((rows) => setLeaders(rows.slice(0, 10)))
       .catch(() => setLeaders([]));
@@ -65,14 +60,6 @@ export default function DashboardPage() {
       <DashBackdrop />
       <div className="dl-root">
         <DashHeader className="dl-head" name={name} stats={stats} />
-        <StatStrip
-          className="dl-stats"
-          points={points}
-          liveCount={huddles.length}
-          loading={loading}
-          stats={stats}
-          actions={<DashActions />}
-        />
         <HotHuddles className="dl-hot" />
         <LivePanel
           className="dl-live"

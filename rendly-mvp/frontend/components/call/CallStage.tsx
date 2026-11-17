@@ -12,6 +12,7 @@ import { VideoTile } from './VideoTile';
 import { CallMiniBar } from './CallMiniBar';
 import { pauseLabelFor } from '@/lib/mediaPause';
 import { useOngoingNotification } from '@/hooks/useOngoingNotification';
+import { useRoomRecorder, type RecordSource } from '@/hooks/useRoomRecorder';
 import './call.css';
 import { withBasePath } from '@/lib/basePath';
 
@@ -45,7 +46,33 @@ export function useCallPeer(): UserCard | null {
   return peer;
 }
 
-export function CallControls({ compact = false, onMinimize }: { compact?: boolean; onMinimize?: () => void }) {
+/** Browser-side recording of a 1:1 call: both cameras (or avatars for voice) plus both voices. */
+function useCallRecorder(peerName: string) {
+  const c = useCallContext();
+  const latest = useRef({ remote: c.remoteStream, local: c.localStream, peerName });
+  latest.current = { remote: c.remoteStream, local: c.localStream, peerName };
+  return useRoomRecorder((): RecordSource[] => [
+    { id: 'peer', stream: latest.current.remote, name: latest.current.peerName },
+    { id: 'me', stream: latest.current.local, name: 'You' },
+  ]);
+}
+
+function callRecordingName(peerName: string, kind: string, at: Date): string {
+  const slug = peerName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'call';
+  return `rendly-${kind}-call-${slug}-${at.toISOString().slice(0, 16).replace(':', '-')}.webm`;
+}
+
+export function CallControls({
+  compact = false,
+  onMinimize,
+  recorder,
+  peerName = 'call',
+}: {
+  compact?: boolean;
+  onMinimize?: () => void;
+  recorder?: ReturnType<typeof useRoomRecorder>;
+  peerName?: string;
+}) {
   const c = useCallContext();
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices && 'getDisplayMedia' in navigator.mediaDevices;
   return (
@@ -66,6 +93,22 @@ export function CallControls({ compact = false, onMinimize }: { compact?: boolea
       {c.callState === 'active' ? (
         <button type="button" className={`call-ctl ${c.isPaused ? 'call-ctl--off' : ''}`} onClick={c.togglePause} aria-label={c.isPaused ? 'Resume call' : 'Pause call'} aria-pressed={c.isPaused} title={c.isPaused ? 'Resume' : 'Pause'}>
           <Icon name={c.isPaused ? 'play' : 'pause'} />
+        </button>
+      ) : null}
+      {recorder && c.callState === 'active' ? (
+        <button
+          type="button"
+          className={`call-ctl ${recorder.recording ? 'call-ctl--rec' : ''}`}
+          onClick={() =>
+            recorder.recording
+              ? recorder.stop()
+              : void recorder.start(callRecordingName(peerName, c.callType === 'video' ? 'video' : 'voice', new Date()))
+          }
+          aria-label={recorder.recording ? 'Stop recording and save' : 'Record call'}
+          aria-pressed={recorder.recording}
+          title={recorder.recording ? 'Stop recording' : 'Record'}
+        >
+          <Icon name="record" />
         </button>
       ) : null}
       {onMinimize ? (
@@ -131,6 +174,9 @@ export function CallStage() {
   const [elapsed, setElapsed] = useState(0);
   const ringRef = useRef<HTMLAudioElement | null>(null);
   const embedded = pathname.startsWith('/dashboard/match');
+  // In Whispers the call docks beside (or above) the chat so both stay visible.
+  const docked = pathname.startsWith('/dashboard/chat');
+  const recorder = useCallRecorder(peer?.username ? `@${peer.username}` : 'Them');
   const peerHandle = peer?.username ? `@${peer.username}` : 'Someone';
   const callKind = c.callType === 'video' ? 'video' : 'audio';
 
@@ -164,6 +210,18 @@ export function CallStage() {
       ringRef.current = null;
     };
   }, [c.callState]);
+
+  // Ending the call stops (and saves) any recording.
+  useEffect(() => {
+    if (c.callState !== 'active' && recorder.recording) recorder.stop();
+  }, [c.callState, recorder]);
+
+  // The page leaves room for a docked call.
+  useEffect(() => {
+    const on = docked && c.callState === 'active' && !minimized;
+    document.documentElement.classList.toggle('rd-call-docked', on);
+    return () => document.documentElement.classList.remove('rd-call-docked');
+  }, [docked, c.callState, minimized]);
 
   useEffect(() => {
     if (c.callState !== 'active') {
@@ -223,23 +281,29 @@ export function CallStage() {
   if (minimized) {
     return (
       <CallMiniBar callType={callKind} peerName={peerName} elapsed={formatDuration(elapsed)} onResume={() => setMinimized(false)}>
-        <CallControls compact />
+        <CallControls compact recorder={recorder} peerName={peerName} />
       </CallMiniBar>
     );
   }
 
   return (
-    <div className="call-stage" role="dialog" aria-label={`Call with ${peerName}`}>
+    <div className={`call-stage${docked ? ' call-stage--docked' : ''}`} role="dialog" aria-label={`Call with ${peerName}`}>
       <header className="call-stage-head">
         <div>
           <strong>{peerName}</strong>
           <span className="rd-small rd-muted"> · {formatDuration(elapsed)}</span>
         </div>
+        {recorder.recording ? (
+          <span className="rd-chip call-rec-chip">
+            <span className="call-rec-dot" aria-hidden /> Recording {formatDuration(recorder.seconds)}
+          </span>
+        ) : null}
+        {recorder.error ? <span className="rd-chip">{recorder.error}</span> : null}
         {c.remoteScreenStream ? <span className="rd-chip">Viewing their screen</span> : null}
         {c.isScreenSharing ? <span className="rd-chip rd-chip--on">You are sharing</span> : null}
       </header>
       <CallMedia peer={peer} />
-      <CallControls onMinimize={() => setMinimized(true)} />
+      <CallControls onMinimize={() => setMinimized(true)} recorder={recorder} peerName={peerName} />
     </div>
   );
 }

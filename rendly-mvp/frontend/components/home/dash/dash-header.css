@@ -253,3 +253,118 @@
   .dh-btn-arrow { transition: none; }
   .dh-btn:hover { transform: none; }
 }
+
+/* ---------- Live pills under the greeting ---------- */
+.dh-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  opacity: 0;
+  animation: dh-rise 700ms var(--rd-ease, cubic-bezier(0.16, 1, 0.3, 1)) 140ms forwards;
+}
+.dh-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  font-size: 12.5px;
+  color: var(--rd-muted, #8a8f98);
+  white-space: nowrap;
+}
+.dh-pill .dh-num {
+  color: var(--rd-text, #f7f8f8);
+  font-weight: 600;
+  display: inline-block;
+  animation: dh-tick 520ms var(--rd-ease, cubic-bezier(0.16, 1, 0.3, 1));
+}
+.dh-pill--match {
+  overflow: hidden;
+  padding-right: 4px;
+  border-color: rgba(183, 139, 255, 0.4);
+  background: linear-gradient(135deg, rgba(183, 139, 255, 0.16), rgba(90, 120, 255, 0.08));
+}
+.dh-pill-glow {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: conic-gradient(from 0deg, transparent 0 70%, rgba(183, 139, 255, 0.55) 85%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+  animation: dh-orbit 4s linear infinite;
+  pointer-events: none;
+}
+.dh-pill-spark {
+  color: #c9a8ff;
+  animation: dh-pulse-spark 2s ease-in-out infinite;
+}
+.dh-match-btn {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  margin-left: 4px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #fff;
+  color: #0b0b0c;
+  font-weight: 600;
+  font-size: 12.5px;
+  text-decoration: none;
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+.dh-match-btn:hover {
+  box-shadow: 0 0 0 4px rgba(183, 139, 255, 0.25);
+}
+.dh-match-btn:hover .dh-btn-arrow {
+  transform: translateX(2px);
+}
+.dh-match-btn:active {
+  transform: scale(0.97);
+}
+.dh-match-btn:focus-visible {
+  outline: 2px solid #c9a8ff;
+  outline-offset: 2px;
+}
+@keyframes dh-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes dh-pulse-spark {
+  50% {
+    transform: scale(1.18);
+    opacity: 0.75;
+  }
+}
+@media (max-width: 480px) {
+  .dh-pill {
+    font-size: 12px;
+    padding: 4px 12px;
+  }
+  .dh-pill--match {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .dh-match-btn {
+    margin-left: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dh-pill-glow,
+  .dh-pill-spark {
+    animation: none;
+  }
+}

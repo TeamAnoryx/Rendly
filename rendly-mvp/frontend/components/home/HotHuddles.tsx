@@ -203,7 +203,7 @@ function HotCard({ h, reduceMotion, rank }: { h: HotHuddle; reduceMotion: boolea
   );
 }
 
-export default function HotHuddles({ className }: { className?: string }) {
+export default function HotHuddles({ className, showHostCta = true }: { className?: string; /** Off on the Huddles page, which has its own Host button. */ showHostCta?: boolean }) {
   const [items, setItems] = useState<HotHuddle[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const reduceMotion = useReducedMotion() ?? false;
@@ -284,9 +284,11 @@ export default function HotHuddles({ className }: { className?: string }) {
           </span>
           <p className="hh-empty-title">Nothing hot yet</p>
           <p className="hh-empty-sub">Start one and it could top this list.</p>
-          <Link href="/dashboard/huddles?create=1" className="hh-cta hh-cta--solid hh-empty-cta">
-            <Icon name="plus" size={13} /> Host a huddle
-          </Link>
+          {showHostCta ? (
+            <Link href="/dashboard/huddles?create=1" className="hh-cta hh-cta--solid hh-empty-cta">
+              <Icon name="plus" size={13} /> Host a huddle
+            </Link>
+          ) : null}
         </motion.div>
       ) : (
         <motion.ul

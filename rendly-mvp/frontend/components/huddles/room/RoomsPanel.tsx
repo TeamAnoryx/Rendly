@@ -102,6 +102,14 @@ export default function RoomsPanel({ huddleId, members, myId, role, currentRoom,
     }
   };
 
+  /** Host: everyone (participants, admins and the host) returns to the main room. */
+  const bringEveryoneBack = () => {
+    const everyone = members.filter((m) => m.admitted).map((m) => m.user_id);
+    move(Object.fromEntries(everyone.map((id) => [id, MAIN_ROOM])));
+    setPlan({});
+    if (currentRoom !== MAIN_ROOM) onPeek(MAIN_ROOM);
+  };
+
   const liveBreakouts = rooms.filter((r) => r.room !== MAIN_ROOM && r.room !== ADMIN_ROOM).map((r) => r.room);
   const leaderRooms = Array.from(new Set([...roomNames, ...liveBreakouts])).sort();
   const sorted = [...rooms].sort((a, b) => (a.room === MAIN_ROOM ? -1 : b.room === MAIN_ROOM ? 1 : a.room.localeCompare(b.room)));
@@ -178,6 +186,14 @@ export default function RoomsPanel({ huddleId, members, myId, role, currentRoom,
         </>
       ) : (
         <>
+          {liveBreakouts.length > 0 ? (
+            <button type="button" className="hr-bring-back" onClick={bringEveryoneBack}>
+              <Icon name="people" size={16} />
+              <span>Bring everyone back</span>
+              <small>Participants, admins and you return to the main room</small>
+            </button>
+          ) : null}
+
           <h4 className="hr-subhead">Room leaders</h4>
           {admins.length === 0 ? (
             <p className="rd-small rd-muted">Make someone an admin in People first. Admins can lead a room.</p>
@@ -252,9 +268,6 @@ export default function RoomsPanel({ huddleId, members, myId, role, currentRoom,
               <div className="hr-rooms-row">
                 <button type="button" className="rd-btn rd-btn--primary rd-btn--sm" onClick={() => move(plan)} disabled={Object.keys(plan).length === 0}>
                   Open rooms
-                </button>
-                <button type="button" className="rd-btn rd-btn--ghost rd-btn--sm" onClick={() => move(Object.fromEntries(people.map((p) => [p.user_id, MAIN_ROOM])))}>
-                  Bring everyone back
                 </button>
               </div>
               {sent ? <p className="rd-small rd-muted">{sent}</p> : null}

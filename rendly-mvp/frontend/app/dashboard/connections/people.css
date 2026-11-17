@@ -225,3 +225,63 @@ a.ppl-row:hover .ppl-chevron {
     display: none;
   }
 }
+
+/* ---------- Find people ---------- */
+.ppl-find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.ppl-search--find {
+  max-width: none;
+}
+.ppl-find-msg {
+  padding: 0 16px 12px;
+  font-size: 0.8125rem;
+  color: var(--rd-muted);
+}
+.ppl-results {
+  border-top: 1px solid var(--rd-border-faint);
+}
+.ppl-subhead {
+  padding: 10px 16px 6px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rd-faint);
+}
+.ppl-list--recent {
+  border-bottom: 1px solid var(--rd-border-faint);
+}
+.ppl-pending {
+  white-space: nowrap;
+}
+/* A row found from Find people pulses so it is easy to spot. */
+.ppl-row--hit {
+  background: rgba(183, 139, 255, 0.14);
+  box-shadow: inset 3px 0 0 #b78bff;
+  animation: ppl-hit 1.2s ease-out 2;
+}
+@keyframes ppl-hit {
+  50% {
+    background: rgba(183, 139, 255, 0.28);
+  }
+}
+@media (max-width: 767px) {
+  .ppl-find .rd-btn--sm {
+    height: 40px;
+  }
+  .ppl-row {
+    flex-wrap: wrap;
+  }
+  .ppl-row .ppl-side {
+    margin-left: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ppl-row--hit {
+    animation: none;
+  }
+}
