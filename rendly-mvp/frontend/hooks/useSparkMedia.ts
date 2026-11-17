@@ -94,6 +94,9 @@ function hasMediaDevices(): boolean {
 
 /** How often an unconnected match is nudged to (re)negotiate. */
 export const SPARK_CONNECT_NUDGE_MS = 2500;
+/** A relay-only link that has not connected by now falls back to a direct (STUN) path. */
+export const SPARK_RELAY_FALLBACK_MS = 10000;
+const FALLBACK_STUN = 'stun:stun.l.google.com:19302';
 
 export function useSparkMedia(opts: {
   initiator: boolean;
@@ -143,6 +146,11 @@ export function useSparkMedia(opts: {
   const partnerConsent = !partnerAnonymous || partner.p2p;
   const myConsentRef = useRef(myConsent);
   myConsentRef.current = myConsent;
+  const partnerConsentRef = useRef(partnerConsent);
+  partnerConsentRef.current = partnerConsent;
+  /** Set once the relay-only path gave up and the link was reopened allowing direct routes. */
+  const relayFallbackRef = useRef(false);
+  const lastRestartRef = useRef(0);
 
   const stateRef = useRef<SparkMediaState>({ video: false, audio: false, p2p: myConsent });
 
@@ -359,6 +367,7 @@ export function useSparkMedia(opts: {
     aliveRef.current = true;
     leftRef.current = false;
     offeredRef.current = false;
+    relayFallbackRef.current = false;
     pendingIceRef.current = [];
 
     let active = true;
@@ -524,11 +533,56 @@ export function useSparkMedia(opts: {
     const id = setInterval(() => {
       const pc = pcRef.current;
       if (!pc || leftRef.current || pc.connectionState === 'connected') return;
-      if (initiator) maybeOffer();
-      else publishState();
+      if (!initiator) {
+        publishState();
+        return;
+      }
+      // After the relay fallback, keep restarting ICE until a path works.
+      if (relayFallbackRef.current && pc.signalingState === 'stable' && Date.now() - lastRestartRef.current > 8000) {
+        lastRestartRef.current = Date.now();
+        void makeOffer(true);
+        return;
+      }
+      maybeOffer();
     }, SPARK_CONNECT_NUDGE_MS);
     return () => clearInterval(id);
-  }, [pcReady, initiator, maybeOffer, publishState]);
+  }, [pcReady, initiator, maybeOffer, publishState, makeOffer]);
+
+  // Relay fallback: if TURN is unreachable or out of quota, a relay-only link never connects and
+  // both sides sit on "Connecting…". Both people have already agreed to a direct connection
+  // (camera on / direct consent), so reopen the link allowing direct routes and restart ICE.
+  useEffect(() => {
+    if (!pcReady || ice.status !== 'ready' || !ice.relay) return undefined;
+    const timer = setTimeout(() => {
+      void (async () => {
+        const pc = pcRef.current;
+        if (!pc || leftRef.current || relayFallbackRef.current) return;
+        if (pc.connectionState === 'connected') return;
+        if (!myConsentRef.current || !partnerConsentRef.current) return;
+        try {
+          pc.setConfiguration({
+            iceServers: [...ice.iceServers, { urls: FALLBACK_STUN }],
+            iceTransportPolicy: 'all',
+          });
+        } catch {
+          return;
+        }
+        relayFallbackRef.current = true;
+        if (!initiator) {
+          publishState();
+          return;
+        }
+        try {
+          if (pc.signalingState === 'have-local-offer') await pc.setLocalDescription({ type: 'rollback' });
+        } catch {
+          /* nothing to roll back */
+        }
+        lastRestartRef.current = Date.now();
+        await makeOffer(true);
+      })();
+    }, SPARK_RELAY_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [pcReady, ice, initiator, makeOffer, publishState]);
 
   // Video mode starts with camera + mic on; text mode starts with both off.
   useEffect(() => {
