@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getSparkIceConfig } from '@/services/sparkApi';
 import websocket from '@/services/websocket';
 import { chat } from '@/services/chat';
 import { applyPausedTracks, type PauseReason } from '@/lib/mediaPause';
@@ -71,6 +72,21 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
 
   // Refs mirror state so socket handlers never act on stale values.
   const stateRef = useRef<CallState>('idle');
+  // STUN first so a call never waits; TURN (when configured) is merged in so calls across
+  // strict networks still connect instead of dropping right after the callee answers.
+  const iceServersRef = useRef<RTCIceServer[]>(ICE_SERVERS);
+  useEffect(() => {
+    if (!currentUserId) return;
+    let cancelled = false;
+    getSparkIceConfig()
+      .then((cfg) => {
+        if (!cancelled && cfg.iceServers.length > 0) iceServersRef.current = [...ICE_SERVERS, ...cfg.iceServers];
+      })
+      .catch((err) => console.warn('[call] relay config unavailable, using STUN only', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUserId]);
   const convRef = useRef<string | null>(null);
   const logRef = useRef<string | null>(null);
   const typeRef = useRef<'audio' | 'video'>('video');
@@ -178,7 +194,7 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
 
   const createPeer = useCallback(
     (convId: string): RTCPeerConnection => {
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       pcRef.current = pc;
       pc.onicecandidate = (e) => {
         if (e.candidate && currentUserId) websocket.emitWebrtcIceCandidate(convId, currentUserId, e.candidate.toJSON());
@@ -205,11 +221,24 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
     [currentUserId, publishRemote, finish]
   );
 
+  // A busy or blocked camera must not end a call the other side already picked up:
+  // fall back to voice, then to listen-only, so the call still connects.
   const getMedia = async (type: 'audio' | 'video'): Promise<MediaStream> => {
-    const stream = await navigator.mediaDevices.getUserMedia(type === 'video' ? { audio: CALL_AUDIO, video: true } : { audio: CALL_AUDIO });
-    localRef.current = stream;
-    setLocalStream(stream);
-    return stream;
+    const attempts: MediaStreamConstraints[] =
+      type === 'video' ? [{ audio: CALL_AUDIO, video: true }, { audio: CALL_AUDIO }] : [{ audio: CALL_AUDIO }];
+    let stream: MediaStream | null = null;
+    for (const constraints of attempts) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        break;
+      } catch (err) {
+        console.warn('[call] media unavailable, trying a lighter setup', err);
+      }
+    }
+    const result = stream ?? new MediaStream();
+    localRef.current = result;
+    setLocalStream(result);
+    return result;
   };
 
   const flushIce = async (pc: RTCPeerConnection) => {
