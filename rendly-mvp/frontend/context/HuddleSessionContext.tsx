@@ -174,6 +174,18 @@ export function HuddleSessionProvider({ children }: { children: React.ReactNode 
     [session, activeId, paused, start, sync, leaveError],
   );
 
+  // Away from the huddle (another page, a hidden tab, a locked phone): freeze my media so the
+  // others see me as paused; coming back unfreezes it, unless I paused on purpose.
+  const [tabHidden, setTabHidden] = useState(false);
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const sync = () => setTabHidden(document.visibilityState === 'hidden');
+    sync();
+    document.addEventListener('visibilitychange', sync);
+    return () => document.removeEventListener('visibilitychange', sync);
+  }, []);
+  const away = !!huddle && (!onPage || tabHidden);
+
   return (
     <HuddleSessionContext.Provider value={value}>
       {children}
@@ -182,7 +194,7 @@ export function HuddleSessionProvider({ children }: { children: React.ReactNode 
           key={huddle.id}
           huddle={huddle}
           slot={onPage ? slot : null}
-          paused={paused}
+          paused={paused || away}
           onTogglePause={() => setPaused((p) => !p)}
           onLeave={() => void leave()}
           onEnd={isHost ? () => void endForAll() : undefined}

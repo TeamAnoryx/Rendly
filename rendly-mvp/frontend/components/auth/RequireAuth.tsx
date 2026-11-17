@@ -5,7 +5,7 @@ import { getStoredAuthToken } from '@/lib/auth-storage';
 import { withBasePath } from '@/lib/basePath';
 
 /** Where a signed-out visitor lands when they reach a signed-in page (for example via Back). */
-const SIGNED_OUT_HOME = '/';
+const SIGNED_OUT_HOME = '/login';
 
 /**
  * Renders children only when a session token is stored. Without one it replaces the history

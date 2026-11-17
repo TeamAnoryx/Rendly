@@ -183,6 +183,11 @@ function Tile({
   );
 }
 
+const HUDDLE_CONNECT_NUDGE_MS = 2500;
+/** Phone and tablet browsers (Android Chrome, iOS Safari) give web pages no screen capture. */
+const SHARE_UNSUPPORTED =
+  "This browser can't share its screen. Mobile and tablet browsers don't allow it; join from a computer to share.";
+
 export default function HuddleRoom({
   huddle,
   onLeave,
@@ -396,6 +401,19 @@ export default function HuddleRoom({
     },
     [signal, publishPeer, renegotiate, dropPeer]
   );
+
+  // A first offer can be lost (socket blip, peer still joining): until a link connects, the
+  // lower id keeps re-offering so the other person's camera shows without a page reload.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const me = myIdRef.current;
+      for (const [peer, pc] of Object.entries(pcs.current)) {
+        if (pc.connectionState === 'connected' || pc.signalingState !== 'stable' || pc.remoteDescription) continue;
+        if (me && me < peer) void renegotiate(peer).catch(() => undefined);
+      }
+    }, HUDDLE_CONNECT_NUDGE_MS);
+    return () => clearInterval(timer);
+  }, [renegotiate]);
 
   const handleSignal = useCallback(
     async (from: string, data: { type?: string; sdp?: string; candidate?: RTCIceCandidateInit }) => {
@@ -667,6 +685,10 @@ export default function HuddleRoom({
 
   const startShare = async () => {
     if (screenRef.current) return stopShare();
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setNotice(SHARE_UNSUPPORTED);
+      return;
+    }
     try {
       const s = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
       const res = await websocket.emitWithAck<{ ok: boolean; message?: string }>('huddle:screen', { huddle_id: huddleId, room: roomRef.current, stream_id: s.id });
@@ -823,7 +845,7 @@ export default function HuddleRoom({
           <button type="button" className={`rd-icon-btn hr-dock-btn ${camOn ? '' : 'hr-dock-btn--off'}`} disabled={!local || !videoSlot} onClick={() => setCamOn((v) => !v)} aria-label="Camera" title={videoSlot ? 'Camera' : 'The main room is full for video. Audio and chat only, or join a breakout room.'} aria-pressed={camOn}>
             <Icon name={camOn ? 'video' : 'video-off'} />
           </button>
-          <button type="button" className={`rd-icon-btn hr-dock-btn ${screen ? 'rd-icon-btn--on hr-dock-btn--on' : ''}`} disabled={!canShare || !canCapture} onClick={() => void startShare()} aria-label="Share screen" title={!canCapture ? "Screen sharing isn't supported by this browser" : canShare ? 'Share screen' : 'Ask the host for permission to share'} aria-pressed={!!screen}>
+          <button type="button" className={`rd-icon-btn hr-dock-btn ${screen ? 'rd-icon-btn--on hr-dock-btn--on' : ''}`} disabled={!canShare} onClick={() => (canCapture ? void startShare() : setNotice(SHARE_UNSUPPORTED))} aria-label="Share screen" title={!canCapture ? "Screen sharing isn't supported by this browser" : canShare ? 'Share screen' : 'Ask the host for permission to share'} aria-pressed={!!screen}>
             <Icon name="screen" />
           </button>
           {canManageHere ? (
@@ -1111,9 +1133,9 @@ function PeoplePanel({
 
   /** Runs a menu action, then slides the menu closed once it succeeds. */
   const actAndClose = (id: string, fn: () => Promise<void>) => {
-    void act(id, fn).then((ok) => {
-      if (ok) closeMenu();
-    });
+    // Close at once (the row shows its busy spinner); a failure reports in the panel's error line.
+    closeMenu();
+    void act(id, fn);
   };
 
   const menuItems = (m: HuddleMember, manage: boolean, disabled: boolean): PersonMenuItem[] => {

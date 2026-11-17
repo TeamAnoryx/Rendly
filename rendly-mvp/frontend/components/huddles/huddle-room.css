@@ -1385,3 +1385,103 @@
 @media (prefers-reduced-motion: reduce) {
   .hr-tok-arrow span { animation: none; }
 }
+
+/* People menu: instant pressed feedback on touch and click. */
+.hr-pm-item:active:not(:disabled),
+.hr-pm-item.is-pressed {
+  background: rgba(183, 139, 255, 0.22);
+  transform: scale(0.98);
+  transition: transform 80ms ease, background 80ms ease;
+}
+
+/* ---------- phones: one clean scrollable dock row instead of a wrapped grid of buttons ---------- */
+@media (max-width: 767px) {
+  .hr-controls {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .hr-controls::-webkit-scrollbar {
+    display: none;
+  }
+  .hr-dock-btn {
+    flex: none;
+    width: 42px;
+    height: 42px;
+    max-width: none;
+    scroll-snap-align: start;
+  }
+  .hr-dock-leave {
+    width: 52px;
+    margin-left: auto;
+  }
+  .hr-end-all {
+    flex: none;
+    margin: 0 0 0 4px;
+    height: 42px;
+    padding: 0 12px;
+    white-space: nowrap;
+  }
+}
+
+/* ---------- phone held sideways: full-screen stage, tiles side by side, slim dock ---------- */
+@media (max-height: 520px) and (orientation: landscape) and (pointer: coarse) {
+  .hr-stage {
+    gap: 6px;
+    padding: 6px calc(8px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom))
+      calc(8px + env(safe-area-inset-left));
+    height: 100dvh;
+  }
+  .hr-topline {
+    display: none;
+  }
+  .hr-grid {
+    gap: 6px;
+  }
+  .hr-grid--1 .hr-tile {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+  }
+  .hr-grid--2 {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr;
+  }
+  .hr-grid--2 .hr-tile {
+    aspect-ratio: auto;
+  }
+  .hr-grid--4 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+  .hr-grid--6,
+  .hr-grid--9 {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: none;
+    grid-auto-rows: minmax(110px, 1fr);
+    overflow-y: auto;
+  }
+  .hr-controls {
+    align-self: center;
+    flex-wrap: nowrap;
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 3px;
+  }
+  .hr-dock-btn {
+    flex: none;
+    width: 36px;
+    height: 36px;
+  }
+  .hr-end-all {
+    flex: none;
+    height: 36px;
+    margin: 0 0 0 4px;
+  }
+}

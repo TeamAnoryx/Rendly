@@ -74,3 +74,14 @@
   pointer-events: none;
   overflow: hidden;
 }
+
+/* Phones: the ongoing card sits at the top, clear of the bottom navigation and thumb zone. */
+@media (max-width: 767px) {
+  .ongoing-card {
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    left: 12px;
+    right: 12px;
+    max-width: none;
+  }
+}

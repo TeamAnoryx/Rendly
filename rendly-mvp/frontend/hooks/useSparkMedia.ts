@@ -91,6 +91,10 @@ function hasMediaDevices(): boolean {
  * room start; turning camera or mic on/off only swaps the sender track, so no renegotiation happens.
  * Only the initiator ever offers (no glare).
  */
+
+/** How often an unconnected match is nudged to (re)negotiate. */
+export const SPARK_CONNECT_NUDGE_MS = 2500;
+
 export function useSparkMedia(opts: {
   initiator: boolean;
   myMode: SparkMode;
@@ -511,6 +515,20 @@ export function useSparkMedia(opts: {
     // The pc is torn down by the lifecycle effect, leave() and the spark:ended handler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canConnect, ice]);
+
+  // Connection watchdog: until the link is up, nudge every few seconds. The initiator re-sends
+  // (or restarts) its offer; the other side re-announces itself so the initiator hears it. This
+  // recovers an offer or answer that was sent before the partner's room socket was ready.
+  useEffect(() => {
+    if (!pcReady) return undefined;
+    const id = setInterval(() => {
+      const pc = pcRef.current;
+      if (!pc || leftRef.current || pc.connectionState === 'connected') return;
+      if (initiator) maybeOffer();
+      else publishState();
+    }, SPARK_CONNECT_NUDGE_MS);
+    return () => clearInterval(id);
+  }, [pcReady, initiator, maybeOffer, publishState]);
 
   // Video mode starts with camera + mic on; text mode starts with both off.
   useEffect(() => {

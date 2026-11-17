@@ -172,11 +172,11 @@ export default function SparkLaunchCard({
       </motion.div>
 
       <motion.div className="sl-cta" variants={item}>
-        <SparkButton busy={busy} disabled={nobodyOn} onClick={onSpark} label="Spark" />
+        <SparkButton busy={busy} onClick={onSpark} label="Spark" />
 
         {nobodyOn && (
           <div className="sl-empty" aria-live="polite">
-            <p className="sl-empty__text">No active users for you to match right now</p>
+            <p className="sl-empty__text">No one else is on Spark right now. Start anyway, or get an alert when people join.</p>
             {notifyState === 'done' ? (
               <p className="sl-notify sl-notify--done">
                 <BellIcon /> We&apos;ll notify you

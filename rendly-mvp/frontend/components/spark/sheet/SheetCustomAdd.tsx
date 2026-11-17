@@ -46,6 +46,20 @@ export default function SheetCustomAdd({ disabled, onCreated, onOpenChange }: Sh
   const inputRef = useRef<HTMLInputElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const refocusToggle = useRef(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
+
+  // On phones and tablets the opened form (and its Add button) can sit below the fold or under
+  // the on-screen keyboard: bring it into view once it has expanded and when the keyboard opens.
+  const revealActions = React.useCallback(() => {
+    actionsRef.current?.scrollIntoView?.({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  }, [reduce]);
+
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!open || !vv) return undefined;
+    vv.addEventListener('resize', revealActions);
+    return () => vv.removeEventListener('resize', revealActions);
+  }, [open, revealActions]);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -120,6 +134,7 @@ export default function SheetCustomAdd({ disabled, onCreated, onOpenChange }: Sh
             animate={reduce ? { opacity: 1 } : { opacity: 1, height: 'auto' }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }}
             transition={{ duration: 0.24, ease: EASE }}
+            onAnimationComplete={revealActions}
           >
             <div className="is-custom-inner">
               <label className="is-sr" htmlFor="is-custom-name">
@@ -165,7 +180,7 @@ export default function SheetCustomAdd({ disabled, onCreated, onOpenChange }: Sh
                   {error}
                 </p>
               )}
-              <div className="is-custom-actions">
+              <div className="is-custom-actions" ref={actionsRef}>
                 <button type="button" className="is-link" disabled={busy} onClick={collapse}>
                   Cancel
                 </button>

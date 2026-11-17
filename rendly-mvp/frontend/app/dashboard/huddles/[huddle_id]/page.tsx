@@ -85,6 +85,14 @@ function HostTools({ huddle, onChanged, onGone }: { huddle: HuddleDetail; onChan
   const [connections, setConnections] = useState<Connection[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const editRef = useRef<HTMLDivElement>(null);
+
+  // On tablets and phones the edit form opens below the fold: bring it into view.
+  useEffect(() => {
+    if (!editing) return undefined;
+    const id = requestAnimationFrame(() => editRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }));
+    return () => cancelAnimationFrame(id);
+  }, [editing]);
 
   const run = async (key: string, fn: () => Promise<void>) => {
     setBusy(key);
@@ -170,7 +178,8 @@ function HostTools({ huddle, onChanged, onGone }: { huddle: HuddleDetail; onChan
         </label>
       ) : null}
       {editing ? (
-        <HuddleEditForm
+        <div ref={editRef} className="hl-edit-anchor">
+          <HuddleEditForm
           huddle={huddle}
           onClose={() => setEditing(false)}
           onSaved={async (rescheduled) => {
@@ -179,6 +188,7 @@ function HostTools({ huddle, onChanged, onGone }: { huddle: HuddleDetail; onChan
             setMsg(rescheduled ? 'Saved. Everyone invited was told about the new time.' : 'Saved.');
           }}
         />
+        </div>
       ) : null}
       {confirm ? (
         <div className="hl-confirm" role="alertdialog">

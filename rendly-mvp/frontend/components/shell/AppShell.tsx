@@ -166,7 +166,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     try {
       await auth.logout();
       // Replace, not push: Back must never return to a signed-out dashboard.
-      router.replace('/');
+      router.replace('/login');
     } catch {
       setLoggingOut(false);
     }
