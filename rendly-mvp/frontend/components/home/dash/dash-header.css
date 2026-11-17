@@ -6,7 +6,6 @@
   justify-content: space-between;
   gap: 20px;
   min-height: 0;
-  max-height: 64px;
   min-width: 0;
 }
 
@@ -292,18 +291,6 @@
   border-color: rgba(183, 139, 255, 0.4);
   background: linear-gradient(135deg, rgba(183, 139, 255, 0.16), rgba(90, 120, 255, 0.08));
 }
-.dh-pill-glow {
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  background: conic-gradient(from 0deg, transparent 0 70%, rgba(183, 139, 255, 0.55) 85%, transparent 100%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  padding: 1px;
-  animation: dh-orbit 4s linear infinite;
-  pointer-events: none;
-}
 .dh-pill-spark {
   color: #c9a8ff;
   animation: dh-pulse-spark 2s ease-in-out infinite;
@@ -323,10 +310,24 @@
   font-weight: 600;
   font-size: 12.5px;
   text-decoration: none;
-  transition: transform 0.15s ease, box-shadow 0.2s ease;
+  isolation: isolate;
+  transition: transform 0.15s ease;
+  animation: dh-match-breathe 2.4s ease-in-out infinite;
+}
+.dh-match-shine {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(110deg, transparent 30%, rgba(183, 139, 255, 0.55) 50%, transparent 70%);
+  transform: translateX(-130%);
+  animation: dh-match-shine 2.4s ease-in-out infinite;
+}
+.dh-match-btn .dh-btn-arrow {
+  animation: dh-match-nudge 2.4s ease-in-out infinite;
 }
 .dh-match-btn:hover {
-  box-shadow: 0 0 0 4px rgba(183, 139, 255, 0.25);
+  animation-play-state: paused;
+  box-shadow: 0 0 0 4px rgba(183, 139, 255, 0.3);
 }
 .dh-match-btn:hover .dh-btn-arrow {
   transform: translateX(2px);
@@ -338,10 +339,17 @@
   outline: 2px solid #c9a8ff;
   outline-offset: 2px;
 }
-@keyframes dh-orbit {
-  to {
-    transform: rotate(360deg);
-  }
+@keyframes dh-match-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(183, 139, 255, 0.45), 0 4px 14px -6px rgba(183, 139, 255, 0.5); }
+  50% { box-shadow: 0 0 0 5px rgba(183, 139, 255, 0), 0 6px 20px -4px rgba(183, 139, 255, 0.75); }
+}
+@keyframes dh-match-shine {
+  0%, 35% { transform: translateX(-130%); }
+  75%, 100% { transform: translateX(130%); }
+}
+@keyframes dh-match-nudge {
+  0%, 60%, 100% { transform: none; }
+  75% { transform: translateX(3px); }
 }
 @keyframes dh-pulse-spark {
   50% {
@@ -363,7 +371,9 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dh-pill-glow,
+  .dh-match-btn,
+  .dh-match-shine,
+  .dh-match-btn .dh-btn-arrow,
   .dh-pill-spark {
     animation: none;
   }

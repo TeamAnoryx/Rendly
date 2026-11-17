@@ -19,7 +19,8 @@ export function OngoingCard({ text, onResume, children }: OngoingCardProps): JSX
       <span className="ongoing-card-dot" aria-hidden="true" />
       <span className="ongoing-card-text">{text}</span>
       {children ? <span className="ongoing-card-extra">{children}</span> : null}
-      <button type="button" className="rd-btn rd-btn--primary rd-btn--sm" onClick={onResume}>
+      <button type="button" className="ongoing-card-resume" onClick={onResume}>
+        <Icon name="play" size={13} />
         Resume
       </button>
     </div>

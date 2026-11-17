@@ -679,39 +679,44 @@ app.get("/api/groups/:id", requireAuth, async (req: express.Request & { currentU
 });
 
 app.patch("/api/groups/:id", requireAuth, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
-  const user = req.currentUser!;
-  const groupId = req.params.id;
-  const group = await getGroupById(groupId);
-  if (!group) {
-    res.status(404).json({ message: "Group not found" });
-    return;
-  }
-  const isMember = await isGroupMember(groupId, user.userId);
-  if (!isMember) {
-    res.status(403).json({ message: "Not a member" });
-    return;
-  }
-  const members = await getGroupMembersWithUsers(groupId);
-  const myRole = members.find((m) => m.user_id === user.userId)?.role;
-  const isAdmin = myRole === "creator" || myRole === "admin";
-  const payload: { name?: string; motive?: string; view_only_mode?: boolean; priority_user_id?: string | null; avatar_url?: string | null } = {};
-  const name = (req.body?.name as string)?.trim();
-  if (name !== undefined) payload.name = name;
-  if (isAdmin) {
-    if (req.body?.motive !== undefined) payload.motive = (req.body.motive as string)?.trim() || undefined;
-    if (typeof req.body?.view_only_mode === "boolean") payload.view_only_mode = req.body.view_only_mode;
-    if (req.body?.priority_user_id !== undefined) payload.priority_user_id = (req.body.priority_user_id as string) || null;
-    if (req.body?.avatar_url !== undefined) payload.avatar_url = (req.body.avatar_url as string) || null;
-  }
-  if (Object.keys(payload).length > 0) {
-    if (!(await updateGroup(groupId, payload))) {
-      res.status(500).json({ message: "Could not save the group settings" });
+  try {
+    const user = req.currentUser!;
+    const groupId = req.params.id;
+    const group = await getGroupById(groupId);
+    if (!group) {
+      res.status(404).json({ message: "Group not found" });
       return;
     }
-    // Members see view-only and priority changes at once, not on their next visit.
-    for (const m of members) emitToUser(m.user_id, "group:updated", { group_id: groupId });
+    const isMember = await isGroupMember(groupId, user.userId);
+    if (!isMember) {
+      res.status(403).json({ message: "Not a member" });
+      return;
+    }
+    const members = await getGroupMembersWithUsers(groupId);
+    const myRole = members.find((m) => m.user_id === user.userId)?.role;
+    const isAdmin = myRole === "creator" || myRole === "admin";
+    const payload: { name?: string; motive?: string; view_only_mode?: boolean; priority_user_id?: string | null; avatar_url?: string | null } = {};
+    const name = (req.body?.name as string)?.trim();
+    if (name !== undefined) payload.name = name;
+    if (isAdmin) {
+      if (req.body?.motive !== undefined) payload.motive = (req.body.motive as string)?.trim() || undefined;
+      if (typeof req.body?.view_only_mode === "boolean") payload.view_only_mode = req.body.view_only_mode;
+      if (req.body?.priority_user_id !== undefined) payload.priority_user_id = (req.body.priority_user_id as string) || null;
+      if (req.body?.avatar_url !== undefined) payload.avatar_url = (req.body.avatar_url as string) || null;
+    }
+    if (Object.keys(payload).length > 0) {
+      if (!(await updateGroup(groupId, payload))) {
+        res.status(500).json({ message: "Could not save the group settings" });
+        return;
+      }
+      // Members see view-only and priority changes at once, not on their next visit.
+      for (const m of members) emitToUser(m.user_id, "group:updated", { group_id: groupId });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[groups] update failed", err);
+    if (!res.headersSent) res.status(500).json({ message: "Could not save the group settings" });
   }
-  res.json({ ok: true });
 });
 
 app.post("/api/groups/:id/avatar", avatarUpload.single("avatar"), requireAuth, async (req: express.Request & { currentUser?: CurrentUser }, res) => {

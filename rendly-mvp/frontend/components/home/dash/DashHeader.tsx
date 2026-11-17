@@ -83,14 +83,13 @@ export default function DashHeader({ name, stats, className }: DashHeaderProps) 
             online now
           </span>
           <span className="dh-pill dh-pill--match">
-            <span className="dh-pill-glow" aria-hidden />
             <Icon name="spark" size={13} className="dh-pill-spark" />
             <span key={`l-${stats?.lookingForMatch ?? 0}`} className="dh-num">
               {(stats?.lookingForMatch ?? 0).toLocaleString('en-IN')}
             </span>
             looking for a match
             <Link href="/dashboard/match" className="dh-match-btn">
-              <span className="dh-btn-sheen" aria-hidden />
+              <span className="dh-match-shine" aria-hidden />
               Match now
               <Icon name="arrow-right" size={12} className="dh-btn-arrow" />
             </Link>
