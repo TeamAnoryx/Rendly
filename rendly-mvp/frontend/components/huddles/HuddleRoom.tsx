@@ -41,6 +41,7 @@ import TokenEvent, { type TokenEventKind } from './room/TokenEvent';
 import PersonMenu, { PersonMenuTrigger, type PersonMenuItem } from './room/PersonMenu';
 import { PausedOverlay, useFreezeVideo, useFrozenWhile } from '@/components/call/OngoingCard';
 import { applyPauseEvent, pauseLabel, pauseMapFromList, type PauseMap } from '@/lib/mediaPause';
+import { canFlipCamera, flipCameraTrack, mirrorFor, swapCameraTrack, type CameraFacing } from '@/lib/cameraFlip';
 import './huddle-room.css';
 
 const MAIN_ROOM = 'main';
@@ -229,6 +230,8 @@ export default function HuddleRoom({
   }, []);
   const [micOn, setMicOn] = useState(false);
   const [camOn, setCamOn] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<CameraFacing>('user');
+  const [flipping, setFlipping] = useState(false);
   const [mutedByHost, setMutedByHost] = useState(false);
   const [canSpeak, setCanSpeak] = useState(huddle.your_permissions?.can_speak ?? true);
   // Admins can always share; others need the host's permission. Derived, so a promotion takes effect at once.
@@ -634,6 +637,30 @@ export default function HuddleRoom({
     });
   }, [micOn, camOn, canSpeak, mutedByHost, local, paused]);
 
+  /** Phones and tablets: switch between the front and back camera. The effect above re-sends it. */
+  const flipCamera = async () => {
+    const s = localRef.current;
+    const old = s?.getVideoTracks()[0] ?? null;
+    if (!s || !old || flipping) return;
+    setFlipping(true);
+    try {
+      const res = await flipCameraTrack(old, cameraFacing);
+      if (localRef.current !== s) {
+        res.track.stop();
+        return;
+      }
+      await swapCameraTrack(s, old, res.track, []);
+      setCameraFacing(res.facing);
+      setLocal(new MediaStream(s.getTracks()));
+      if (!res.switched) setNotice("The other camera isn't available on this device.");
+    } catch (err) {
+      console.warn('[huddle] camera switch failed', err instanceof Error ? err.message : err);
+      setNotice('Could not switch the camera. Try turning it off and on again.');
+    } finally {
+      setFlipping(false);
+    }
+  };
+
   // Tell the room when I pause or resume (not on first render).
   const announcedPause = useRef(false);
   useEffect(() => {
@@ -788,7 +815,7 @@ export default function HuddleRoom({
 
   const tiles = (
     <>
-      <Tile stream={local} name={`${meName} (you)`} avatarUrl={user?.avatar_url} muted mirror camOff={!camOn} micOff={!micLive} badge={role !== 'participant' ? roleLabel(role) : undefined} pausedLabel={paused ? 'Paused' : null} />
+      <Tile stream={local} name={`${meName} (you)`} avatarUrl={user?.avatar_url} muted mirror={mirrorFor(cameraFacing)} camOff={!camOn} micOff={!micLive} badge={role !== 'participant' ? roleLabel(role) : undefined} pausedLabel={paused ? 'Paused' : null} />
       {peerIds.map((id) => {
         const m = members.find((x) => x.user_id === id);
         return <Tile key={id} stream={peers[id].cam} name={nameOf(id)} avatarUrl={avatarOf(id)} micOff={m?.is_muted === true} badge={m?.role === 'host' || m?.role === 'co_host' ? roleLabel(m.role) : undefined} pausedLabel={pauseLabel(pausedPeers[id])} />;
@@ -845,6 +872,11 @@ export default function HuddleRoom({
           <button type="button" className={`rd-icon-btn hr-dock-btn ${camOn ? '' : 'hr-dock-btn--off'}`} disabled={!local || !videoSlot} onClick={() => setCamOn((v) => !v)} aria-label="Camera" title={videoSlot ? 'Camera' : 'The main room is full for video. Audio and chat only, or join a breakout room.'} aria-pressed={camOn}>
             <Icon name={camOn ? 'video' : 'video-off'} />
           </button>
+          {camOn && canFlipCamera() ? (
+            <button type="button" className="rd-icon-btn hr-dock-btn" disabled={!local || flipping} onClick={() => void flipCamera()} aria-label={cameraFacing === 'user' ? 'Switch to back camera' : 'Switch to front camera'} title="Switch camera">
+              <Icon name="camera-flip" />
+            </button>
+          ) : null}
           <button type="button" className={`rd-icon-btn hr-dock-btn ${screen ? 'rd-icon-btn--on hr-dock-btn--on' : ''}`} disabled={!canShare} onClick={() => (canCapture ? void startShare() : setNotice(SHARE_UNSUPPORTED))} aria-label="Share screen" title={!canCapture ? "Screen sharing isn't supported by this browser" : canShare ? 'Share screen' : 'Ask the host for permission to share'} aria-pressed={!!screen}>
             <Icon name="screen" />
           </button>

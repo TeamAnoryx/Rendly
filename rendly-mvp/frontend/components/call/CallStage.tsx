@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { setCallChatOpen, useCallDock } from './callDock';
+import { canFlipCamera, mirrorFor } from '@/lib/cameraFlip';
 import { useCallContext } from '@/context/CallContext';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useNotifications } from '@/context/NotificationsContext';
@@ -87,6 +88,17 @@ export function CallControls({
           <Icon name={c.isVideoOff ? 'video-off' : 'video'} />
         </button>
       ) : null}
+      {c.callType === 'video' && canFlipCamera() ? (
+        <button
+          type="button"
+          className="call-ctl"
+          onClick={() => void c.flipCamera()}
+          aria-label={c.cameraFacing === 'user' ? 'Switch to back camera' : 'Switch to front camera'}
+          title="Switch camera"
+        >
+          <Icon name="camera-flip" />
+        </button>
+      ) : null}
       {c.callType === 'video' && canShare ? (
         <button type="button" className={`call-ctl ${c.isScreenSharing ? 'call-ctl--on' : ''}`} onClick={() => void c.toggleScreenShare()} aria-label={c.isScreenSharing ? 'Stop sharing' : 'Share screen'} title="Share screen">
           <Icon name="screen" />
@@ -147,7 +159,7 @@ export function CallMedia({ peer }: { peer: UserCard | null }) {
         />
         <div className="call-strip">
           <VideoTile stream={c.remoteStream} label={peerName} avatarUrl={peer?.avatar_url} pausedLabel={peerPaused} />
-          <VideoTile stream={c.localStream} label="You" avatarUrl={user?.avatar_url} muted mirror forceAvatar={c.isVideoOff} pausedLabel={mePaused} />
+          <VideoTile stream={c.localStream} label="You" avatarUrl={user?.avatar_url} muted mirror={mirrorFor(c.cameraFacing)} forceAvatar={c.isVideoOff} pausedLabel={mePaused} />
         </div>
       </div>
     );
@@ -157,7 +169,7 @@ export function CallMedia({ peer }: { peer: UserCard | null }) {
     <div className="call-media">
       <VideoTile stream={c.remoteStream} label={peerName} avatarUrl={peer?.avatar_url} className="call-tile--main" forceAvatar={audioOnly} pausedLabel={peerPaused} />
       {!audioOnly ? (
-        <VideoTile stream={c.localStream} label="You" avatarUrl={user?.avatar_url} muted mirror className="call-tile--pip" forceAvatar={c.isVideoOff} pausedLabel={mePaused} />
+        <VideoTile stream={c.localStream} label="You" avatarUrl={user?.avatar_url} muted mirror={mirrorFor(c.cameraFacing)} className="call-tile--pip" forceAvatar={c.isVideoOff} pausedLabel={mePaused} />
       ) : null}
     </div>
   );

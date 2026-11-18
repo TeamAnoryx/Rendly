@@ -707,3 +707,7 @@
   }
 }
 /* ==== end D3 ==== */
+/* The back camera is not mirrored. */
+.sr-self-video--rear {
+  transform: none;
+}

@@ -16,6 +16,7 @@ import { pauseLabelFor } from '@/lib/mediaPause';
 import { useOngoingNotification } from '@/hooks/useOngoingNotification';
 import { consumeResumeParam } from '@/lib/resumeParam';
 import './spark-room.css';
+import { canFlipCamera } from '@/lib/cameraFlip';
 
 export type SparkRoomProps = {
   match: SparkMatched;
@@ -484,7 +485,7 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
                 initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
               >
-                <StreamVideo stream={media.localStream} muted className="sr-self-video" label="Your camera" />
+                <StreamVideo stream={media.localStream} muted className={`sr-self-video${media.cameraFacing === 'user' ? '' : ' sr-self-video--rear'}`} label="Your camera" />
               </motion.div>
             )}
 
@@ -522,6 +523,18 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
                 >
                   <Icon name="video" size={18} />
                 </button>
+                {media.camOn && canFlipCamera() ? (
+                  <button
+                    type="button"
+                    className="sr-ctl is-on"
+                    onClick={() => void media.flipCamera()}
+                    disabled={media.busy !== null}
+                    aria-label={media.cameraFacing === 'user' ? 'Switch to back camera' : 'Switch to front camera'}
+                    title="Switch camera"
+                  >
+                    <Icon name="camera-flip" size={18} />
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={`sr-ctl ${media.paused ? 'is-off' : 'is-on'}`}

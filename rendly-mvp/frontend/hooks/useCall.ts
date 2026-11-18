@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSparkIceConfig } from '@/services/sparkApi';
+import { flipCameraTrack, swapCameraTrack, type CameraFacing } from '@/lib/cameraFlip';
 import websocket from '@/services/websocket';
 import { chat } from '@/services/chat';
 import { applyPausedTracks, type PauseReason } from '@/lib/mediaPause';
@@ -70,6 +71,8 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
   /** Set when the call connects without this side's camera or mic, so the user is told why. */
+  const [cameraFacing, setCameraFacing] = useState<CameraFacing>('user');
+  const facingRef = useRef<CameraFacing>('user');
   const [mediaNotice, setMediaNotice] = useState<string | null>(null);
   /** I paused (my camera and mic are frozen for the other side). */
   const [isPaused, setIsPaused] = useState(false);
@@ -162,6 +165,8 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
     videoOffRef.current = false;
     setIsPaused(false);
     setPeerPaused(null);
+    facingRef.current = 'user';
+    setCameraFacing('user');
     setIncomingCall(null);
     setState('idle');
     setConv(null);
@@ -495,6 +500,30 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
     syncTracks();
   }, [syncTracks]);
 
+  /** Phones and tablets: switch between the front and back camera mid-call. */
+  const flipCamera = useCallback(async () => {
+    const stream = localRef.current;
+    if (!stream || typeRef.current !== 'video') return;
+    const old = stream.getVideoTracks()[0] ?? null;
+    const senders = (pcRef.current?.getSenders() ?? []).filter((snd) => !screenSendersRef.current.includes(snd));
+    try {
+      const res = await flipCameraTrack(old, facingRef.current);
+      if (localRef.current !== stream) {
+        res.track.stop();
+        return;
+      }
+      await swapCameraTrack(stream, old, res.track, senders);
+      facingRef.current = res.facing;
+      setCameraFacing(res.facing);
+      setLocalStream(new MediaStream(stream.getTracks()));
+      syncTracks();
+      if (!res.switched) setMediaNotice("The other camera isn't available on this device.");
+    } catch (err) {
+      console.error('[call] camera switch failed', err);
+      setCallError(describeCallError(err));
+    }
+  }, [syncTracks]);
+
   const toggleVideo = useCallback(() => {
     videoOffRef.current = !videoOffRef.current;
     setIsVideoOff(videoOffRef.current);
@@ -598,6 +627,8 @@ export function useCall(currentUserId: string | null, options?: UseCallOptions) 
     startCall,
     acceptCall,
     rejectCall,
+    flipCamera,
+    cameraFacing,
     endCall,
     toggleMute,
     toggleVideo,

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSparkIceConfig, type SparkIceConfig, type SparkMode } from '@/services/sparkApi';
 import { sparkChannel, type SparkMediaState, type SparkSignal } from '@/hooks/useSparkChannel';
 import type { PauseReason } from '@/lib/mediaPause';
+import { cameraConstraints, flipCameraTrack, type CameraFacing } from '@/lib/cameraFlip';
 
 type Kind = 'audio' | 'video';
 
@@ -45,6 +46,9 @@ export type SparkMediaApi = {
   error: string | null;
   busy: Kind | null;
   toggleCam: () => void;
+  /** Switch between the front and back camera (phones and tablets). */
+  flipCamera: () => Promise<void>;
+  cameraFacing: CameraFacing;
   toggleMic: () => void;
   /** I paused: my camera and mic are frozen for my match. */
   paused: boolean;
@@ -135,6 +139,8 @@ export function useSparkMedia(opts: {
   const earlySignalsRef = useRef<SparkSignal[]>([]);
   const offeredRef = useRef(false);
   const leftRef = useRef(false);
+  const facingRef = useRef<CameraFacing>('user');
+  const [cameraFacing, setCameraFacing] = useState<CameraFacing>('user');
   const aliveRef = useRef(true);
 
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -338,7 +344,7 @@ export function useSparkMedia(opts: {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia(
-        kind === 'video' ? { video: SPARK_VIDEO, audio: false } : { audio: SPARK_AUDIO, video: false },
+        kind === 'video' ? { video: cameraConstraints(facingRef.current, SPARK_VIDEO), audio: false } : { audio: SPARK_AUDIO, video: false },
       );
       return stream.getTracks().find((t) => t.kind === kind) ?? null;
     } catch (err) {
@@ -643,6 +649,32 @@ export function useSparkMedia(opts: {
     void setTrack('video', !tracksRef.current.video);
   }, [busy, setTrack]);
 
+  /** Phones and tablets: switch between the front and back camera while it is on. */
+  const flipCamera = useCallback(async () => {
+    const old = tracksRef.current.video;
+    if (!old || busy || leftRef.current) return;
+    setBusy('video');
+    try {
+      const res = await flipCameraTrack(old, facingRef.current, SPARK_VIDEO);
+      if (!aliveRef.current || leftRef.current) {
+        res.track.stop();
+        return;
+      }
+      tracksRef.current.video = res.track;
+      facingRef.current = res.facing;
+      setCameraFacing(res.facing);
+      if (!res.switched) setError("The other camera isn't available on this device.");
+    } catch (err) {
+      tracksRef.current.video = null;
+      setError(mediaErrorMessage(err, 'video'));
+    } finally {
+      setBusy(null);
+    }
+    await attachTracks();
+    refreshLocal();
+    publishState();
+  }, [busy, attachTracks, refreshLocal, publishState]);
+
   const toggleMic = useCallback(() => {
     if (busy || leftRef.current) return;
     void setTrack('audio', !tracksRef.current.audio);
@@ -706,6 +738,8 @@ export function useSparkMedia(opts: {
     busy,
     toggleCam,
     toggleMic,
+    flipCamera,
+    cameraFacing,
     paused,
     togglePause,
     setPaused,
