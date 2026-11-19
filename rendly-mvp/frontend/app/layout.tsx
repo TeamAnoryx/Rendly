@@ -34,13 +34,13 @@ export const metadata: Metadata = {
   authors: [{ name: siteConfig.publisher, url: siteConfig.anoryxUrl }],
   creator: siteConfig.publisher,
   publisher: siteConfig.publisher,
-  alternates: { canonical: './' },
+  alternates: { canonical: siteConfig.url },
   openGraph: {
     type: 'website',
     siteName: siteConfig.name,
     title: siteConfig.title,
     description: siteConfig.description,
-    url: './',
+    url: siteConfig.url,
     locale: 'en_US',
   },
   twitter: {
