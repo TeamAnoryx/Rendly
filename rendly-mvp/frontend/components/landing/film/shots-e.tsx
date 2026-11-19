@@ -9,6 +9,7 @@ import { Fx, Shot, type Animator } from './engine';
 import { Chip, KLine, circleWipe, pick, pop, rise } from './kit';
 import { Icon, SparkMark, Words } from './primitives';
 import { ease, seg } from './timeline';
+import { withBasePath } from '@/lib/basePath';
 
 /* ---------------- 9. Real life ---------------- */
 
@@ -86,7 +87,8 @@ export function ShotEnd() {
         <span className="fl-tagline-gap"> </span>
         <Words text="Find your who." t0={TAG_B} size={64} className="fl-tagline-b" accent={2} />
       </Fx>
-      <Fx as="a" href="/auth/sign-up" className="fl-btn fl-btn--cta" fx={cta} tabIndex={-1}>
+      {/* Raw <a> does not get the /rendly.app base path from Next, so prefix it explicitly. */}
+      <Fx as="a" href={withBasePath('/auth/login')} className="fl-btn fl-btn--cta" fx={cta} tabIndex={-1}>
         Get started
         <Icon name="arrow" size={18} />
       </Fx>
