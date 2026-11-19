@@ -13,7 +13,7 @@ import { Clip } from './clips';
 import { Fx, Shot, type Animator, type Layout } from './engine';
 import { Chip, Cursor, insetWipe, pick, pop, rise, type CursorKey } from './kit';
 import { Icon, SparkMark, type IconName } from './primitives';
-import { CLICKS, COMPOSER_LINES, PROMPT, clamp, ease, retyped, seg, typedEnd } from './timeline';
+import { CLICKS, COMPOSER_LINES, PROMPT, clamp, ease, lerp, retyped, seg, typedEnd } from './timeline';
 
 const A = 29;
 const B = 37.6;
@@ -209,19 +209,37 @@ function Composer() {
 }
 
 export function ShotIntent() {
+  // In: a tilted card swings round to face us and opens to full frame under a light sweep.
+  // Out: the frame folds back into a card, turns away and slides off left.
   const footage: Animator = (t, L) => {
-    const k = seg(t, A + 0.1, A + 1.2, ease.std);
-    const q = seg(t, OUT - 0.3, B - 0.2, ease.exit);
-    return { clip: insetWipe(k, pick(L, 620, 520), pick(L, 350, 640), L.W, L.H, 28, 0), blur: q * 14, o: 1 - q };
+    const k = seg(t, A + 0.05, A + 1.35, ease.inOutCubic);
+    const q = seg(t, OUT - 0.35, B - 0.1, ease.inCubic);
+    const card = Math.max(k * (1 - q), 0);
+    return {
+      clip: insetWipe(card, pick(L, 620, 520), pick(L, 350, 640), L.W, L.H, 28, 0),
+      rx: (1 - k) * 14 - q * 6,
+      ry: (1 - k) * -28 + q * 32,
+      rz: (1 - k) * -3,
+      x: -q * pick(L, 520, 240),
+      s: lerp(0.82, 1, k) * (1 - 0.22 * q),
+      bright: 0.6 + 0.4 * k,
+      blur: q * 6,
+      o: 1 - seg(q, 0.7, 1),
+    };
+  };
+  const sweep: Animator = (t, L) => {
+    const k = seg(t, A + 0.5, A + 1.6, ease.inOutCubic);
+    return { x: lerp(-L.W * 0.7, L.W * 0.7, k), o: Math.sin(Math.PI * k) * 0.8 };
   };
   const push: Animator = (t) => ({ s: 1.03 + 0.07 * seg(t, A, B, ease.linear) });
   return (
-    <Shot range={[A, B + 0.05]}>
+    <Shot range={[A, B + 0.05]} className="fl-persp">
       <Fx anchor={false} className="fl-full" fx={footage}>
         <Fx anchor={false} className="fl-full" fx={push}>
           <Clip name="laptop" range={[A, B + 0.05]} className="fl-grade fl-grade--soft" focus="30% 40%" />
         </Fx>
         <div className="fl-veil fl-veil--right" />
+        <Fx anchor={false} className="fl-full fl-ib-sweep" fx={sweep} />
       </Fx>
       {SUGGESTIONS.map((s) => (
         <Floater key={s.label} s={s} />

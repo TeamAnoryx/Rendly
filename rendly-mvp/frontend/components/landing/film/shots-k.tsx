@@ -16,12 +16,11 @@ import { Aurora, Caption } from './kit2';
 import { pick } from './kit';
 import { LOGOS, type LogoId } from './logos';
 import { Icon, type IconName } from './primitives';
-import { clamp, ease, lerp, seg } from './timeline';
+import { OPEN_SHIFT, clamp, ease, lerp, played, seg } from './timeline';
 
 const A = 37.6;
 const B = 45.65;
 const ORBIT = 44.2;
-const COLLAPSE = 44.85;
 
 interface Contrast {
   a: number;
@@ -68,7 +67,9 @@ function LogoTile({ id }: { id: LogoId }) {
     const swept = c ? seg(t, c.b - 0.25, c.b + 0.2, ease.std) : 0;
     const back = seg(t, ORBIT, ORBIT + 0.5, ease.std);
     const spin = (t - ORBIT) * 1.6 + (orbitIdx / ALL.length) * Math.PI * 2;
-    const col = seg(t, COLLAPSE, COLLAPSE + 0.5, ease.inCubic);
+    // Collapse on the voice-over clock so the mark is alone for its hold.
+    const p = played(t + OPEN_SHIFT);
+    const col = seg(p, 74.6, 75.1, ease.inCubic);
     const r = pick(L, 300, 260) * (1 - col);
     const ox = Math.cos(spin) * r;
     const oy = Math.sin(spin) * r * 0.55;
@@ -80,7 +81,7 @@ function LogoTile({ id }: { id: LogoId }) {
       x: lerp(sweptX, ox, back),
       y: lerp(sweptY, oy, back),
       s: lerp(0.6 + 0.4 * inK, 0.8 * (1 - 0.7 * col), back) * pick(L, 1, 0.9),
-      o: Math.max(beatO * (1 - back), back * (1 - seg(t, COLLAPSE + 0.35, COLLAPSE + 0.55))),
+      o: Math.max(beatO * (1 - back), back * (1 - seg(p, 74.9, 75.15))),
       blur: swept * 8 * (1 - back) + col * 4,
       vars: { '--glow': (1 - seg(t, (c?.a ?? 0) + 0.7, (c?.a ?? 0) + 1.6)).toFixed(3) },
     };
@@ -159,11 +160,24 @@ function Labels() {
   );
 }
 
+/* The mark on the voice-over clock: rise, a breathing hold, then a 1 s exit before the next scene. */
+const MARK_IN = 74.85;
+const MARK_OUT = 76.0;
+const MARK_END = 77.0;
+
 function CenterMark() {
   const fx: Animator = (t) => {
-    const k = seg(t, COLLAPSE + 0.2, COLLAPSE + 0.65, ease.spring);
-    const q = seg(t, B - 0.3, B, ease.std);
-    return { s: (0.2 + 0.8 * k) * (1 - 0.4 * q), o: clamp(k * 2) * (1 - q), vars: { '--halo': (k * (1 - q)).toFixed(3) } };
+    const p = played(t + OPEN_SHIFT);
+    const k = seg(p, MARK_IN, MARK_IN + 0.6, ease.spring);
+    const q = seg(p, MARK_OUT, MARK_END, ease.inOutCubic);
+    const breathe = 1 + 0.035 * Math.sin((p - MARK_IN) * 4.2) * clamp(k);
+    return {
+      s: (0.2 + 0.8 * k) * breathe * (1 + 0.55 * q),
+      rz: (1 - Math.min(1, k)) * -40,
+      o: clamp(k * 2) * (1 - q),
+      blur: q * 14,
+      vars: { '--halo': (k * (1 - q) * (0.85 + 0.15 * Math.sin((p - MARK_IN) * 4.2))).toFixed(3) },
+    };
   };
   return (
     <Fx className="fl-centermark" fx={fx}>

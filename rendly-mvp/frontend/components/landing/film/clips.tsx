@@ -15,8 +15,15 @@ import { withBasePath } from '@/lib/basePath';
 const BASE = withBasePath('/film/clips/');
 /** Start loading a clip this many seconds before it is needed. */
 const PRELOAD = 4;
-/** Re-seek a playing clip when it drifts further than this from the clock. */
-const DRIFT = 0.3;
+/**
+ * A playing clip is steered back to the clock by nudging its playback rate;
+ * only when it is further off than this (a jump, a stall) is it re-seeked.
+ * Re-seeking on every small drift made busy scenes (five feeds at once) freeze:
+ * each seek re-buffers, which drifts again, which seeks again.
+ */
+const DRIFT = 1.2;
+/** Largest rate nudge used to catch up with the clock. */
+const NUDGE = 0.12;
 
 export type ClipName =
   | 'feed'
@@ -54,9 +61,12 @@ interface ClipEntry {
 export class ClipBank {
   readonly entries = new Set<ClipEntry>();
 
-  /** Called every painted frame by the film. */
-  sync(t: number, playing: boolean) {
-    this.entries.forEach((c) => syncClip(c, t, playing));
+  /**
+   * Called every painted frame by the film with authored time `t` and `rate`,
+   * the authored seconds that pass per played second (the film's re-timing).
+   */
+  sync(t: number, playing: boolean, rate = 1) {
+    this.entries.forEach((c) => syncClip(c, t, playing, rate));
   }
 
   /** Resolves once every on-screen clip shows its exact frame (frame export). */
@@ -108,11 +118,12 @@ function seekTo(c: ClipEntry, v: number) {
   }
 }
 
-function syncClip(c: ClipEntry, t: number, playing: boolean) {
+function syncClip(c: ClipEntry, t: number, playing: boolean, rate: number) {
   const el = c.el;
   const near = t >= c.a - PRELOAD && t <= c.b + 0.5;
   if (near && !el.getAttribute('src')) {
     el.preload = 'auto';
+    el.loop = c.loop;
     el.src = `${BASE}${c.name}.mp4`;
   }
   const active = t >= c.a && t <= c.b;
@@ -122,7 +133,16 @@ function syncClip(c: ClipEntry, t: number, playing: boolean) {
   }
   const v = want(c, t);
   if (playing) {
-    if (Math.abs(el.currentTime - v) > DRIFT || el.readyState < 1) seekTo(c, v);
+    const dur = el.duration;
+    let diff = v - el.currentTime;
+    // A looping clip that has just wrapped is not behind, only on its next lap.
+    if (c.loop && Number.isFinite(dur) && dur > 0 && Math.abs(diff) > dur / 2) diff -= Math.sign(diff) * dur;
+    if (el.readyState < 1 || Math.abs(diff) > DRIFT) {
+      seekTo(c, v);
+    } else if (!el.seeking) {
+      const target = Math.min(4, Math.max(0.25, rate * (1 + Math.max(-NUDGE, Math.min(NUDGE, diff * 0.5)))));
+      if (Math.abs(el.playbackRate - target) > 0.01) el.playbackRate = target;
+    }
     if (el.paused) void el.play().catch(() => undefined);
   } else {
     if (!el.paused) el.pause();

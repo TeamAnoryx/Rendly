@@ -95,6 +95,72 @@ function PeopleRow({ row }: { row: number }) {
   );
 }
 
+/* ---------------- A': the opening line, set over the cards ---------------- */
+
+/** One word of the opening line: `big` words carry the meaning, the rest sit lighter. */
+interface TitleWord {
+  w: string;
+  big?: boolean;
+  /** Seconds after T0 that the word lands. */
+  at: number;
+}
+
+const T0 = 0.15;
+const T_OUT = 3.0;
+const T_END = 3.4;
+const TITLE: readonly (readonly TitleWord[])[] = [
+  [
+    { w: 'Somewhere', at: 0.0 },
+    { w: 'out', at: 0.16 },
+    { w: 'there,', at: 0.3 },
+  ],
+  [
+    { w: 'someone', at: 0.62 },
+    { w: 'cares', big: true, at: 0.86 },
+  ],
+  [
+    { w: 'about the things', at: 1.3 },
+    { w: 'you do.', big: true, at: 1.58 },
+  ],
+];
+
+function OpeningTitle() {
+  const wrap: Animator = (t, L) => {
+    const q = seg(t, T_OUT, T_END, ease.exit);
+    return { s: (1 + 0.035 * seg(t, T0, T_END, ease.linear)) * sc(L), y: -q * 26, o: 1 - q, blur: q * 14 };
+  };
+  const veil: Animator = (t) => ({ o: seg(t, 0, 0.45, ease.std) * (1 - seg(t, T_OUT, T_END + 0.1)) });
+  return (
+    <>
+      <Fx anchor={false} className="fl-full fl-ot-veil" fx={veil} />
+      <Fx className="fl-ot" fx={wrap}>
+        {TITLE.map((line, li) => (
+          <span key={li} className="fl-ot-line">
+            {line.map(({ w, big, at }) => {
+              const fx: Animator = (t) => {
+                const k = seg(t, T0 + at, T0 + at + (big ? 0.7 : 0.5), big ? ease.outExpo : ease.std);
+                const sheen = seg(t, T0 + at + 0.25, T0 + at + 1.35, ease.inOutCubic);
+                return {
+                  y: (1 - k) * (big ? 46 : 26),
+                  s: big ? 0.86 + 0.14 * k : 1,
+                  o: k,
+                  blur: (1 - k) * (big ? 18 : 10),
+                  vars: { '--sheen': `${(-30 + 160 * sheen).toFixed(1)}%`, '--track': `${((1 - k) * 0.08).toFixed(3)}em` },
+                };
+              };
+              return (
+                <Fx key={w} as="span" anchor={false} className={`fl-ot-w${big ? ' fl-ot-w--big' : ''}`} fx={fx}>
+                  {w}
+                </Fx>
+              );
+            })}
+          </span>
+        ))}
+      </Fx>
+    </>
+  );
+}
+
 function SceneCards() {
   return (
     <Shot range={[0, 4.7]}>
@@ -104,80 +170,100 @@ function SceneCards() {
           <PeopleRow key={r} row={r} />
         ))}
       </div>
+      <Shot range={[0, T_END + 0.15]}>
+        <OpeningTitle />
+      </Shot>
     </Shot>
   );
 }
 
-/* ---------------- B: chips in a glass pill, led out by the Rendly badge ---------------- */
+/* ---------------- B: intent chips flowing inside one glass pill ---------------- */
 
-const CHIPS = ['Friends', 'Learn', 'Hobbies', 'Mentor'] as const;
+const CHIPS: ReadonlyArray<readonly [string, IconName]> = [
+  ['Friends', 'users'],
+  ['Learn', 'book'],
+  ['Hobbies', 'music'],
+  ['Mentor', 'spark'],
+];
 const B0 = 4.6;
-const B_OUT = 5.75;
+const B_OUT = 5.85;
+const SEL_AT = 5.12;
 
 function SceneChips() {
+  const bg: Animator = (t) => ({ o: seg(t, B0, B0 + 0.3, ease.std), vars: { '--drift': `${((t - B0) * 18).toFixed(1)}px` } });
+  // The pill glides in from the right, eases through the frame, then glides out left: one continuous flow.
   const group: Animator = (t, L) => {
-    const k = seg(t, B0, B0 + 0.45, ease.spring);
-    const out = seg(t, B_OUT, B_OUT + 1, ease.inCubic);
+    const k = seg(t, B0, B0 + 0.75, ease.std);
+    const out = seg(t, B_OUT, B_OUT + 0.9, ease.exit);
+    const drift = seg(t, B0, B_OUT + 0.9, ease.linear);
     return {
-      x: (lerp(520, 40, k) - 1250 * out) * sc(L),
-      y: (lerp(260, 30, k) + 300 * out) * sc(L),
-      rz: -8,
-      s: 1.9 * sc(L),
-      blur: out * 12,
-      o: seg(t, B0, B0 + 0.15) * (1 - seg(t, B_OUT + 0.75, B_OUT + 1)),
+      x: (lerp(760, 60, k) - 40 * drift - 1500 * out) * sc(L),
+      y: (lerp(130, 10, k) + 120 * out) * sc(L),
+      rz: lerp(-7, -4, k) - 3 * out,
+      s: 1.75 * sc(L),
+      blur: (1 - k) * 10 + out * 14,
+      o: seg(t, B0, B0 + 0.2) * (1 - seg(t, B_OUT + 0.6, B_OUT + 0.9)),
     };
   };
   const pill: Animator = (t) => {
-    const k = seg(t, 4.85, 5.3, ease.std);
-    return { sx: 0.4 + 0.6 * k, o: k };
+    const k = seg(t, B0 + 0.05, B0 + 0.6, ease.std);
+    return { sx: 0.18 + 0.82 * k, o: Math.min(1, k * 3), vars: { '--glint': `${(-40 + 180 * seg(t, B0 + 0.5, B_OUT, ease.inOutCubic)).toFixed(1)}%` } };
   };
+  // The Rendly badge sits inside the pill's left end and turns once as the pill lands.
   const badge: Animator = (t) => {
-    const k = seg(t, 5.25, 5.6, ease.spring);
-    const lead = seg(t, B_OUT - 0.1, B_OUT + 0.4, ease.inCubic);
-    return { s: 0.2 + 0.8 * k, o: seg(t, 5.25, 5.35), x: -70 * lead, y: 18 * lead, rz: lerp(-120, 0, seg(t, 5.25, 5.7, ease.std)) };
+    const k = seg(t, B0 + 0.2, B0 + 0.65, ease.spring);
+    return { s: 0.3 + 0.7 * k, o: Math.min(1, k * 2), rz: lerp(-180, 0, seg(t, B0 + 0.2, B0 + 0.8, ease.std)) };
   };
-  const learn: Animator = (t) => {
-    const k = seg(t, 5.05, 5.2, ease.std);
-    const press = Math.max(0, 1 - Math.abs(t - 5.05) / 0.08);
-    return { s: 1 - 0.1 * press, vars: { '--sel': k.toFixed(3) } };
-  };
+  const ring: Animator = (t) => ({ rz: (t - B0) * 120, o: seg(t, B0 + 0.4, B0 + 0.7) * 0.9 });
   return (
-    <Shot range={[B0, B_OUT + 1.05]}>
-      <div className="fl-full fl-macro-light" />
-      <Fx className="fl-cwrap" fx={group}>
+    <Shot range={[B0, B_OUT + 0.95]}>
+      <Fx anchor={false} className="fl-full fl-gdark" fx={bg} />
+      <Fx className="fl-cwrap fl-cwrap--dark" fx={group}>
         <Fx as="span" anchor={false} className="fl-cwrap-pill" fx={pill} />
         <Fx as="span" anchor={false} className="fl-cwrap-badge" fx={badge}>
+          <Fx as="span" anchor={false} className="fl-cwrap-ring" fx={ring} />
           <RendlyMark className="fl-cwrap-mark" />
         </Fx>
         <span className="fl-lchips">
-          {CHIPS.map((c) =>
-            c === 'Learn' ? (
-              <Fx key={c} as="span" anchor={false} className="fl-lchip fl-lchip--sel" fx={learn}>
-                <Icon name="check" size={16} />
+          {CHIPS.map(([c, icon], i) => {
+            const t0 = B0 + 0.3 + i * 0.09;
+            const chip: Animator = (t) => {
+              const k = seg(t, t0, t0 + 0.45, ease.spring);
+              const sel = c === 'Learn' ? seg(t, SEL_AT, SEL_AT + 0.25, ease.std) : 0;
+              const press = c === 'Learn' ? Math.max(0, 1 - Math.abs(t - SEL_AT) / 0.1) : 0;
+              return { x: (1 - k) * 60, o: Math.min(1, k * 1.6), s: (0.9 + 0.1 * k) * (1 - 0.08 * press), vars: { '--sel': sel.toFixed(3) } };
+            };
+            // Each icon draws itself in with a little turn, then breathes.
+            const ico: Animator = (t) => {
+              const k = seg(t, t0 + 0.15, t0 + 0.6, ease.spring);
+              const pulse = c === 'Learn' ? Math.max(0, 1 - Math.abs(t - SEL_AT - 0.1) / 0.25) : 0;
+              return { s: (0.4 + 0.6 * k) * (1 + 0.25 * pulse + 0.04 * Math.sin((t - t0) * 6)), rz: lerp(-90, 0, k), o: Math.min(1, k * 2) };
+            };
+            return (
+              <Fx key={c} as="span" anchor={false} className="fl-lchip fl-lchip--dark" fx={chip}>
+                <Fx as="span" anchor={false} className="fl-lchip-ico" fx={ico}>
+                  <Icon name={c === 'Learn' ? 'check' : icon} size={17} />
+                </Fx>
                 {c}
               </Fx>
-            ) : (
-              <span key={c} className="fl-lchip">
-                {c}
-              </span>
-            )
-          )}
+            );
+          })}
         </span>
       </Fx>
     </Shot>
   );
 }
 
-/* ---------------- C: the Feeds pill and the spinning star ---------------- */
+/* ---------------- C: the Feeds pill and the Gemini-style star ---------------- */
 
 const C0 = 6.7;
 
-/** The star's colours as it spins in: deep blue -> violet -> plum, darkening as it fills the frame. */
+/** The star's colours as it spins in (Gemini blue -> violet -> rose), deepening as it fills the frame. */
 const STAR_KEYS: ReadonlyArray<readonly [number, readonly [string, string, string]]> = [
-  [0, ['#1a73e8', '#4f5bd5', '#8e44c9']],
-  [0.4, ['#2251d6', '#6c3fcf', '#a8407f']],
-  [0.75, ['#1b45b8', '#5531b8', '#86306a']],
-  [1, ['#0d2f86', '#2c2380', '#4a1c66']],
+  [0, ['#4285f4', '#9b72cb', '#d96570']],
+  [0.45, ['#3a78f0', '#8a63d2', '#c9587a']],
+  [0.8, ['#2350c4', '#5a3fb4', '#86306a']],
+  [1, ['#0d1f5a', '#1d1650', '#2a1240']],
 ];
 
 const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
@@ -195,44 +281,59 @@ function starColors(k: number): readonly [string, string, string] {
   return [mixHex(c0[0], c1[0], f), mixHex(c0[1], c1[1], f), mixHex(c0[2], c1[2], f)];
 }
 
-/** Four-point star whose gradient stops follow --sa/--sb/--sc. */
+/** The Gemini sparkle: four concave points, gradient stops following --sa/--sb/--sc. */
 function GradientStar() {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" className="fl-gstar">
+    <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" className="fl-gstar">
       <defs>
-        <linearGradient id="fl-gstar-fill" x1="3" y1="3" x2="21" y2="21" gradientUnits="userSpaceOnUse">
-          <stop offset="0" style={{ stopColor: 'var(--sa, #8ab4f8)' }} />
-          <stop offset="0.5" style={{ stopColor: 'var(--sb, #a98bf5)' }} />
-          <stop offset="1" style={{ stopColor: 'var(--sc, #c58af9)' }} />
+        <linearGradient id="fl-gstar-fill" x1="2" y1="20" x2="22" y2="4" gradientUnits="userSpaceOnUse">
+          <stop offset="0" style={{ stopColor: 'var(--sa, #4285f4)' }} />
+          <stop offset="0.55" style={{ stopColor: 'var(--sb, #9b72cb)' }} />
+          <stop offset="1" style={{ stopColor: 'var(--sc, #d96570)' }} />
         </linearGradient>
       </defs>
-      <path d="M12 2.5c.6 5.4 2.9 7.8 8.5 8.5-5.6.7-7.9 3.1-8.5 8.5-.6-5.4-2.9-7.8-8.5-8.5 5.6-.7 7.9-3.1 8.5-8.5Z" fill="url(#fl-gstar-fill)" />
+      <path d="M12 0C12 6.63 17.37 12 24 12C17.37 12 12 17.37 12 24C12 17.37 6.63 12 0 12C6.63 12 12 6.63 12 0Z" fill="url(#fl-gstar-fill)" />
     </svg>
   );
 }
-const STAR0 = 7.25;
+const STAR0 = 7.2;
+const STAR_LEN = 1.05;
 
 function SceneStar() {
+  const bg: Animator = (t) => ({ vars: { '--drift': `${((t - C0) * 18).toFixed(1)}px` } });
   const pill: Animator = (t, L) => {
     const k = seg(t, C0, C0 + 0.4, ease.spring);
     return { s: (0.7 + 0.3 * k) * 2.6 * sc(L), o: seg(t, C0, C0 + 0.12) };
   };
-  const label: Animator = (t) => ({ o: 1 - seg(t, STAR0 + 0.05, STAR0 + 0.35) });
-  const shell: Animator = (t) => ({ o: 1 - seg(t, STAR0 + 0.1, STAR0 + 0.4) });
+  const label: Animator = (t) => ({ o: 1 - seg(t, STAR0 + 0.05, STAR0 + 0.3) });
+  const shell: Animator = (t) => ({ o: 1 - seg(t, STAR0 + 0.08, STAR0 + 0.35) });
+  // Two tumbles, then it fills the frame: first diagonally (X with Z), then vertically (Y with X),
+  // ending face-on as it grows past the edges. The glow behind it swells with it.
   const star: Animator = (t) => {
-    const k = seg(t, STAR0, STAR0 + 1, ease.inOutCubic);
-    const [a, b, c] = starColors(k);
+    const k = seg(t, STAR0, STAR0 + STAR_LEN, ease.linear);
+    const a = ease.inOutCubic(seg(k, 0, 0.48));
+    const b = ease.inOutCubic(seg(k, 0.4, 0.9));
+    const grow = ease.inCubic(seg(k, 0.15, 1));
+    const [c1, c2, c3] = starColors(ease.inOutCubic(k));
     return {
-      rz: 540 * k,
-      s: 1 + 70 * Math.pow(k, 2.4),
-      o: 1 - seg(t, STAR0 + 0.85, STAR0 + 1),
-      vars: { '--sa': a, '--sb': b, '--sc': c },
+      rx: 180 * a + 180 * b,
+      ry: 360 * b,
+      rz: 180 * a + 45 * b,
+      s: 1 + 2.2 * a + 80 * Math.pow(grow, 2.6),
+      o: 1 - seg(t, STAR0 + STAR_LEN - 0.14, STAR0 + STAR_LEN),
+      vars: { '--sa': c1, '--sb': c2, '--sc': c3 },
     };
   };
+  const halo: Animator = (t, L) => {
+    const k = seg(t, STAR0, STAR0 + STAR_LEN, ease.inCubic);
+    // Centred on the star, which sits at the pill's left end.
+    return { x: -122 * sc(L), y: 4 * sc(L), s: 1 + 6 * k, o: seg(t, STAR0, STAR0 + 0.3) * 0.9 * (1 - seg(t, STAR0 + STAR_LEN - 0.2, STAR0 + STAR_LEN)) };
+  };
   return (
-    <Shot range={[C0, STAR0 + 1.02]}>
-      <div className="fl-full fl-macro-light fl-macro-light--blue" />
-      <Fx className="fl-starpill" fx={pill}>
+    <Shot range={[C0, STAR0 + STAR_LEN + 0.02]}>
+      <Fx anchor={false} className="fl-full fl-gdark" fx={bg} />
+      <Fx className="fl-starhalo" fx={halo} />
+      <Fx className="fl-starpill fl-starpill--dark" fx={pill}>
         <Fx as="span" anchor={false} className="fl-starpill-bg" fx={shell} />
         <Fx as="span" anchor={false} className="fl-starpill-star" fx={star}>
           <GradientStar />
@@ -354,9 +455,16 @@ const MONTAGE: readonly Cut[] = [
 ];
 
 function MontageCut({ c, first }: { c: Cut; first: boolean }) {
+  // The first cut irises open over 1 s after the phone has left the frame.
   const push: Animator = (t) => {
-    const grow = first ? 1 - seg(t, c.a, c.a + 0.45, ease.outCubic) : 0;
-    return { s: 1.04 + 0.07 * seg(t, c.a, c.b, ease.linear) + 0.5 * grow, blur: grow * 10, rz: 20 * grow };
+    if (!first) return { s: 1.04 + 0.07 * seg(t, c.a, c.b, ease.linear) };
+    const k = seg(t, c.a, c.a + 1, ease.inOutCubic);
+    return {
+      s: lerp(1.3, 1.04, k) + 0.07 * seg(t, c.a, c.b, ease.linear),
+      blur: (1 - k) * 12,
+      bright: 0.55 + 0.45 * k,
+      clip: k >= 1 ? undefined : `circle(${(8 + 70 * k).toFixed(2)}% at 50% 50%)`,
+    };
   };
   return (
     <Shot range={[c.a, c.b]}>

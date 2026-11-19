@@ -15,7 +15,67 @@ export const OPEN_END = 9 + OPEN_SHIFT;
 /** The Spark call's last 1.5 s (story 62.2-63.7) was cut; later chapters move up by SPARK_CUT. */
 export const SPARK_CUT_AT = 62.2;
 export const SPARK_CUT = 1.5;
-export const DURATION = 120 + OPEN_SHIFT - SPARK_CUT;
+/** End of the authored clock (the scenes' own seconds). */
+export const AUTH_END = 120 + OPEN_SHIFT - SPARK_CUT - 0.2;
+/** Length of the film as played: the voice-over track (RendlyVedioVoiceOver.mp3). */
+export const DURATION = 149;
+
+/**
+ * The voice-over cut. Scenes are authored on their own clock; this map re-times
+ * them against the narration: [authored seconds, played seconds], both rising.
+ * Between anchors time runs linearly, so a scene plays slower or faster to land
+ * on its line (clips follow the same rate, see clips.tsx).
+ */
+const WARP: ReadonlyArray<readonly [number, number]> = [
+  [0, 0],
+  [10.4, 10.4], // "So we built something different."
+  [11.3, 11.7], // phone rises
+  [12.8, 15.0], // portrait screen held ~3.3 s for its UI
+  [15.85, 17.6], // the phone, slower: "Your people are out there..."
+  [19.55, 23.5], // search: "...jamming with musicians nearby."
+  [23.55, 27.3], // map: "Instantly, you see who's close..."
+  [27.7, 31.4], // notifications: "Three new matches..."
+  [28.75, 32.45], // the phone leaves (1 s)
+  [33.05, 37.25], // cities and feeds
+  [37.0, 41.2], // "Endless scrolling..."
+  [44.75, 48.9], // "Real connection starts with your why."
+  [46.85, 50.4], // "This is Rendly."
+  [54.0, 58.2], // "Tell Rendly your why..."
+  [61.65, 67.25], // "Most apps are built for attention..."
+  [68.85, 74.65], // "Rendly is built for meeting."
+  [69.65, 77.0], // the logo holds ~1.2 s, then a 1 s exit (CenterMark is authored in played time)
+  [75.6, 82.6], // "Matched on why... Meet Jordan."
+  [79.9, 85.6], // "Start with a spark."
+  [98.55, 104.3], // Whispers, then "Huddles..."
+  [111.4, 117.0], // "Jump in, share ideas..."
+  [115.6, 123.0], // the plan: "And when it clicks? Saturday, take it offline."
+  [119.2, 126.0], // "Less scrolling, more meeting."
+  [125.45, 132.15], // "Your people are out there."
+  [AUTH_END, DURATION], // "Rendly. Know your why. Find your who."
+];
+
+function interp(v: number, from: 0 | 1, to: 0 | 1): number {
+  const last = WARP[WARP.length - 1];
+  if (v <= 0) return 0;
+  if (v >= last[from]) return last[to];
+  let i = 1;
+  while (WARP[i][from] < v) i += 1;
+  const a = WARP[i - 1];
+  const b = WARP[i];
+  return a[to] + ((v - a[from]) / (b[from] - a[from])) * (b[to] - a[to]);
+}
+
+/** Authored (scene) time for a played film time. */
+export const authored = (n: number) => interp(n, 1, 0);
+/** Played film time for an authored (scene) time. */
+export const played = (a: number) => interp(a, 0, 1);
+
+/** Authored seconds per played second at played time n (footage plays at this rate). */
+export function rateAt(n: number): number {
+  const lo = Math.max(0, n - 0.05);
+  const hi = Math.min(DURATION, n + 0.05);
+  return hi > lo ? (authored(hi) - authored(lo)) / (hi - lo) : 1;
+}
 
 /** Film time for a story-clock time after the opening. */
 export function filmTime(story: number): number {
@@ -132,6 +192,13 @@ export const SHOTS: readonly Shot[] = [
   { id: 'online', label: 'Online', start: 28.7, end: OPEN_END },
   ...STORY.map((s) => ({ ...s, start: filmTime(s.start), end: filmTime(s.end) })),
 ];
+
+/** The chapters on the played clock (for the scrubber). */
+export const CHAPTERS: readonly Shot[] = SHOTS.map((s, i) => ({
+  ...s,
+  start: played(s.start),
+  end: i === SHOTS.length - 1 ? DURATION : played(s.end),
+}));
 
 /** The pre-OPEN_SHIFT clock for a film time (the opening is compressed into 0-9). */
 export function storyTime(t: number): number {

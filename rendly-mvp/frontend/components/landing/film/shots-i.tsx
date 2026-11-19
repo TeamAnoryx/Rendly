@@ -68,7 +68,7 @@ const REASONS: ReadonlyArray<readonly [IconName, string]> = [
 ];
 
 export function ShotEndReasons() {
-  const start = 109.4;
+  const start = 111.9; // after the end card's slower CTA (played 141.1)
   const step = 1.3;
   return (
     <Shot range={[start, 120]}>

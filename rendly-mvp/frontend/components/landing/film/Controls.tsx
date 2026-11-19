@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { DURATION, SHOTS, formatTime } from './timeline';
+import { CHAPTERS as SHOTS, DURATION, formatTime } from './timeline';
 
 export interface ControlsProps {
   playing: boolean;

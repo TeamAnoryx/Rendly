@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Reveal from './Reveal';
-import { FilmAudio } from './film/audio';
+import { VoiceTrack } from './film/voice';
 import Controls from './film/Controls';
 import { ClipBank, ClipProvider } from './film/clips';
 import { LANDSCAPE, PORTRAIT, Registry, RegistryProvider, Shot, paint, type Layout } from './film/engine';
@@ -17,7 +17,7 @@ import { ShotWhispers } from './film/shots-h';
 import { ShotEndReasons, ShotOffline, ShotOutThere } from './film/shots-i';
 import { ShotHuddles } from './film/shots-j';
 import { ShotDifferent } from './film/shots-k';
-import { DURATION, OPEN_END, OPEN_SHIFT, SHIFT, SPARK_CUT, SPARK_CUT_AT, ease, formatTime, seg, shotAt } from './film/timeline';
+import { AUTH_END, DURATION, OPEN_END, OPEN_SHIFT, SHIFT, SPARK_CUT, SPARK_CUT_AT, authored, ease, formatTime, rateAt, seg, shotAt } from './film/timeline';
 import type { Animator } from './film/engine';
 import './film/film.css';
 import './film/film-shots.css';
@@ -27,6 +27,7 @@ import './film/film-shots-4.css';
 import './film/film-shots-5.css';
 import './film/film-shots-6.css';
 import './film/film-shots-7.css';
+import './film/film-shots-8.css';
 import './product-film.css';
 import { withBasePath } from '@/lib/basePath';
 
@@ -96,7 +97,7 @@ declare global {
       pause: () => void;
       play: () => void;
       settle: () => Promise<void>;
-      renderAudio: () => Promise<AudioBuffer>;
+      duration: number;
     };
   }
 }
@@ -125,9 +126,8 @@ export default function ProductFilm({ variant = 'section', sound, hold = false }
 
   const registry = useMemo(() => new Registry(), []);
   const clips = useMemo(() => new ClipBank(), []);
-  const audioRef = useRef<FilmAudio | null>(null);
+  const audioRef = useRef<VoiceTrack | null>(null);
   const tRef = useRef(0);
-  const prevRef = useRef(0);
   const shotRef = useRef(0);
 
   const portrait = usePortrait();
@@ -147,10 +147,12 @@ export default function ProductFilm({ variant = 'section', sound, hold = false }
   playingRef.current = playing;
 
   const render = useCallback(
-    (t: number, seeked: boolean) => {
+    (t: number) => {
       const L = layoutRef.current;
-      paint(registry, t, L);
-      clips.sync(t, playingRef.current);
+      // The scenes run on their authored clock; `t` is the played (voice-over) clock.
+      const a = authored(t);
+      paint(registry, a, L);
+      clips.sync(a, playingRef.current, rateAt(t));
       const scrub = scrubRef.current;
       if (scrub) {
         scrub.style.setProperty('--t', t.toFixed(3));
@@ -161,13 +163,12 @@ export default function ProductFilm({ variant = 'section', sound, hold = false }
         if (timeRef.current.textContent !== label) timeRef.current.textContent = label;
       }
       scrub?.setAttribute('aria-valuenow', String(Math.round(t)));
-      const s = shotAt(t);
+      const s = shotAt(a);
       if (s !== shotRef.current) {
         shotRef.current = s;
         setShot(s);
       }
-      audioRef.current?.frame(prevRef.current, t, playingRef.current, seeked);
-      prevRef.current = t;
+      audioRef.current?.frame(t, playingRef.current);
     },
     [registry, clips]
   );
@@ -175,14 +176,14 @@ export default function ProductFilm({ variant = 'section', sound, hold = false }
   const seek = useCallback(
     (t: number) => {
       tRef.current = Math.min(DURATION - 0.001, Math.max(0, t));
-      render(tRef.current, true);
+      render(tRef.current);
     },
     [render]
   );
 
   // Audio lives for the component's lifetime.
   useEffect(() => {
-    const audio = new FilmAudio();
+    const audio = new VoiceTrack();
     audioRef.current = audio;
     return () => {
       audio.dispose();
@@ -199,7 +200,7 @@ export default function ProductFilm({ variant = 'section', sound, hold = false }
       setMuted(false);
       audio
         .enable()
-        .then(() => render(tRef.current, true))
+        .then(() => render(tRef.current))
         .catch(() => setMuted(true)); // no audio device / blocked: show the film as muted
     } else {
       setMuted(true);
@@ -220,7 +221,7 @@ export default function ProductFilm({ variant = 'section', sound, hold = false }
       const r = stage.getBoundingClientRect();
       const L = layoutRef.current;
       if (canvasRef.current) canvasRef.current.style.transform = `scale(${(r.width / L.W).toFixed(5)})`;
-      render(tRef.current, true);
+      render(tRef.current);
     };
     fit();
     if (typeof ResizeObserver === 'undefined') return;
@@ -232,7 +233,7 @@ export default function ProductFilm({ variant = 'section', sound, hold = false }
   // The clock: one rAF loop, only while playing.
   useEffect(() => {
     if (!playing) {
-      render(tRef.current, true);
+      render(tRef.current);
       return;
     }
     let raf = 0;
@@ -240,8 +241,10 @@ export default function ProductFilm({ variant = 'section', sound, hold = false }
     const tick = (nowMs: number) => {
       const dt = Math.min(0.1, (nowMs - last) / 1000);
       last = nowMs;
-      tRef.current = (tRef.current + dt) % DURATION;
-      render(tRef.current, false);
+      // While the sound plays it is the clock, so the narration stays on its scenes.
+      const heard = audioRef.current?.clock();
+      tRef.current = heard !== null && heard !== undefined && heard < DURATION ? heard : (tRef.current + dt) % DURATION;
+      render(tRef.current);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -265,7 +268,7 @@ export default function ProductFilm({ variant = 'section', sound, hold = false }
         setUserPlayed(true);
       },
       settle: () => clips.settle(),
-      renderAudio: () => new FilmAudio().renderOffline(),
+      duration: DURATION,
     };
     return () => {
       delete window.__rendlyFilm;
@@ -287,8 +290,12 @@ export default function ProductFilm({ variant = 'section', sound, hold = false }
     if (!audio) return;
     if (muted) {
       setMuted(false);
-      await audio.enable();
-      render(tRef.current, true);
+      try {
+        await audio.enable();
+        render(tRef.current);
+      } catch {
+        setMuted(true);
+      }
     } else {
       setMuted(true);
       audio.disable();
@@ -336,7 +343,7 @@ export default function ProductFilm({ variant = 'section', sound, hold = false }
                         <ShotSpark />
                       </Shot>
                       </Shot>
-                      <Shot range={[SPARK_CUT_AT + OPEN_SHIFT - 0.1, DURATION]} shift={OPEN_SHIFT - SPARK_CUT}>
+                      <Shot range={[SPARK_CUT_AT + OPEN_SHIFT - 0.1, AUTH_END]} shift={OPEN_SHIFT - SPARK_CUT}>
                       <ShotWhispers />
                       <Shot range={[76, 93.4]} fx={huddlesOut}>
                         <ShotHuddles />
@@ -404,7 +411,7 @@ export default function ProductFilm({ variant = 'section', sound, hold = false }
       <div className="pf2-container">
         <header className="ld-section-head pf2-head">
           <Reveal as="p" className="ld-eyebrow">
-            The film · 2:24
+            The film · 2:29
           </Reveal>
           <Reveal as="h2" delay={60} className="ld-h2">
             <span id="pf2-title">From why to hello, in one flow.</span>

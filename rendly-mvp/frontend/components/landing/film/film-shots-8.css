@@ -1,0 +1,882 @@
+/* ---------------- Film v3: opening line, dark pill, Gemini star ---------------- */
+
+/* Google-style dark backdrop: deep navy with drifting blue and violet light. */
+.fl-gdark {
+  --drift: 0px;
+  background:
+    radial-gradient(42% 52% at calc(22% + var(--drift)) 28%, rgba(66, 133, 244, 0.32), transparent 70%),
+    radial-gradient(38% 48% at calc(80% - var(--drift)) 72%, rgba(155, 114, 203, 0.3), transparent 70%),
+    radial-gradient(30% 36% at 62% 18%, rgba(217, 101, 112, 0.14), transparent 70%),
+    linear-gradient(160deg, #0b0f1c 0%, #080a12 55%, #05060b 100%);
+}
+
+/* The opening line */
+.fl-ot-veil {
+  background: radial-gradient(60% 62% at 50% 50%, rgba(250, 251, 253, 0.94) 0%, rgba(244, 246, 250, 0.82) 55%, rgba(236, 239, 245, 0.35) 100%);
+}
+.fl-ot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  font-family: var(--font-sans), 'Inter', ui-sans-serif, system-ui, sans-serif;
+  color: #0c0e16;
+  text-align: center;
+  white-space: nowrap;
+}
+.fl-ot-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+}
+/* One family, one weight: emphasis comes from size and colour only. */
+.fl-ot-w {
+  --track: 0em;
+  display: inline-block;
+  margin: 0 0.12em;
+  font-size: 48px;
+  font-weight: 500;
+  line-height: 0.98;
+  letter-spacing: calc(-0.025em + var(--track));
+  color: rgba(12, 14, 22, 0.78);
+}
+.fl-ot-line + .fl-ot-line {
+  margin-top: -2px;
+}
+.fl-ot-w--big {
+  --sheen: -30%;
+  margin: 0 0.06em;
+  font-size: 92px;
+  font-weight: 500;
+  line-height: 0.95;
+  letter-spacing: calc(-0.035em + var(--track));
+  color: transparent;
+  background:
+    linear-gradient(100deg, transparent calc(var(--sheen) - 12%), rgba(255, 255, 255, 0.85) var(--sheen), transparent calc(var(--sheen) + 12%)),
+    linear-gradient(95deg, #1f5fe0 0%, #6b4fd8 50%, #c2457a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  padding: 0 0.04em 0.08em;
+}
+
+/* B: the dark glass pill, its badge inside the left end */
+.fl-cwrap--dark .fl-cwrap-pill {
+  --glint: -40%;
+  transform-origin: 0 50%;
+  background:
+    linear-gradient(105deg, transparent calc(var(--glint) - 10%), rgba(255, 255, 255, 0.1) var(--glint), transparent calc(var(--glint) + 10%)),
+    linear-gradient(180deg, rgba(40, 46, 66, 0.86), rgba(20, 24, 36, 0.9));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 40px 80px -36px rgba(0, 0, 0, 0.85),
+    0 0 0 1px rgba(120, 150, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -12px 26px -16px rgba(0, 0, 0, 0.6);
+}
+.fl-cwrap--dark .fl-cwrap-badge {
+  background: radial-gradient(circle at 35% 30%, #2a2f44, #0b0d16 70%);
+  box-shadow: 0 10px 24px -8px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+.fl-cwrap-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #4285f4, #9b72cb, #d96570, #4285f4);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+}
+.fl-lchip--dark {
+  --sel: 0;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, calc(0.12 * (1 - var(--sel))));
+  background:
+    linear-gradient(95deg, rgba(66, 133, 244, var(--sel)), rgba(155, 114, 203, var(--sel))),
+    rgba(255, 255, 255, 0.06);
+  color: rgba(240, 243, 255, calc(0.82 + 0.18 * var(--sel)));
+  box-shadow: 0 0 calc(28px * var(--sel)) rgba(110, 120, 255, calc(0.45 * var(--sel))), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.fl-lchip-ico {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-left: -8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, calc(0.08 + 0.14 * var(--sel, 0)));
+  color: #cfe0ff;
+}
+
+/* C: the Feeds pill and the star in 3D */
+.fl-starpill--dark {
+  color: #eef1ff;
+  perspective: 420px;
+}
+.fl-starpill--dark .fl-starpill-bg {
+  background: linear-gradient(180deg, rgba(40, 46, 66, 0.9), rgba(20, 24, 36, 0.94));
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.fl-starpill--dark .fl-starpill-star {
+  transform-style: preserve-3d;
+  filter: drop-shadow(0 0 6px rgba(120, 140, 255, 0.55));
+}
+.fl-starhalo {
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(110, 120, 255, 0.55) 0%, rgba(155, 114, 203, 0.25) 40%, transparent 70%);
+  filter: blur(20px);
+}
+
+/* ---------------- Real people: photo avatars ---------------- */
+.fl-face {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+/* D: the phone's portrait screen */
+.fl-pui {
+  position: relative;
+}
+.fl-pui-orb {
+  position: absolute;
+  left: 40%;
+  top: 34%;
+  width: 260px;
+  height: 260px;
+  margin: -130px 0 0 -130px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(66, 133, 244, 0.32), rgba(155, 114, 203, 0.14) 45%, transparent 70%);
+  filter: blur(26px);
+  pointer-events: none;
+}
+.fl-pui-head {
+  position: relative;
+}
+.fl-pui-stack {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 46px;
+}
+.fl-pui-av {
+  width: 44px;
+  height: 44px;
+  margin-right: -12px;
+  border-radius: 50%;
+  border: 2px solid #15171d;
+  box-shadow: 0 6px 14px -6px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+  background: #222;
+}
+.fl-pui-count {
+  margin-left: 24px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #d8e4ff;
+  background: rgba(66, 133, 244, 0.16);
+  border: 1px solid rgba(138, 180, 248, 0.3);
+  white-space: nowrap;
+}
+.fl-pui-askrow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #a9b8ff;
+}
+.fl-pui-cards {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.fl-pui-glow {
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  top: -3px;
+  height: 82px;
+  border-radius: 23px;
+  background: linear-gradient(95deg, #4285f4, #9b72cb, #d96570);
+  box-shadow: 0 0 34px rgba(110, 120, 255, 0.55);
+}
+.fl-pui-card {
+  --on: 0;
+  position: relative;
+  height: 76px;
+  padding: 0 14px;
+  gap: 14px;
+  background: linear-gradient(180deg, rgba(34, 38, 52, 0.96), rgba(22, 25, 34, 0.98));
+  border: 1px solid rgba(255, 255, 255, calc(0.08 + 0.12 * var(--on)));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.fl-pui-photo {
+  position: relative;
+  flex: none;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+}
+.fl-pui-photo > .fl-face {
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+}
+.fl-pui-ico {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4285f4, #9b72cb);
+  color: #fff;
+  border: 2px solid #1a1d26;
+}
+.fl-pui-txt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.fl-pui-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #f1f4ff;
+  white-space: nowrap;
+}
+.fl-pui-sub {
+  font-size: 13px;
+  color: rgba(220, 228, 255, 0.6);
+}
+.fl-pui-check {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #34a853, #4285f4);
+  color: #fff;
+  box-shadow: 0 0 18px rgba(66, 133, 244, 0.6);
+}
+
+/* E: landscape search tiles with photos */
+.fl-land-av--photo {
+  position: relative;
+  padding: 0;
+  background: #222;
+  box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.35);
+}
+.fl-land-live {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #34a853;
+  border: 2px solid #15171d;
+}
+
+/* F: the nearby map */
+.fl-nm {
+  background: radial-gradient(70% 90% at 50% 50%, #151a28 0%, #0d1018 100%);
+  background-image: none;
+}
+.fl-nm-streets {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 840px;
+  height: 340px;
+  margin: -170px 0 0 -420px;
+}
+.fl-nm-street {
+  fill: none;
+  stroke: rgba(160, 180, 230, 0.16);
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+.fl-nm-park {
+  fill: rgba(52, 168, 83, 0.14);
+}
+.fl-nm-water {
+  fill: rgba(66, 133, 244, 0.16);
+}
+.fl-nm-radar {
+  position: absolute;
+  left: -230px;
+  top: -230px;
+  width: 460px;
+  height: 460px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(138, 180, 248, 0.32), rgba(138, 180, 248, 0) 70deg, transparent 360deg);
+  -webkit-mask: radial-gradient(circle, #000 0%, #000 60%, transparent 70%);
+  mask: radial-gradient(circle, #000 0%, #000 60%, transparent 70%);
+}
+.fl-nm-path {
+  stroke: url(#fl-nm-grad);
+  stroke-width: 2;
+}
+.fl-nm-me {
+  position: absolute;
+  left: -22px;
+  top: -22px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 3px #fff, 0 0 24px rgba(138, 180, 248, 0.8);
+}
+.fl-nm-pin {
+  gap: 10px;
+}
+.fl-nm-face {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  padding: 2px;
+  background: conic-gradient(#4285f4, #9b72cb, #d96570, #4285f4);
+  box-shadow: 0 10px 22px -8px rgba(0, 0, 0, 0.8);
+}
+.fl-nm-face > .fl-face {
+  border-radius: 50%;
+}
+.fl-nm-pct {
+  position: absolute;
+  right: -14px;
+  top: -10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #34a853, #4285f4);
+  white-space: nowrap;
+}
+.fl-nm-label {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 11px;
+  border-radius: 12px;
+  background: rgba(18, 21, 30, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 13px;
+  color: rgba(230, 236, 255, 0.82);
+  white-space: nowrap;
+  backdrop-filter: blur(6px);
+}
+.fl-nm-label b {
+  color: #fff;
+  font-weight: 600;
+}
+.fl-nm-label i {
+  font-style: normal;
+  font-size: 11px;
+  color: #8ab4f8;
+}
+.fl-land-head.fl-nm-head.fl-a {
+  top: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  background: linear-gradient(95deg, rgba(66, 133, 244, 0.92), rgba(155, 114, 203, 0.92));
+  box-shadow: 0 10px 30px -10px rgba(66, 133, 244, 0.8);
+}
+.fl-nm-stat.fl-a {
+  top: auto;
+  bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(18, 21, 30, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(230, 236, 255, 0.85);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.fl-nm-stat .fl-nm-n {
+  font-weight: 700;
+  color: #fff;
+}
+.fl-nm-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+}
+.fl-nm-bars span {
+  width: 3px;
+  border-radius: 2px;
+  background: #34a853;
+}
+.fl-nm-bars span:nth-child(1) { height: 5px; }
+.fl-nm-bars span:nth-child(2) { height: 8px; }
+.fl-nm-bars span:nth-child(3) { height: 12px; }
+
+/* G: notifications */
+.fl-nt-num {
+  background: linear-gradient(95deg, #8ab4f8, #c58af9, #e58fb6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 18px rgba(138, 180, 248, 0.45));
+}
+.fl-nt-stack {
+  display: flex;
+  margin: 2px 0 14px;
+}
+.fl-nt-av {
+  width: 34px;
+  height: 34px;
+  margin-right: -10px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid #15171d;
+}
+.fl-nt-btn {
+  background: linear-gradient(95deg, #4285f4, #9b72cb 55%, #d96570) !important;
+  color: #fff !important;
+  box-shadow: 0 14px 30px -12px rgba(110, 120, 255, 0.85);
+}
+.fl-nt-toast {
+  --shine: -40%;
+  background:
+    linear-gradient(105deg, transparent calc(var(--shine) - 14%), rgba(255, 255, 255, 0.1) var(--shine), transparent calc(var(--shine) + 14%)),
+    linear-gradient(180deg, rgba(36, 40, 54, 0.96), rgba(22, 25, 34, 0.98)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+.fl-nt-face {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+.fl-nt-face > .fl-face {
+  border-radius: 50%;
+}
+.fl-nt-ico {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4285f4, #9b72cb);
+  color: #fff;
+  border: 2px solid #1a1d26;
+}
+
+/* H: intent footage light sweep */
+.fl-ib-sweep {
+  background: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.22) 50%, transparent 65%);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+/* I: Matching as an orbit system */
+.fl-mo-burst {
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  border: 2px solid rgba(138, 180, 248, 0.8);
+  box-shadow: 0 0 40px rgba(138, 180, 248, 0.6), inset 0 0 30px rgba(155, 114, 203, 0.5);
+}
+.fl-mo-core,
+.fl-mo-linkwrap {
+  width: 680px;
+  height: 320px;
+}
+.fl-mo-core svg,
+.fl-mo-linkwrap svg {
+  overflow: visible;
+}
+.fl-mo-ring {
+  fill: none;
+  stroke: rgba(160, 185, 255, 0.28);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 9;
+  stroke-dashoffset: var(--dash, 0);
+}
+.fl-mo-beam {
+  width: 640px;
+  height: 640px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(138, 180, 248, 0.34), rgba(155, 114, 203, 0.08) 50deg, transparent 80deg);
+  -webkit-mask: radial-gradient(closest-side, #000 60%, transparent 100%);
+  mask: radial-gradient(closest-side, #000 60%, transparent 100%);
+  transform-origin: 50% 50%;
+  scale: 1 0.42;
+}
+.fl-mo-link {
+  fill: none;
+  stroke: url(#fl-mo-grad);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--draw, 0));
+  filter: drop-shadow(0 0 6px rgba(138, 180, 248, 0.8));
+}
+.fl-mo-spark {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 16px 4px rgba(138, 180, 248, 0.9);
+}
+.fl-mo-you {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+}
+.fl-mo-you .fl-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: block;
+  box-shadow: 0 0 0 3px #fff, 0 0 0 9px rgba(138, 180, 248, 0.25), 0 0 50px rgba(138, 180, 248, 0.55);
+}
+.fl-mo-you .fl-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fl-mo-youlabel {
+  position: absolute;
+  left: 50%;
+  bottom: -30px;
+  transform: translateX(-50%);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font-size: 13px;
+  font-weight: 600;
+}
+.fl-mo-node {
+  --lock: 0;
+  width: 72px;
+  height: 72px;
+}
+.fl-mo-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  padding: 2px;
+  background: conic-gradient(rgba(138, 180, 248, calc(0.4 + 0.6 * var(--lock))), rgba(155, 114, 203, calc(0.4 + 0.6 * var(--lock))), rgba(217, 101, 112, calc(0.4 + 0.6 * var(--lock))), rgba(138, 180, 248, calc(0.4 + 0.6 * var(--lock))));
+  box-shadow: 0 0 calc(40px * var(--lock)) rgba(138, 180, 248, calc(0.8 * var(--lock))), 0 10px 22px -8px rgba(0, 0, 0, 0.9);
+}
+.fl-mo-face > .fl-face,
+.fl-mo-face .fl-avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+}
+.fl-mo-face .fl-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fl-mo-pct {
+  position: absolute;
+  left: 50%;
+  bottom: -14px;
+  transform: translateX(-50%);
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #e9efff;
+  background: rgba(20, 24, 36, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  white-space: nowrap;
+}
+.fl-mo-node--match .fl-mo-pct {
+  color: #fff;
+  background: linear-gradient(135deg, #34a853, #4285f4);
+  border-color: transparent;
+}
+
+/* J: Huddles room line */
+.fl-roomline {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0 0.28em;
+  font-family: var(--font-sans), 'Inter', ui-sans-serif, system-ui, sans-serif;
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: rgba(240, 243, 255, 0.86);
+  white-space: nowrap;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.6);
+}
+.fl-roomline-w--big {
+  font-size: 46px;
+  background: linear-gradient(95deg, #8ab4f8, #c58af9 55%, #e58fb6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  padding-bottom: 0.06em;
+}
+
+/* K: the plan card */
+.fl-pc {
+  --ang: 0deg;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 640px;
+  padding: 24px 26px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(34, 38, 54, 0.97), rgba(20, 23, 33, 0.98));
+  box-shadow: 0 50px 100px -30px rgba(0, 0, 0, 0.9), 0 0 70px -16px rgba(110, 120, 255, 0.5);
+  transform-style: preserve-3d;
+}
+.fl-pc-glow {
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(from var(--ang), transparent 0deg, #4285f4 60deg, #9b72cb 120deg, #d96570 170deg, transparent 220deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
+}
+.fl-pc-top {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.fl-pc-date {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #ffffff, #e9ecf5);
+  color: #0a0a0b;
+  transform-origin: 50% 0;
+  box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.7);
+}
+.fl-pc-day {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #d93025;
+}
+.fl-pc-num {
+  font-size: 25px;
+  font-weight: 600;
+}
+.fl-pc-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fl-pc-title {
+  min-height: 36px;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.fl-pc-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  color: rgba(220, 228, 255, 0.6);
+}
+.fl-pc-map {
+  --pan: 0px;
+  position: relative;
+  height: 96px;
+  border-radius: 18px;
+  overflow: hidden;
+  transform-origin: 50% 0;
+  background:
+    linear-gradient(90deg, transparent calc(30% + var(--pan)), rgba(160, 185, 255, 0.18) calc(30% + var(--pan)), rgba(160, 185, 255, 0.18) calc(31.5% + var(--pan)), transparent calc(31.5% + var(--pan))),
+    linear-gradient(0deg, transparent 55%, rgba(160, 185, 255, 0.16) 55%, rgba(160, 185, 255, 0.16) 59%, transparent 59%),
+    linear-gradient(120deg, transparent 62%, rgba(52, 168, 83, 0.18) 62%, rgba(52, 168, 83, 0.18) 80%, transparent 80%),
+    radial-gradient(120% 140% at 60% 40%, #1d2433, #121621);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.fl-pc-pinwrap {
+  position: absolute;
+  left: 58%;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+.fl-pc-pin {
+  position: absolute;
+  left: -16px;
+  top: -34px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50% 50% 50% 0;
+  rotate: -45deg;
+  background: linear-gradient(135deg, #ea4335, #d96570);
+  color: #fff;
+  box-shadow: 0 8px 18px -6px rgba(234, 67, 53, 0.8);
+}
+.fl-pc-pin svg {
+  rotate: 45deg;
+}
+.fl-pc-pinring {
+  position: absolute;
+  left: -14px;
+  top: -6px;
+  width: 28px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(234, 67, 53, 0.8);
+}
+.fl-pc-place {
+  position: absolute;
+  left: 16px;
+  bottom: 12px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(14, 17, 25, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+.fl-pc-place i {
+  font-style: normal;
+  font-weight: 400;
+  color: #8ab4f8;
+}
+.fl-pc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.fl-pc-faces {
+  display: flex;
+  align-items: center;
+}
+.fl-pc-face {
+  width: 40px;
+  height: 40px;
+  margin-right: -11px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid #1a1d28;
+}
+.fl-pc-going {
+  margin-left: 22px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(129, 201, 149, 0.16);
+  color: #81c995;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.fl-pc-rsvp {
+  --done: 0;
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 170px;
+  height: 52px;
+  padding: 0 22px;
+  border-radius: 999px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(95deg, rgba(66, 133, 244, calc(1 - var(--done))), rgba(155, 114, 203, calc(1 - var(--done)))), rgba(52, 168, 83, var(--done));
+  box-shadow: 0 14px 30px -12px rgba(110, 120, 255, 0.85);
+}
+.fl-pc-rsvp > * {
+  grid-area: 1 / 1;
+}
+.fl-pc-rsvp-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fl-pc-chip {
+  color: #eef1ff;
+}
+.fl-pc-bit {
+  width: 10px;
+  height: 14px;
+  border-radius: 2px;
+}
+.fl-pc-bit--0 { background: #4285f4; }
+.fl-pc-bit--1 { background: #9b72cb; }
+.fl-pc-bit--2 { background: #d96570; width: 9px; height: 9px; border-radius: 50%; }
+.fl-pc-bit--3 { background: #34a853; }
+
+/* L: real-life chip, off her face */
+.fl-chip--real {
+  background: linear-gradient(180deg, rgba(30, 34, 48, 0.72), rgba(16, 19, 28, 0.78)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  color: #fff !important;
+  box-shadow: 0 20px 44px -18px rgba(0, 0, 0, 0.8), 0 0 30px -8px rgba(138, 180, 248, 0.55) !important;
+  backdrop-filter: blur(14px) saturate(1.3);
+}
+
+/* M: end card */
+.fl-end-bg {
+  background:
+    radial-gradient(40% 50% at calc(30% + var(--drift)) 35%, rgba(66, 133, 244, 0.22), transparent 70%),
+    radial-gradient(36% 46% at calc(72% - var(--drift)) 68%, rgba(155, 114, 203, 0.2), transparent 70%),
+    #05060a;
+}
+.fl-end-url {
+  --sheen: -30%;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  font-family: var(--font-sans), 'Inter', ui-sans-serif, system-ui, sans-serif;
+  white-space: nowrap;
+}
+.fl-end-url-k {
+  font-size: 18px;
+  color: rgba(230, 236, 255, 0.6);
+}
+.fl-end-url-v {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  background:
+    linear-gradient(100deg, transparent calc(var(--sheen) - 10%), rgba(255, 255, 255, 0.95) var(--sheen), transparent calc(var(--sheen) + 10%)),
+    linear-gradient(95deg, #8ab4f8, #c58af9 55%, #e58fb6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

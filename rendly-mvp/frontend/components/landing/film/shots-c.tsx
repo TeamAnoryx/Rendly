@@ -7,6 +7,7 @@ import { ELENA, MARCO } from './cast';
 import { Fx, Shot, type Animator, type Layout } from './engine';
 import { Chip, Cursor, KLine, pick, pop, type CursorKey } from './kit';
 import { Face, Icon } from './primitives';
+import { Face as Photo, type FaceName } from './faces';
 import { CLICKS, clamp, ease, kf, seg } from './timeline';
 import { withBasePath } from '@/lib/basePath';
 
@@ -24,22 +25,47 @@ function Avatar({ src, className = '' }: { src: string; className?: string }) {
 
 /* ---------------- 4. Matching ---------------- */
 
-const RADAR = (L: Layout) => pick(L, { x: -340, y: 30 }, { x: 0, y: -250 });
-const DECK = (L: Layout) => pick(L, { x: 330, y: 30 }, { x: 0, y: 300 });
-
-/** Nodes on the radar: [angle deg, radius px, initials | null]. */
-const NODES: ReadonlyArray<readonly [number, number, string]> = [
-  [-60, 125, 'AK'],
-  [20, 200, ''],
-  [110, 130, 'TR'],
-  [160, 205, 'NS'],
-  [215, 128, ''],
-  [-120, 210, 'JM'],
-  [65, 210, 'JK'],
-];
+const RADAR = (L: Layout) => pick(L, { x: -330, y: 40 }, { x: 0, y: -250 });
+const DECK = (L: Layout) => pick(L, { x: 360, y: 30 }, { x: 0, y: 300 });
 
 const FRONTS = [19.0, 19.6, 20.2] as const;
 const LOCK = 20.6;
+
+/* The orbit system: three tilted rings around You, decelerating to a stop at LOCK. */
+const M_IN = 17.25; // starts after the logo's exit (played 77.0)
+const ORB_R = [165, 250, 330] as const;
+const ORB_W = [0.9, -0.62, 0.46] as const; // rad/s
+const TILT = 0.42;
+const SLOW_AT = 19.6;
+const JORDAN_ANGLE = (-28 * Math.PI) / 180;
+
+/** Integrated orbit progress: full speed, then an even slow-down to a stop at LOCK. */
+function orbitClock(t: number): number {
+  const d = LOCK - SLOW_AT;
+  if (t <= SLOW_AT) return t;
+  const u = Math.min(t, LOCK) - SLOW_AT;
+  return SLOW_AT + u - (u * u) / (2 * d);
+}
+const angleAt = (orbit: number, a0: number, t: number) => a0 + ORB_W[orbit] * orbitClock(t);
+
+interface OrbNode {
+  orbit: 0 | 1 | 2;
+  a0: number;
+  face: FaceName | null; // null = Jordan
+  pct: number;
+}
+
+const JORDAN_A0 = JORDAN_ANGLE - ORB_W[2] * orbitClock(LOCK);
+const ORB_NODES: readonly OrbNode[] = [
+  { orbit: 0, a0: 0, face: 'pov14', pct: 61 },
+  { orbit: 0, a0: Math.PI, face: 'pov11', pct: 48 },
+  { orbit: 1, a0: 0.7, face: 'pov2', pct: 55 },
+  { orbit: 1, a0: 2.8, face: 'pov5', pct: 72 },
+  { orbit: 1, a0: 4.9, face: 'pov15', pct: 66 },
+  { orbit: 2, a0: JORDAN_A0 + 2.1, face: 'pov7', pct: 58 },
+  { orbit: 2, a0: JORDAN_A0 + 4.2, face: 'pov1', pct: 69 },
+  { orbit: 2, a0: JORDAN_A0, face: null, pct: 94 },
+];
 
 interface DeckCard {
   name: string;
@@ -55,30 +81,102 @@ const DECK_CARDS: readonly DeckCard[] = [
   { name: 'Jordan K.', role: 'ML engineer', why: 'Wants to meet people who care about the climate', score: 94, photo: <Avatar src={JORDAN_IMG} /> },
 ];
 
-function RadarNode({ i }: { i: number }) {
-  const [ang, r, label] = NODES[i];
-  const isMatch = label === 'JK';
+function OrbitNode({ n, i }: { n: OrbNode; i: number }) {
+  const isMatch = n.face === null;
   const fx: Animator = (t, L) => {
     const c = RADAR(L);
-    const a = (ang * Math.PI) / 180;
-    const sc = pick(L, 1, 0.82);
-    const p = pop(t, 17.35 + i * 0.13);
-    const dim = isMatch ? 0 : seg(t, LOCK, LOCK + 0.5);
-    const lock = isMatch ? seg(t, LOCK, LOCK + 0.6, ease.std) : 0;
+    const sc = pick(L, 1, 0.8);
+    const a = angleAt(n.orbit, n.a0, t);
+    const depth = (Math.sin(a) + 1) / 2; // 0 back .. 1 front
+    const k = seg(t, M_IN + 0.25 + i * 0.09, M_IN + 0.75 + i * 0.09, ease.spring);
+    const dim = isMatch ? 0 : seg(t, LOCK, LOCK + 0.6, ease.std);
+    const lock = isMatch ? seg(t, LOCK, LOCK + 0.6, ease.spring) : 0;
+    const r = ORB_R[n.orbit] * sc * (1 + 0.12 * dim);
     return {
-      x: c.x + Math.cos(a) * r * sc,
-      y: c.y + Math.sin(a) * r * sc,
-      s: p.s * (1 + 0.25 * lock),
-      o: p.o * (1 - 0.65 * dim),
-      vars: { '--lock': lock.toFixed(3) },
+      x: c.x + Math.cos(a) * r,
+      y: c.y + Math.sin(a) * r * TILT,
+      s: (0.72 + 0.32 * depth) * (0.3 + 0.7 * k) * (1 + 0.35 * lock),
+      o: clamp(k * 2) * (0.5 + 0.5 * depth) * (1 - 0.75 * dim),
+      blur: dim * 3 + (1 - depth) * 1.2 * (1 - lock),
+      vars: { '--lock': clamp(lock).toFixed(3) },
     };
   };
-  const face =
-    i === 1 ? <Face who={MARCO} /> : i === 4 ? <Face who={ELENA} /> : isMatch ? <Avatar src={JORDAN_IMG} /> : null;
+  const tag: Animator = (t) => {
+    const k = seg(t, 18.3 + i * 0.14, 18.95 + i * 0.14, ease.outCubic);
+    return { text: `${Math.round(n.pct * k)}%`, o: seg(t, 18.3 + i * 0.14, 18.45 + i * 0.14) };
+  };
   return (
-    <Fx className={`fl-node${isMatch ? ' fl-node--match' : ''}`} fx={fx}>
-      {face ?? <span className="fl-node-initials">{label}</span>}
+    <Fx className={`fl-mo-node${isMatch ? ' fl-mo-node--match' : ''}`} fx={fx}>
+      <span className="fl-mo-face">{isMatch ? <Avatar src={JORDAN_IMG} /> : <Photo name={n.face as FaceName} />}</span>
+      <Fx as="span" anchor={false} className="fl-mo-pct" fx={tag} />
     </Fx>
+  );
+}
+
+/** Rings, the scan beam, You at the centre and the link that draws to the match. */
+function OrbitCore() {
+  const core: Animator = (t, L) => {
+    const c = RADAR(L);
+    const k = seg(t, M_IN, M_IN + 1, ease.inOutCubic);
+    return { x: c.x, y: c.y, s: pick(L, 1, 0.8) * (0.7 + 0.3 * k), o: k, rz: (1 - k) * -12, vars: { '--dash': (-t * 24).toFixed(1) } };
+  };
+  const burst: Animator = (t, L) => {
+    const c = RADAR(L);
+    const k = seg(t, M_IN, M_IN + 1, ease.outCubic);
+    return { x: c.x, y: c.y, s: 0.2 + 2.4 * k, o: t < M_IN ? 0 : 0.8 * (1 - k) };
+  };
+  const beam: Animator = (t, L) => {
+    const c = RADAR(L);
+    return { x: c.x, y: c.y, rz: (t - M_IN) * 150, o: seg(t, M_IN + 0.6, M_IN + 1.0) * (1 - seg(t, LOCK - 0.2, LOCK + 0.2)) };
+  };
+  const link: Animator = (t, L) => {
+    const c = RADAR(L);
+    return { x: c.x, y: c.y, s: pick(L, 1, 0.8), o: t < LOCK ? 0 : 1 - seg(t, 22.3, 22.6), vars: { '--draw': seg(t, LOCK + 0.1, LOCK + 0.6, ease.std).toFixed(3) } };
+  };
+  const spark: Animator = (t, L) => {
+    const c = RADAR(L);
+    const sc = pick(L, 1, 0.8);
+    const k = ((t - LOCK - 0.6) % 1.1) / 1.1;
+    const on = t > LOCK + 0.6 && t < 22.3;
+    const jx = Math.cos(JORDAN_ANGLE) * ORB_R[2] * sc;
+    const jy = Math.sin(JORDAN_ANGLE) * ORB_R[2] * sc * TILT;
+    return { x: c.x + jx * k, y: c.y + jy * k, o: on ? Math.sin(Math.PI * k) : 0 };
+  };
+  const you: Animator = (t, L) => {
+    const c = RADAR(L);
+    const k = seg(t, M_IN + 0.2, M_IN + 0.8, ease.spring);
+    return { x: c.x, y: c.y, s: pick(L, 1, 0.8) * (0.4 + 0.6 * k) * (1 + 0.03 * Math.sin(t * 4)), o: clamp(k * 2) };
+  };
+  const jx = Math.cos(JORDAN_ANGLE) * ORB_R[2];
+  const jy = Math.sin(JORDAN_ANGLE) * ORB_R[2] * TILT;
+  return (
+    <>
+      <Fx className="fl-mo-burst" fx={burst} />
+      <Fx className="fl-mo-core" fx={core}>
+        <svg viewBox="-340 -160 680 320" width="680" height="320" aria-hidden="true">
+          {ORB_R.map((r) => (
+            <ellipse key={r} cx="0" cy="0" rx={r} ry={r * TILT} className="fl-mo-ring" />
+          ))}
+        </svg>
+      </Fx>
+      <Fx className="fl-mo-beam" fx={beam} />
+      <Fx className="fl-mo-linkwrap" fx={link}>
+        <svg viewBox="-340 -160 680 320" width="680" height="320" aria-hidden="true">
+          <defs>
+            <linearGradient id="fl-mo-grad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor="#8ab4f8" />
+              <stop offset="1" stopColor="#e58fb6" />
+            </linearGradient>
+          </defs>
+          <path pathLength={1} className="fl-mo-link" d={`M0 0 Q ${jx * 0.45} ${jy * 0.45 - 70} ${jx} ${jy}`} />
+        </svg>
+      </Fx>
+      <Fx className="fl-mo-spark" fx={spark} />
+      <Fx className="fl-mo-you" fx={you}>
+        <Avatar src={YOU_IMG} />
+        <span className="fl-mo-youlabel">You</span>
+      </Fx>
+    </>
   );
 }
 
@@ -121,11 +219,7 @@ export function ShotMatching() {
     const q = seg(t, 22.4, 23.25, ease.inCubic);
     return { s: 1 + 0.18 * q, o: 1 - q, blur: q * 8 };
   };
-  const radar: Animator = (t, L) => {
-    const c = RADAR(L);
-    const k = seg(t, 16.9, 17.8, ease.std);
-    return { x: c.x, y: c.y, s: pick(L, 1, 0.82) * (0.85 + 0.15 * k), o: k, vars: { '--sweep': `${(t * 110) % 360}deg` } };
-  };
+  const bg: Animator = (t) => ({ o: seg(t, M_IN, M_IN + 0.8), vars: { '--drift': `${(Math.sin(t * 0.6) * 60).toFixed(1)}px` } });
   const ring: Animator = (t, L) => {
     const p = DECK(L);
     const k = seg(t, LOCK + 0.05, LOCK + 0.9, ease.outCubic);
@@ -133,17 +227,11 @@ export function ShotMatching() {
   };
   return (
     <Shot range={[16.9, 23.3]} fx={exit}>
-      <div className="fl-dots" />
+      <Fx anchor={false} className="fl-full fl-gdark" fx={bg} />
       <KLine text="Matched on why, not on looks." t0={17.5} t1={23.3} className="fl-kicker" y={(L) => pick(L, -340, -520)} />
-      <Fx className="fl-radar" fx={radar}>
-        <span className="fl-radar-ring fl-radar-ring--1" />
-        <span className="fl-radar-ring fl-radar-ring--2" />
-        <span className="fl-radar-ring fl-radar-ring--3" />
-        <span className="fl-radar-sweep" />
-        <Avatar src={YOU_IMG} className="fl-radar-you" />
-      </Fx>
-      {NODES.map((_, i) => (
-        <RadarNode key={i} i={i} />
+      <OrbitCore />
+      {ORB_NODES.map((n, i) => (
+        <OrbitNode key={i} n={n} i={i} />
       ))}
       {DECK_CARDS.map((c, j) => (
         <DeckCardView key={c.name} c={c} j={j} />
