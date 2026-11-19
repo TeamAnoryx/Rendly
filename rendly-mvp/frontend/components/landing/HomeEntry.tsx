@@ -39,13 +39,13 @@ export default function HomeEntry() {
 
   const onFilmDone = useCallback(() => setState('ready'), []);
 
-  if (state === 'pending' || state === 'intro') {
-    return <div className="fixed inset-0 z-[1000] bg-black" aria-hidden />;
-  }
-
+  // The page is always rendered (so its content is in the server HTML for search engines);
+  // while deciding, or on the way to /intro, a black cover sits on top of it.
+  const covered = state === 'pending' || state === 'intro';
   return (
     <>
       <Landing heroPlay={state === 'ready'} />
+      {covered ? <div className="fixed inset-0 z-[1000] bg-black" aria-hidden /> : null}
       {state === 'film' ? <WelcomeFilm onDone={onFilmDone} /> : null}
     </>
   );

@@ -23,9 +23,18 @@ export function takeWelcomeFilm(): boolean {
   }
 }
 
-/** A new visit (or `/?intro=1`) starts on /intro; deep links such as /#spark skip it. */
+/** Search and preview crawlers (Googlebot, Google-InspectionTool, Bingbot, Lighthouse...). */
+const CRAWLER_UA = /bot\b|bot\/|crawl|spider|slurp|inspectiontool|mediapartners|lighthouse|headlesschrome/i;
+
+/** Crawlers index Home itself; sending them to the noindex /intro would drop Home from search. */
+export function isCrawler(userAgent: string): boolean {
+  return CRAWLER_UA.test(userAgent);
+}
+
+/** A new visit (or `/?intro=1`) starts on /intro; deep links such as /#spark and crawlers skip it. */
 export function shouldShowIntro(): boolean {
   try {
+    if (isCrawler(navigator.userAgent)) return false;
     if (new URLSearchParams(window.location.search).get('intro') === '1') return true;
     if (window.location.hash) return false;
     return sessionStorage.getItem(INTRO_SESSION_KEY) !== '1';
