@@ -304,13 +304,14 @@ export function registerAdminRoutes(app: express.Express, deps: Deps): void {
       res.status(400).json({ message: "Status must be open, answered or closed." });
       return;
     }
-    const { error } = await supabase.from("contact_requests").update({ status }).eq("id", req.params.id);
-    if (error) {
-      console.error("[admin] status update failed:", error.message);
+    try {
+      const { error } = await supabase.from("contact_requests").update({ status }).eq("id", req.params.id);
+      if (error) throw new Error(error.message);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[admin] status update failed:", err instanceof Error ? err.message : String(err));
       res.status(500).json({ message: "Could not update the query." });
-      return;
     }
-    res.json({ ok: true });
   });
 
   app.get("/api/admin/health", requireAdmin, async (_req, res) => {
