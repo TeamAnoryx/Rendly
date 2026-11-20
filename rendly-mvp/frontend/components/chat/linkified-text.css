@@ -1,0 +1,36 @@
+.chat-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+.chat-link:hover { opacity: .85; }
+.chat-link--huddle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  text-decoration: none;
+  font-weight: 600;
+  word-break: normal;
+  color: #fff;
+  background: var(--rd-spectrum, linear-gradient(90deg, #6b8cff, #b56bff));
+  box-shadow: 0 0 0 0 rgba(107, 140, 255, .5);
+  animation: chat-link-huddle-pulse 2.4s ease-out infinite;
+}
+.chat-link-huddle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+}
+@keyframes chat-link-huddle-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(107, 140, 255, .45); }
+  70% { box-shadow: 0 0 0 8px rgba(107, 140, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(107, 140, 255, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-link--huddle { animation: none; }
+}

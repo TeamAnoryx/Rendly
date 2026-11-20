@@ -28,6 +28,8 @@ interface FooterLink {
   label: string;
   /** Omit to render the item as "coming soon" text. */
   href?: string;
+  /** Another site: opens in a new tab. */
+  external?: boolean;
 }
 
 const COLUMNS: ReadonlyArray<{ title: string; links: ReadonlyArray<FooterLink> }> = [
@@ -43,7 +45,12 @@ const COLUMNS: ReadonlyArray<{ title: string; links: ReadonlyArray<FooterLink> }
   },
   {
     title: 'Company',
-    links: [{ label: 'About', href: '/about' }, { label: 'Careers' }, { label: 'Contact' }],
+    links: [
+      { label: 'About', href: siteConfig.anoryxAboutUrl, external: true },
+      { label: 'About Rendly', href: '/about' },
+      { label: 'Careers' },
+      { label: 'Contact', href: '/contact' },
+    ],
   },
   {
     title: 'Legal',
@@ -70,7 +77,11 @@ export function Footer() {
                 <ul>
                   {c.links.map((l) => (
                     <li key={l.label}>
-                      {l.href ? (
+                      {l.href && l.external ? (
+                        <a href={l.href} className="ld-footer-link" target="_blank" rel="noopener noreferrer">
+                          {l.label}
+                        </a>
+                      ) : l.href ? (
                         <Link href={l.href} className="ld-footer-link">
                           {l.label}
                         </Link>

@@ -23,6 +23,30 @@ export async function getUserById(id: string): Promise<UserRow | null> {
   return data as UserRow | null;
 }
 
+const USER_ROW_CACHE_TTL_MS = 60_000;
+const USER_ROW_CACHE_MAX = 20_000;
+const userRowCache = new Map<string, { row: UserRow; expires: number }>();
+
+/**
+ * getUserById for display fields (username, avatar) on hot paths such as sending a message:
+ * found rows are reused for up to 60 s, so a rename can take that long to show there.
+ */
+export async function getUserByIdCached(id: string): Promise<UserRow | null> {
+  const key = id?.trim();
+  if (!key) return null;
+  const hit = userRowCache.get(key);
+  if (hit && hit.expires > Date.now()) return hit.row;
+  const row = await getUserById(key);
+  if (row) {
+    if (userRowCache.size >= USER_ROW_CACHE_MAX) {
+      const oldest = userRowCache.keys().next().value;
+      if (oldest !== undefined) userRowCache.delete(oldest);
+    }
+    userRowCache.set(key, { row, expires: Date.now() + USER_ROW_CACHE_TTL_MS });
+  }
+  return row;
+}
+
 /** Batch fetch users by ids (one query). Returns a Map for quick lookup. */
 export async function getUsersByIds(ids: string[]): Promise<Map<string, UserRow>> {
   const map = new Map<string, UserRow>();

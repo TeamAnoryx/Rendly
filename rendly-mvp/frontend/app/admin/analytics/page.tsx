@@ -1,11 +1,6 @@
-import Analytics from '@/components/admin/Analytics';
-import { AdminPageHead } from '@/components/admin/AdminTable';
+import { redirect } from 'next/navigation';
 
+/** Analytics now lives on the Overview page. */
 export default function AdminAnalyticsPage() {
-  return (
-    <div className="adm-page">
-      <AdminPageHead title="Analytics" desc="Activity across matches, huddles and chat." />
-      <Analytics />
-    </div>
-  );
+  redirect('/admin/dashboard');
 }

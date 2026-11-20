@@ -61,6 +61,14 @@ function removePresence(userId: string, socketId: string): boolean {
   return false;
 }
 
+const PRESENCE_ROOM_PREFIX = "presence:";
+/** Users one socket may watch for online/offline changes. */
+const MAX_PRESENCE_WATCHES = 1000;
+/** Room of the sockets watching one user's presence. */
+export function presenceRoom(userId: string): string {
+  return `${PRESENCE_ROOM_PREFIX}${userId}`;
+}
+
 /** Attach Socket.IO to the HTTP server; auth via handshake auth.token (JWT). */
 export function attachSocketIo(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
@@ -116,7 +124,9 @@ export function attachSocketIo(httpServer: HttpServer): Server {
     });
 
     const becameOnline = addPresence(userId, socket.id);
-    if (becameOnline && io) io.emit("user:online", { user_id: userId });
+    // Only sockets that asked about this user (presence:query) hear it. A global broadcast here
+    // costs O(online users) per connect and stalled the server at ~800 users in load tests.
+    if (becameOnline && io) io.to(presenceRoom(userId)).emit("user:online", { user_id: userId });
     // Back within the grace window of a call: tell the other side the call resumes.
     if (becameOnline) calls.userOnline(userId);
 
@@ -250,6 +260,9 @@ export function attachSocketIo(httpServer: HttpServer): Server {
     socket.on("presence:query", (data: { user_ids?: unknown }, ack?: (res: { online: string[] }) => void) => {
       if (typeof ack !== "function") return;
       const ids = Array.isArray(data?.user_ids) ? data.user_ids.filter((x): x is string => typeof x === "string").slice(0, 500) : [];
+      // Asking about someone also subscribes to their later online/offline changes (bounded).
+      const watched = Array.from(socket.rooms).filter((r) => r.startsWith(PRESENCE_ROOM_PREFIX)).length;
+      ids.slice(0, Math.max(0, MAX_PRESENCE_WATCHES - watched)).forEach((id) => socket.join(presenceRoom(id)));
       ack({ online: ids.filter((id) => presenceByUser.has(id)) });
     });
 
@@ -275,7 +288,7 @@ export function attachSocketIo(httpServer: HttpServer): Server {
 
     socket.on("disconnect", () => {
       const wentOffline = removePresence(userId, socket.id);
-      if (wentOffline && io) io.emit("user:offline", { user_id: userId });
+      if (wentOffline && io) io.to(presenceRoom(userId)).emit("user:offline", { user_id: userId });
       // Hold any live call for the grace window instead of leaving the peer waiting forever.
       if (wentOffline) calls.userOffline(userId);
     });

@@ -14,6 +14,8 @@ export type ConversationListItem = {
   otherUserId?: string | null;
   lastMessageContentType?: 'text' | 'image' | 'audio';
   lastMessageSenderId?: string | null;
+  /** The permanent Rendly Team conversation: always listed first and cannot be removed. */
+  isTeam?: boolean;
 };
 
 /** Extra fields carried by a `content_type: 'token_transfer'` message (Rendly Tokens sent in a whisper). */

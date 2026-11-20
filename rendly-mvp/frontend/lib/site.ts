@@ -18,6 +18,7 @@ export const siteConfig = {
     'Rendly is intent-based social networking. Say what you are looking for, from co-founders and collaborators to study partners and friends, and meet people who want the same thing through 1:1 Spark video matches, Whispers chat and live group Huddles.',
   url: trimSlash(process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_SITE_URL),
   anoryxUrl: trimSlash(process.env.NEXT_PUBLIC_ANORYX_URL || DEFAULT_ANORYX_URL),
+  anoryxAboutUrl: `${trimSlash(process.env.NEXT_PUBLIC_ANORYX_URL || DEFAULT_ANORYX_URL)}/about`,
   publisher: 'Anoryx Tech Solutions',
   keywords: [
     'Rendly',
@@ -45,6 +46,7 @@ export type PublicRoute = { path: string; priority: number; changeFrequency: 'we
 export const publicRoutes: ReadonlyArray<PublicRoute> = [
   { path: '/', priority: 1, changeFrequency: 'weekly' },
   { path: '/about', priority: 0.8, changeFrequency: 'monthly' },
+  { path: '/contact', priority: 0.5, changeFrequency: 'yearly' },
   { path: '/auth/sign-up', priority: 0.6, changeFrequency: 'yearly' },
   { path: '/login', priority: 0.5, changeFrequency: 'yearly' },
   { path: '/privacy', priority: 0.3, changeFrequency: 'yearly' },

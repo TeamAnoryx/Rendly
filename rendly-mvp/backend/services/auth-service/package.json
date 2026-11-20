@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/cluster.js",
     "test": "jest",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "admin:hash-password": "node scripts/hash-admin-password.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.0",
@@ -24,6 +25,7 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^8.0.1",
+    "redis": "^4.7.1",
     "sharp": "^0.33.5",
     "web-push": "^4.0.0"
   },

@@ -2,6 +2,7 @@
 
 import React, { useRef } from 'react';
 import Link from 'next/link';
+import { siteConfig } from '@/lib/site';
 import { motion, useReducedMotion, useScroll, useTransform, type MotionValue } from 'framer-motion';
 import SiteShell from '@/components/landing/SiteShell';
 import Reveal from '@/components/landing/Reveal';
@@ -149,6 +150,9 @@ function Hero() {
             <Link href="/#product" className="rd-btn rd-btn--lg">
               See the product
             </Link>
+            <a href={siteConfig.anoryxAboutUrl} className="rd-btn rd-btn--lg" target="_blank" rel="noopener noreferrer">
+              About Anoryx
+            </a>
           </div>
         </div>
         <div className="ab-collage ld-enter--slow" aria-label="People on Rendly">
