@@ -5,13 +5,24 @@ import express from "express";
 import cors from "cors";
 import compression from "compression";
 import rateLimit from "express-rate-limit";
+import {
+  getSharedGitHubResult,
+  onUserInvalidation,
+  publishUserInvalidation,
+  setSharedGitHubResult,
+  sharedLimiterStore,
+} from "./shared-state";
 import dotenv from "dotenv";
 import axios from "axios";
+import { registerAdminRoutes } from "./admin";
+import { registerAnalyticsRoutes } from "./analytics";
+import { securityMonitor } from "./security";
+import { RENDLY_TEAM_USER_ID, sendWelcomeMessage } from "./team";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import multer from "multer";
 import sharp from "sharp";
-import { signInWithOAuth, findUsersByEmail, getUserByProviderId, getUserById, getUserByEmailOrUsername, getUserByEmail, insertUserWithPassword, updateUserById, checkUsernameAvailable, getUsersWithActiveResetToken, getUserByUsername, getUsersByUsernameSearch, supabase } from "./supabase-users";
+import { signInWithOAuth, findUsersByEmail, getUserByProviderId, getUserById, getUserByEmailOrUsername, getUserByEmail, insertUserWithPassword, updateUserById as updateUserRow, checkUsernameAvailable, getUsersWithActiveResetToken, getUserByUsername, getUsersByUsernameSearch, supabase } from "./supabase-users";
 import { sendPasswordResetEmail } from "./send-reset-email";
 import { addHuddlePushReminder, deleteSubscription, notifyHuddleLive, parseSubscription, saveSubscription, vapidPublicKey } from "./push";
 import { isCompanyEmail, normalizeEmail } from "./company-email";
@@ -169,15 +180,14 @@ const REDIRECT_URI = normalizeRedirectUri(process.env.OAUTH_REDIRECT_URI || "htt
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
 /** Idempotency: avoid exchanging the same GitHub code twice (e.g. double useEffect in dev). */
-const githubCodeCache = new Map<string, { user: object; jwt: string }>();
 const githubCodePending = new Map<string, Promise<{ user: object; jwt: string }>>();
 const GITHUB_CODE_CACHE_TTL_MS = 60_000;
-function getCachedGitHubResult(code: string): { user: object; jwt: string } | null {
-  return githubCodeCache.get(code) ?? null;
+/** Finished exchanges are shared across processes (cluster.ts) through shared-state. */
+function getCachedGitHubResult(code: string): Promise<{ user: object; jwt: string } | null> {
+  return getSharedGitHubResult(code);
 }
-function setCachedGitHubResult(code: string, user: object, jwt: string) {
-  githubCodeCache.set(code, { user, jwt });
-  setTimeout(() => githubCodeCache.delete(code), GITHUB_CODE_CACHE_TTL_MS);
+function setCachedGitHubResult(code: string, user: object, jwt: string): void {
+  void setSharedGitHubResult(code, { user, jwt }, GITHUB_CODE_CACHE_TTL_MS);
 }
 /** Wait briefly so GitHub can propagate the new token (reduces 401 Bad credentials). */
 function delay(ms: number): Promise<void> {
@@ -186,7 +196,48 @@ function delay(ms: number): Promise<void> {
 
 /** Decode JWT and return current user from DB, or null. */
 type UserFromToken = { id: string; email: string | null; avatar_url: string | null; github_id: string | null; github_url: string | null; linkedin_id: string | null; linkedin_url: string | null; username?: string | null; selected_intents?: string[] | null; bio?: string | null; profession?: string | null };
-async function getCurrentUserFromRequest(req: express.Request): Promise<{ userId: string; user: UserFromToken } | null> {
+/**
+ * Recently resolved users, keyed by token subject. Every authenticated request used to read the
+ * users table (one query per request, the largest share of database load in load tests). Entries
+ * live USER_CACHE_TTL_MS and are dropped at once when this service updates the user row.
+ */
+type CurrentUserResult = { userId: string; user: UserFromToken };
+const USER_CACHE_TTL_MS = 60_000;
+const USER_CACHE_MAX = 20_000;
+const userCache = new Map<string, { value: CurrentUserResult; expires: number }>();
+
+function rememberUser(key: string, value: CurrentUserResult): void {
+  if (userCache.size >= USER_CACHE_MAX) {
+    const oldest = userCache.keys().next().value;
+    if (oldest !== undefined) userCache.delete(oldest);
+  }
+  userCache.set(key, { value, expires: Date.now() + USER_CACHE_TTL_MS });
+}
+
+/** Drop this process's cached entries for a user. */
+function forgetUserLocally(userId: string): void {
+  for (const [key, entry] of userCache) if (entry.value.userId === userId) userCache.delete(key);
+}
+
+// Other auth-service workers (cluster.ts) drop their copies when a user row changes.
+onUserInvalidation(forgetUserLocally);
+
+/** Drop cached entries for a user after their row changes (username, avatar, ...), in every worker. */
+function forgetUser(userId: string): void {
+  forgetUserLocally(userId);
+  publishUserInvalidation(userId);
+}
+
+/** Update a user row and drop its cached copy so the next request sees the change. */
+async function updateUserById(...args: Parameters<typeof updateUserRow>): ReturnType<typeof updateUserRow> {
+  try {
+    return await updateUserRow(...args);
+  } finally {
+    forgetUser(args[0]);
+  }
+}
+
+async function getCurrentUserFromRequest(req: express.Request): Promise<CurrentUserResult | null> {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
   if (!token) return null;
@@ -194,6 +245,10 @@ async function getCurrentUserFromRequest(req: express.Request): Promise<{ userId
     const decoded = jwt.verify(token, JWT_SECRET) as { sub?: string; provider?: string };
     const sub = decoded?.sub;
     if (!sub) return null;
+    const cacheKey = `${decoded?.provider ?? "github"}:${sub}`;
+    const hit = userCache.get(cacheKey);
+    if (hit && hit.expires >= Date.now()) return hit.value;
+    if (hit) userCache.delete(cacheKey);
     let user;
     if (decoded?.provider === "password") {
       user = await getUserById(sub);
@@ -202,10 +257,12 @@ async function getCurrentUserFromRequest(req: express.Request): Promise<{ userId
       user = await getUserByProviderId(provider, sub);
     }
     if (!user) return null;
-    return {
+    const result: CurrentUserResult = {
       userId: (user as { id?: string }).id ?? "",
       user: user as UserFromToken,
     };
+    if (result.userId) rememberUser(cacheKey, result);
+    return result;
   } catch {
     return null;
   }
@@ -272,6 +329,8 @@ app.use(cors({ origin: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : true, credenti
 // gzip/deflate JSON responses (lists, feeds, profiles shrink ~70-90%); tiny bodies are skipped.
 app.use(compression({ threshold: 1024 }));
 app.use(express.json());
+// Watches request outcomes for attacks and error spikes (admin Health page, email alerts).
+app.use(securityMonitor((req) => getClientIp(req)));
 
 const tooMany = (_req: express.Request, res: express.Response) => {
   // JSON body so the frontend can show "too many requests" instead of "invalid credentials".
@@ -285,6 +344,7 @@ const tooMany = (_req: express.Request, res: express.Response) => {
  * behind one network (office, campus, mobile carrier NAT) from sharing a single budget.
  */
 const limiter = rateLimit({
+  ...sharedLimiterStore("general"),
   windowMs: 15 * 60 * 1000,
   max: Number(process.env.RATE_LIMIT_MAX) || 3000,
   keyGenerator: perUserKey,
@@ -298,6 +358,7 @@ app.use(limiter);
 
 /** Credential endpoints get a much smaller budget to slow password guessing. */
 const credentialLimiter = rateLimit({
+  ...sharedLimiterStore("credential"),
   windowMs: 15 * 60 * 1000,
   max: Number(process.env.AUTH_RATE_LIMIT_MAX) || 30,
   standardHeaders: true,
@@ -311,6 +372,7 @@ app.use(
 
 /** Routes that move Rendly Tokens get a tight per-IP budget: a minute of sends, not a session's worth. */
 const tokenLimiter = rateLimit({
+  ...sharedLimiterStore("token"),
   windowMs: 60 * 1000,
   max: Number(process.env.TOKEN_RATE_LIMIT_MAX) || 30,
   standardHeaders: true,
@@ -332,8 +394,12 @@ function perUserKey(req: express.Request): string {
 }
 
 /** A per-user budget of `max` requests a minute. */
+let perUserLimiterCount = 0;
 function perUserLimiter(max: number) {
+  // Created in the same order in every process, so the store name matches across them.
+  const storeName = `per-user-${++perUserLimiterCount}`;
   return rateLimit({
+    ...sharedLimiterStore(storeName),
     windowMs: 60 * 1000,
     max,
     keyGenerator: perUserKey,
@@ -358,6 +424,7 @@ const geoUserLimiter = perUserLimiter(10);
 
 /** Near By lookups: a slow per-IP budget so the distance buckets cannot be sampled rapidly. */
 const nearbyLimiter = rateLimit({
+  ...sharedLimiterStore("nearby"),
   windowMs: 60 * 1000,
   max: Number(process.env.NEARBY_RATE_LIMIT_MAX) || 6,
   standardHeaders: true,
@@ -515,6 +582,7 @@ app.post("/api/auth/register", async (req, res) => {
       res.status(500).json({ message: "Could not create account" });
       return;
     }
+    sendWelcomeMessage(created.id);
     const jwtToken = jwt.sign({ sub: created.id, provider: "password" }, JWT_SECRET, { expiresIn: "7d" });
     res.status(201).json({
       user: { id: created.id, email: normalized, username: null, avatar_url: null },
@@ -603,7 +671,7 @@ app.post("/api/auth/github/callback", async (req, res) => {
       return;
     }
     const normalizedCode = code.trim();
-    const cached = getCachedGitHubResult(normalizedCode);
+    const cached = await getCachedGitHubResult(normalizedCode);
     if (cached) {
       return res.json({ user: cached.user, accessToken: cached.jwt });
     }
@@ -719,6 +787,7 @@ app.post("/api/auth/github/callback", async (req, res) => {
         throw Object.assign(new Error(result.message), { status: result.status });
       }
       console.log(`[auth-service] GitHub verified: ${login} (id=${githubId}); account ${result.action} (${result.userId ?? "no DB"}).`);
+      if (result.action === "create" && result.userId) sendWelcomeMessage(result.userId);
 
       const user = {
         id: githubId,
@@ -847,6 +916,7 @@ app.post("/api/auth/linkedin/callback", async (req, res) => {
       return;
     }
     console.log(`[auth-service] LinkedIn verified: ${name} (id=${linkedinId}); account ${result.action} (${result.userId ?? "no DB"}).`);
+    if (result.action === "create" && result.userId) sendWelcomeMessage(result.userId);
 
     const user = {
       id: linkedinId,
@@ -1360,6 +1430,7 @@ app.delete("/api/users/me/connections/:userId", async (req, res) => {
     }
     const otherId = req.params.userId;
     if (!otherId) return res.status(400).json({ message: "User id required" });
+    if (otherId === RENDLY_TEAM_USER_ID) return res.status(403).json({ message: "The Rendly Team connection cannot be removed" });
     const connected = await areConnected(current.userId, otherId);
     if (!connected) return res.status(404).json({ message: "Not connected" });
     const ok = await deleteConnection(current.userId, otherId);
@@ -1407,6 +1478,7 @@ app.post("/api/users/me/blocks", async (req, res) => {
     const userId = typeof req.body?.user_id === "string" ? req.body.user_id.trim() : "";
     if (!userId) return res.status(400).json({ message: "user_id is required" });
     if (userId === current.userId) return res.status(400).json({ message: "Cannot block yourself" });
+    if (userId === RENDLY_TEAM_USER_ID) return res.status(403).json({ message: "The Rendly Team cannot be blocked" });
     await deleteConnection(current.userId, userId);
     const ok = await createBlock(current.userId, userId);
     if (!ok) return res.status(500).json({ message: "Failed to block" });
@@ -1622,16 +1694,22 @@ app.post("/api/contact", async (req, res) => {
   try {
     const current = await getCurrentUserFromRequest(req);
     if (!supabase) return res.status(503).json({ message: "Contact form unavailable" });
-    const { name, email, message } = req.body ?? {};
+    const { name, email, message, subject, category } = req.body ?? {};
     const n = typeof name === "string" ? name.trim().slice(0, 200) : "";
     const e = typeof email === "string" ? email.trim().slice(0, 256) : "";
     const m = typeof message === "string" ? message.trim().slice(0, 5000) : "";
+    const s = typeof subject === "string" ? subject.trim().slice(0, 200) : "";
+    const c = ["query", "feedback", "bug", "other"].includes(category) ? category : "query";
     if (!n || !e || !m) return res.status(400).json({ message: "Name, email, and message are required" });
+    if (!validateEmailFormat(e)) return res.status(400).json({ message: "Enter a valid email address" });
     const { error } = await supabase.from("contact_requests").insert({
       user_id: current?.userId ?? null,
       name: n,
       email: e,
       message: m,
+      subject: s || null,
+      category: c,
+      source: "contact_page",
     });
     if (error) {
       console.error("POST contact_requests error:", error);
@@ -3538,6 +3616,7 @@ app.post("/api/intents/location", tokenLimiter, async (req, res) => {
 
 /** Geocoding proxy budget per IP; the upstream allows ~1 request a second for the whole service. */
 const geoLimiter = rateLimit({
+  ...sharedLimiterStore("geo"),
   windowMs: 60 * 1000,
   max: 20,
   standardHeaders: true,
@@ -3629,6 +3708,9 @@ app.delete("/api/users/me", async (req, res) => {
     res.status(500).json({ message: "Failed to delete account" });
   }
 });
+
+registerAnalyticsRoutes(app, getCurrentUserFromRequest);
+registerAdminRoutes(app, { getIp: (req) => getClientIp(req) });
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);

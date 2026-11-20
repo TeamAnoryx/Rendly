@@ -1,12 +1,14 @@
 import React from 'react';
-import AdminNav from '@/components/admin/AdminNav';
+import type { Metadata } from 'next';
+import AdminGate from '@/components/admin/console/AdminGate';
 import '@/components/admin/admin.css';
+import '@/components/admin/console/console.css';
+
+export const metadata: Metadata = {
+  title: 'Rendly Admin',
+  robots: { index: false, follow: false },
+};
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="adm-shell">
-      <AdminNav />
-      <main className="adm-main">{children}</main>
-    </div>
-  );
+  return <AdminGate>{children}</AdminGate>;
 }

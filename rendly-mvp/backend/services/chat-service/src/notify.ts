@@ -9,6 +9,42 @@ import { supabase } from "./supabase-users";
 /** A burst of messages from one sender updates one unread notification for this long. */
 const MESSAGE_GROUP_WINDOW_MS = 10 * 60 * 1000;
 const PREVIEW_MAX = 140;
+const KNOWN_NOTIFICATIONS_MAX = 20_000;
+
+/**
+ * Unread message notification ids this process found recently, per recipient and conversation,
+ * so the next message in a fast conversation refreshes the row in one query instead of two.
+ */
+const knownNotifications = new Map<string, { id: string; expires: number }>();
+
+function rememberNotification(key: string, id: string): void {
+  if (knownNotifications.size >= KNOWN_NOTIFICATIONS_MAX) {
+    const oldest = knownNotifications.keys().next().value;
+    if (oldest !== undefined) knownNotifications.delete(oldest);
+  }
+  knownNotifications.set(key, { id, expires: Date.now() + MESSAGE_GROUP_WINDOW_MS });
+}
+
+/** Refresh a known unread notification; false if it is gone, read, or the update failed. */
+async function refreshKnownNotification(key: string, title: string, body: string): Promise<boolean> {
+  const known = knownNotifications.get(key);
+  if (!known || known.expires <= Date.now() || !supabase) {
+    knownNotifications.delete(key);
+    return false;
+  }
+  const { data, error } = await supabase
+    .from("notifications")
+    .update({ title, body, created_at: new Date().toISOString() })
+    .eq("id", known.id)
+    .is("read_at", null)
+    .select("id");
+  if (error) console.error("[notify] message refresh error:", error);
+  if (error || !data || data.length === 0) {
+    knownNotifications.delete(key);
+    return false;
+  }
+  return true;
+}
 
 type Input = { type: string; title: string; body?: string | null; payload?: Record<string, unknown> };
 
@@ -51,7 +87,9 @@ export async function notifyMessage(
   const body = messagePreview(args.text);
   for (const recipientId of new Set(recipientIds)) {
     if (!recipientId || recipientId === args.senderId) continue;
+    const key = `${recipientId}|${args.conversationId}`;
     try {
+      if (await refreshKnownNotification(key, args.title, body)) continue;
       const { data: existing, error: findError } = await supabase
         .from("notifications")
         .select("id")
@@ -67,6 +105,7 @@ export async function notifyMessage(
         continue;
       }
       if (existing) {
+        rememberNotification(key, (existing as { id: string }).id);
         const { error } = await supabase
           .from("notifications")
           .update({ title: args.title, body, created_at: new Date().toISOString() })

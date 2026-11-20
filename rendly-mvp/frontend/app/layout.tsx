@@ -10,6 +10,7 @@ import './dashboard/dashboard.css';
 import LoadingProviderClient from '@/components/common/LoadingProviderClient';
 import RouteTransition from '@/components/common/RouteTransition';
 import JsonLd from '@/components/seo/JsonLd';
+import Tracker from '@/components/analytics/Tracker';
 import { siteConfig } from '@/lib/site';
 
 const inter = Inter({
@@ -71,6 +72,7 @@ export default function RootLayout({
       <body className="bg-background text-foreground antialiased">
         <LoadingProviderClient>{children}</LoadingProviderClient>
         <RouteTransition />
+        <Tracker />
       </body>
     </html>
   );

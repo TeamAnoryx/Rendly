@@ -7,12 +7,19 @@ import { RendlyMark } from '@/components/brand/Brand';
 
 const ITEMS = [
   { href: '/admin/dashboard', label: 'Overview' },
+  { href: '/admin/queries', label: 'User queries' },
+  { href: '/admin/health', label: 'Health & security' },
+  { href: '/admin/reports', label: 'Reports' },
   { href: '/admin/users', label: 'Users' },
   { href: '/admin/moderation', label: 'Moderation' },
-  { href: '/admin/analytics', label: 'Analytics' },
 ] as const;
 
-export default function AdminNav() {
+interface AdminNavProps {
+  email?: string;
+  onSignOut?: () => void;
+}
+
+export default function AdminNav({ email, onSignOut }: AdminNavProps) {
   const pathname = usePathname() ?? '';
   return (
     <nav className="adm-nav" aria-label="Admin">
@@ -31,6 +38,16 @@ export default function AdminNav() {
           {it.label}
         </Link>
       ))}
+      {email && (
+        <div className="adm-nav-foot">
+          <span title={email}>{email}</span>
+          {onSignOut && (
+            <button type="button" className="ad-btn" onClick={onSignOut}>
+              Sign out
+            </button>
+          )}
+        </div>
+      )}
     </nav>
   );
 }

@@ -60,7 +60,8 @@ function writeDefaultMatch(on: boolean): void {
 
 /** Queue polling while waiting: fast for the first FAST_POLL_WINDOW_MS, then slower. */
 const FAST_POLL_MS = 1500;
-const SLOW_POLL_MS = 3000;
+// Each poll costs ~6 database queries (it also tries to pair); 5 s keeps a long search cheap.
+const SLOW_POLL_MS = 5000;
 const FAST_POLL_WINDOW_MS = 10_000;
 const NOT_ENOUGH = 'Not enough tokens';
 const NO_INTENTS: readonly string[] = [];

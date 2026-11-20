@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import websocket from '@/services/websocket';
+import LinkifiedText from '@/components/chat/LinkifiedText';
 import { useHasVideo } from '@/components/call/VideoTile';
 import {
   admitHuddleMember,
@@ -45,7 +46,16 @@ import { canFlipCamera, flipCameraTrack, mirrorFor, swapCameraTrack, type Camera
 import './huddle-room.css';
 
 const MAIN_ROOM = 'main';
+/** Hosts poll fast: the members list carries the waiting list they admit from. */
 const MEMBERS_POLL_MS = 5000;
+/**
+ * Participants poll slowly: joins and leaves refresh the list at once over the socket, and
+ * permission changes arrive as socket events. A 5 s poll for everyone was most of the
+ * auth-service load in load tests.
+ */
+const MEMBERS_POLL_PARTICIPANT_MS = 20_000;
+/** Coalesces a burst of join/leave events into one members fetch. */
+const MEMBERS_REFRESH_DEBOUNCE_MS = 800;
 const ROOM_NAME = /^[a-z0-9][a-z0-9-]{0,19}$/;
 
 type Role = 'host' | 'co_host' | 'participant';
@@ -688,9 +698,25 @@ export default function HuddleRoom({
   }, [huddleId, myId, isManager]);
   useEffect(() => {
     void loadMembers();
-    const id = setInterval(() => void loadMembers(), MEMBERS_POLL_MS);
-    return () => clearInterval(id);
-  }, [loadMembers]);
+    const id = setInterval(() => void loadMembers(), isManager ? MEMBERS_POLL_MS : MEMBERS_POLL_PARTICIPANT_MS);
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const refreshSoon = () => {
+      if (pending) clearTimeout(pending);
+      pending = setTimeout(() => {
+        pending = null;
+        void loadMembers();
+      }, MEMBERS_REFRESH_DEBOUNCE_MS);
+    };
+    const offs = [
+      websocket.on('huddle:peer-joined', refreshSoon),
+      websocket.on('huddle:peer-left', refreshSoon),
+    ];
+    return () => {
+      clearInterval(id);
+      if (pending) clearTimeout(pending);
+      offs.forEach((off) => off());
+    };
+  }, [loadMembers, isManager]);
 
   // Losing share permission stops an active share.
   const stopShare = useCallback(async () => {
@@ -975,7 +1001,7 @@ export default function HuddleRoom({
                   ) : (
                   <div key={c.id} className={`hr-chat-line ${c.from === myId ? 'hr-chat-line--me' : ''}`}>
                     <span className="hr-chat-from">{c.from === myId ? 'You' : nameOf(c.from)}</span>
-                    <p>{c.text}</p>
+                    <p><LinkifiedText text={c.text} /></p>
                   </div>
                   ),
                 )}

@@ -39,6 +39,10 @@ class WebSocketService {
           const socket = io(url, {
             auth: { token },
             path: "/socket.io",
+            // WebSocket first: the long-polling handshake failed under load (1k+ users). Polling
+            // stays as a fallback for networks that block WebSocket.
+            transports: ["websocket", "polling"],
+            tryAllTransports: true,
             reconnection: true,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,

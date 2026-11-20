@@ -16,6 +16,7 @@ import { pauseLabelFor } from '@/lib/mediaPause';
 import { useOngoingNotification } from '@/hooks/useOngoingNotification';
 import { consumeResumeParam } from '@/lib/resumeParam';
 import './spark-room.css';
+import LinkifiedText from '@/components/chat/LinkifiedText';
 import { canFlipCamera } from '@/lib/cameraFlip';
 
 export type SparkRoomProps = {
@@ -631,7 +632,7 @@ export function SparkRoom(props: SparkRoomProps): JSX.Element {
               {lines.length === 0 && <p className="sr-empty">Say hi — messages disappear when the session ends.</p>}
               {lines.map((l) => (
                 <div key={l.id} className={`sr-msg ${l.mine ? 'is-mine' : ''}`}>
-                  <p className="sr-msg-text">{l.text}</p>
+                  <p className="sr-msg-text"><LinkifiedText text={l.text} /></p>
                   <span className="sr-msg-time">{formatTime(l.at)}</span>
                 </div>
               ))}

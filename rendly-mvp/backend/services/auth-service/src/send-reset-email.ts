@@ -66,3 +66,23 @@ export async function sendPasswordResetEmail(to: string, resetLink: string): Pro
     // Don't throw – API still returns 200 so we don't leak whether the email exists
   }
 }
+
+/**
+ * Send a plain email (with optional HTML) through the same SMTP settings. Returns false when SMTP
+ * is not configured or sending failed; failures are logged, never thrown.
+ */
+export async function sendEmail(to: string, subject: string, text: string, html?: string): Promise<boolean> {
+  const trans = getTransporter();
+  if (!trans) {
+    console.warn("[auth-service] SMTP not configured; email not sent:", subject);
+    return false;
+  }
+  const MAIL_FROM = process.env.MAIL_FROM || process.env.SMTP_USER || "noreply@rendly.app";
+  try {
+    await trans.sendMail({ from: MAIL_FROM, to, subject, text, ...(html ? { html } : {}) });
+    return true;
+  } catch (err) {
+    console.error("[auth-service] Failed to send email:", subject, err instanceof Error ? err.message : String(err));
+    return false;
+  }
+}

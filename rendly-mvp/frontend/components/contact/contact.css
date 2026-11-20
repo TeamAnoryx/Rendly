@@ -1,0 +1,27 @@
+.ct-page { max-width: 760px; }
+.ct-lede { color: var(--rd-muted); line-height: 1.6; margin-top: 12px; }
+.ct-form { display: grid; gap: 18px; margin-top: 32px; }
+.ct-row { display: grid; gap: 18px; grid-template-columns: 1fr 1fr; }
+@media (max-width: 640px) { .ct-row { grid-template-columns: 1fr; } }
+.ct-field { display: grid; gap: 8px; font-size: 14px; color: var(--rd-text); }
+.ct-field em { color: var(--rd-muted); font-style: normal; }
+.ct-field input, .ct-field select, .ct-field textarea {
+  width: 100%; padding: 12px 14px; border-radius: var(--rd-radius, 12px);
+  border: 1px solid var(--rd-border); background: var(--rd-panel); color: var(--rd-text);
+  font: inherit; transition: border-color .2s var(--rd-ease, ease), box-shadow .2s var(--rd-ease, ease);
+}
+.ct-field textarea { resize: vertical; min-height: 140px; }
+.ct-field input:focus, .ct-field select:focus, .ct-field textarea:focus {
+  outline: none; border-color: var(--rd-info, #6b8cff); box-shadow: 0 0 0 3px rgba(107, 140, 255, .2);
+}
+.ct-btn {
+  justify-self: start; padding: 12px 22px; border-radius: 999px; border: 0; cursor: pointer;
+  background: var(--rd-spectrum, #6b8cff); color: #fff; font-weight: 600; font-size: 15px;
+  transition: transform .15s var(--rd-ease, ease), opacity .15s;
+}
+.ct-btn:hover:not(:disabled) { transform: translateY(-1px); }
+.ct-btn:disabled { opacity: .6; cursor: progress; }
+.ct-error { color: var(--rd-danger, #e5484d); font-size: 14px; margin: 0; }
+.ct-done { margin-top: 32px; padding: 28px; border-radius: var(--rd-radius, 12px); border: 1px solid var(--rd-border); background: var(--rd-panel); }
+.ct-done h2 { margin: 0 0 8px; font-size: 20px; }
+.ct-done p { color: var(--rd-muted); margin: 0 0 18px; }

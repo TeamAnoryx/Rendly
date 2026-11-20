@@ -14,6 +14,7 @@ import { GroupSettingsPanel } from '@/app/dashboard/chat/GroupSettingsPanel';
 import { TokenCoin } from '@/components/brand/TokenCoin';
 import SendTokensSheet from '@/components/chat/SendTokensSheet';
 import TokenTransferCard, { tokenTransferPreview } from '@/components/chat/TokenTransferCard';
+import LinkifiedText from '@/components/chat/LinkifiedText';
 import { emitPointsChanged } from '@/services/pointsApi';
 
 type ChatTab = 'Group' | 'Whispers' | 'Archive';
@@ -98,7 +99,14 @@ export type ConversationItem = {
   otherUserId?: string | null;
   lastMessageContentType?: 'text' | 'image' | 'audio' | 'token_transfer';
   lastMessageSenderId?: string | null;
+  /** The permanent Rendly Team conversation: always listed first and cannot be removed. */
+  isTeam?: boolean;
 };
+
+/** The Rendly Team row(s) from the API list, to pin right after "You". */
+function teamRows(apiList: ConversationItem[]): ConversationItem[] {
+  return apiList.filter((c) => c.isTeam);
+}
 
 function formatLastSeen(isoOrNull: string | null) {
   if (!isoOrNull) return '';
@@ -219,6 +227,7 @@ function ConversationRow({
           <div className="chat-conv-row-top-left">
             <div className="chat-conv-row-top-left-line">
               <span className="chat-conv-row-name">{displayName}</span>
+              {item.isTeam && <span className="chat-conv-row-team-badge" title="Official updates and replies from the Rendly team">Official</span>}
               {item.isBlocked ? (
                 <span className="chat-conv-row-blocked-label">
                   <BlockedBadgeIcon />
@@ -1045,7 +1054,7 @@ function MessageBubble({
               />
             ) : (
             <div className={`chat-message-content ${message.content_type !== 'text' ? 'chat-message-content--media' : ''}`}>
-              {message.content_type === 'text' && message.content}
+              {message.content_type === 'text' && <LinkifiedText text={message.content} />}
               {message.content_type === 'image' && (
                 <div
                   className={`chat-media chat-media--image ${isSender ? 'chat-media--sender' : 'chat-media--receiver'} ${onImageClick ? 'chat-media--clickable' : ''}`}
@@ -1465,7 +1474,7 @@ function ChatPageContent() {
         const fromApi = otherId ? byOtherUserId.get(otherId) : null;
         return fromApi ?? row;
       });
-      return [youRow, ...mergedRest];
+      return [youRow, ...teamRows(apiList), ...mergedRest.filter((c) => !c.isTeam)];
     };
 
     const fromMemory = conversationsCache?.userId === userId && conversationsCache.list.length > 0;
@@ -1660,7 +1669,7 @@ function ChatPageContent() {
             if (c.name !== 'You' && c.otherUserId) byOtherUserId.set(c.otherUserId, c);
           }
           const mergedRest = conns.map((conn) => byOtherUserId.get(conn.id) ?? connectionToRow(conn));
-          setConversations([youRow, ...mergedRest]);
+          setConversations([youRow, ...teamRows(fromApi), ...mergedRest.filter((c) => !c.isTeam)]);
         }).catch(() => { /* keep list from connections */ });
       })
       .catch(() => {
@@ -1720,7 +1729,7 @@ function ChatPageContent() {
         const fromApi = otherId ? byOtherUserId.get(otherId) : null;
         return fromApi ?? row;
       });
-      return [youRow, ...mergedRest];
+      return [youRow, ...teamRows(apiList), ...mergedRest.filter((c) => !c.isTeam)];
     };
     Promise.allSettled([getConnections(), chat.getSelfConversation(), chat.getConversations()]).then(([connRes, selfRes, listRes]) => {
       const connections = connRes.status === 'fulfilled' ? connRes.value : [];
@@ -2709,8 +2718,8 @@ function ChatPageContent() {
                             onClick={() => {
                               const toClear =
                                 selectedConversationIds.size > 0
-                                  ? Array.from(selectedConversationIds)
-                                  : selectedId && selectedId !== SELF_PLACEHOLDER_ID && !String(selectedId).startsWith(CONNECTION_PLACEHOLDER_PREFIX) && displayList.some((c) => c.id === selectedId && !c.isBlocked)
+                                  ? Array.from(selectedConversationIds).filter((id) => !displayList.some((c) => c.id === id && c.isTeam))
+                                  : selectedId && selectedId !== SELF_PLACEHOLDER_ID && !String(selectedId).startsWith(CONNECTION_PLACEHOLDER_PREFIX) && displayList.some((c) => c.id === selectedId && !c.isBlocked && !c.isTeam)
                                     ? [selectedId]
                                     : [];
                               if (toClear.length === 0) return;
@@ -2722,7 +2731,8 @@ function ChatPageContent() {
                                     setConversations((prev) => {
                                       const self = prev.find((c) => c.name === 'You');
                                       const rest = (list || []).filter((c) => c.name !== 'You');
-                                      return self ? [self, ...rest] : rest;
+                                      const ordered = [...rest.filter((c) => c.isTeam), ...rest.filter((c) => !c.isTeam)];
+                                      return self ? [self, ...ordered] : ordered;
                                     });
                                   }).catch(() => { });
                                 }

@@ -41,7 +41,11 @@
     "styles",
     "config",
     ".next/types/**/*.ts",
-    ".next-3011/types/**/*.ts"
+    ".next-3011/types/**/*.ts",
+    ".next-3005/types/**/*.ts",
+    ".next-buildcheck/types/**/*.ts",
+    ".next-verify/types/**/*.ts",
+    ".next-localapi/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

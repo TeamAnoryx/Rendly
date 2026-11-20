@@ -7,10 +7,11 @@ import dotenv from "dotenv";
 import multer from "multer";
 import { requireAuth, type CurrentUser } from "./auth";
 import { attachSocketIo, broadcastMessageReceived, broadcastMessageDeleted, emitToUser, getOnlineUserIds } from "./ws";
-import { getUserById, getUsersByIds, supabase } from "./supabase-users";
+import { getUserById, getUserByIdCached, getUsersByIds, supabase } from "./supabase-users";
 import { markMessageNotificationsRead, notifyMessage, notifyUsers } from "./notify";
 import { isUuid, verifyTransferForMessage } from "./tokens";
 import { canPostInGroup } from "./group-rules";
+import { isRendlyTeam, recordTeamQuery, RENDLY_TEAM_NAME, withTeamFirst } from "./team";
 import {
   whisperConversationId,
   parseConversationId,
@@ -67,9 +68,16 @@ const avatarUpload = multer({
   },
 });
 
+// Per-message info logs cost real CPU at high message rates (stdout writes are synchronous when
+// redirected to a file); set CHAT_VERBOSE_LOGS=1 to see them. Errors are always logged.
+const CHAT_VERBOSE_LOGS = process.env.CHAT_VERBOSE_LOGS === "1";
 const chatLog = (section: "Whispers" | "Group" | "Archive", action: string, detail: string) => {
-  console.log(`[Chat] [${section}] ${action} – ${detail}`);
+  if (CHAT_VERBOSE_LOGS) console.log(`[Chat] [${section}] ${action} – ${detail}`);
 };
+
+// Building a formatter is far slower than using one; same output as toLocale{Date,Time}String.
+const MESSAGE_DATE_FORMAT = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+const MESSAGE_TIME_FORMAT = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 
 const app = express();
 const PORT = Number(process.env.CHAT_SERVICE_PORT || process.env.PORT || 4002);
@@ -127,7 +135,8 @@ app.get("/api/conversations", requireAuth, async (req: express.Request & { curre
   const user = req.currentUser!;
   const userId = user.userId;
   try {
-    const partnerIds = await listConversationPartnerIds(userId);
+    // The Rendly Team Whisper is always listed first, even before its first message.
+    const partnerIds = withTeamFirst(userId, await listConversationPartnerIds(userId));
     const [onlineIds, usersMap, metaMap] = await Promise.all([
       Promise.resolve(getOnlineUserIds()),
       partnerIds.length ? getUsersByIds(partnerIds) : Promise.resolve(new Map()),
@@ -139,16 +148,18 @@ app.get("/api/conversations", requireAuth, async (req: express.Request & { curre
         const meta = metaMap.get(otherId);
         const unreadCount = await getWhisperUnreadCount(userId, otherId);
         const convId = whisperConversationId(userId, otherId);
+        const isTeam = isRendlyTeam(otherId);
         return {
           id: convId,
-          name: (otherUser?.username as string) || "User",
+          name: isTeam ? RENDLY_TEAM_NAME : (otherUser?.username as string) || "User",
           avatar_url: (otherUser as { avatar_url?: string | null })?.avatar_url ?? null,
           lastMessage: null,
           lastSeenAt: null,
           isFavorite: meta?.is_favorite ?? false,
           unreadCount,
-          isOnline: onlineIds.includes(otherId),
+          isOnline: isTeam || onlineIds.includes(otherId),
           otherUserId: otherId,
+          isTeam,
         };
       })
     );
@@ -365,12 +376,12 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req: express.Req
     : {};
   const id = crypto.randomUUID();
   const now = new Date();
-  const date = now.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
-  const time = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  const date = MESSAGE_DATE_FORMAT.format(now);
+  const time = MESSAGE_TIME_FORMAT.format(now);
 
   let front: ReturnType<typeof toFrontendMessage>;
   if (parsed.type === "whisper") {
-    const otherUser = await getUserById(parsed.otherUserId);
+    const otherUser = await getUserByIdCached(parsed.otherUserId);
     const msg: WhisperMessage = {
       id,
       message: content,
@@ -412,7 +423,9 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req: express.Req
     }
     emitToUser(parsed.otherUserId, "message:received", whisperPayload);
     broadcastMessageReceived(convId, whisperPayload);
-    void notifyMessage([parsed.otherUserId], {
+    // Messages to the Rendly Team go to the admin console's query inbox, not a notification.
+    if (isRendlyTeam(parsed.otherUserId)) void recordTeamQuery(user, String(content));
+    else void notifyMessage([parsed.otherUserId], {
       conversationId: convId,
       senderId: user.userId,
       title: `${user.username ? `@${user.username}` : "New message"} sent you a message`,
@@ -909,8 +922,8 @@ app.post("/api/calls/start", requireAuth, async (req: express.Request & { curren
   }
   const id = crypto.randomUUID();
   const now = new Date();
-  const date = now.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
-  const time = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  const date = MESSAGE_DATE_FORMAT.format(now);
+  const time = MESSAGE_TIME_FORMAT.format(now);
   const log: CallLogEntry = {
     id,
     call_type: callType,
