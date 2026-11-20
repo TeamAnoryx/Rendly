@@ -21,7 +21,13 @@ const LOCKOUT_MS = 15 * 60 * 1000;
 /** Compared against when the email is wrong, so a wrong email costs as much time as a wrong password. */
 const DUMMY_HASH = "$2b$12$C6UzMDM.H6dfI/f/IKcEeO7zhn5OzS9jbqTIXbsl3Xxw1V3H9hK5K";
 
-const secret = (): string => process.env.JWT_SECRET || "dev-secret-change-in-production";
+/** The signing secret. Outside development a missing JWT_SECRET fails closed instead of using a known key. */
+function secret(): string {
+  const value = process.env.JWT_SECRET;
+  if (value) return value;
+  if (process.env.NODE_ENV === "production") throw new Error("JWT_SECRET is not set: admin sign-in is disabled");
+  return "dev-secret-change-in-production";
+}
 
 export type AdminConfig = { email: string; passwordHash: string | null; password: string | null };
 
