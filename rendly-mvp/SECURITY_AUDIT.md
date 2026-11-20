@@ -1,19 +1,25 @@
 # Rendly security audit and launch readiness
 
-Date: 2026-11-20. Scope: `rendly-mvp` backend (auth-service, chat-service), database migrations, frontend, repository, dependencies.
+Prepared for Anoryx Tech Solutions. Date: 20 November 2026. Scope: `rendly-mvp` backend (auth-service, chat-service), database migrations, frontend, repository, dependencies. A PDF copy is in `SECURITY_AUDIT.pdf`.
 
-**Status: the audit is complete.** Code fixes below are written and tested but **not committed or deployed**. Three items still need action from you before launch (see "Still open").
+## Abstract
+
+This report records a source-code security audit of the Rendly platform against the OWASP Top 10 categories (OWASP Foundation, 2021). The audit found 21 weaknesses, 7 of them critical: broken access control in group chat, private tables exposed to the public database roles, and a fallback signing secret. Nineteen are fixed in code and two by a database migration. Sixteen known dependency vulnerabilities remain open by the owner's decision. Under load, matching and Huddles held at 2,000 concurrent users; heavy messaging saturates the single chat process.
+
+**Status on 20 November 2026.** The code fixes are committed (`c7daf11`). The owner reports that the lock-down migration has been run and the required environment variables are set. A live check the same day showed the services still running the previous code, because the commit had not been pushed. The fixes take effect only after `git push` and a redeploy.
 
 ## Verdict
 
-Not ready for a marketing launch yet. Ready once the three launch blockers in "Still open" are closed and the fixes are deployed.
+Not ready for a marketing launch yet. Ready once the fixes are pushed and deployed, the admin password is changed, and the dependency upgrades are done or the risk is knowingly accepted.
 
 - Before this audit, any signed-in user could read any group's messages, remove members from any group and make themselves a group admin. Those holes are fixed in code.
-- The database trusted the Supabase public API roles with private tables, including every private message. The fix is a migration that you must run.
-- 16 known vulnerabilities sit in dependencies, 2 of them critical. I did not upgrade them because the project rule requires your approval.
+- The database trusted the Supabase public API roles with private tables, including every private message. The fix is a database migration, which the owner reports has been run.
+- 16 known vulnerabilities sit in dependencies, 2 of them critical. They were not upgraded, by the owner's decision.
 - At 2,000 concurrent users, Spark and Huddles held up in the earlier load test; heavy messaging saturated the single chat-service process. That limit still stands.
 
 ## How the app was audited
+
+The method follows the OWASP Top 10 categories (OWASP Foundation, 2021), with OAuth checked against RFC 6749 (Hardt, 2012), session tokens against RFC 7519 (Jones, Bradley and Sakimura, 2015), password handling against NIST SP 800-63B (Grassi et al., 2017) and database access against Supabase's row level security guidance (Supabase, n.d.).
 
 1. Listed every HTTP route (about 110 in auth-service, 32 in chat-service) and every Socket.IO event, and checked each for a session check and an ownership check.
 2. Read the sign-in, sign-up, password reset, OAuth and admin sign-in code.
@@ -29,7 +35,7 @@ Limits: I audited the migrations, not the live database (I do not read `.env` fi
 
 Severity: Critical = data exposure or account takeover; High = serious abuse; Medium/Low = hardening.
 
-### Fixed in code (tested, not deployed)
+### Fixed in code (tested, committed, awaiting push and deploy)
 
 | # | Severity | Finding | Fix |
 |---|---|---|---|
@@ -57,7 +63,7 @@ Tests after the fixes: auth-service 377 passed (was 366), chat-service 43 passed
 
 One behaviour change to know: password reset links issued before the deploy stop working (they expire in an hour anyway).
 
-### Fixed by a migration you must run
+### Fixed by a database migration (owner reports it has been run)
 
 | # | Severity | Finding | Fix |
 |---|---|---|---|
@@ -72,7 +78,7 @@ The frontend does not ship the anon key, which lowers the chance of abuse, but t
 
 Launch blockers:
 
-1. **Run the lock-down migration** (findings 18, 19), after the service-key check above.
+1. **Push and redeploy.** Commit `c7daf11` is not on the remote yet, so production still runs the old code. I could not verify the migration myself; run the two check queries at the bottom of the migration file to confirm it.
 2. **Dependency upgrades (you chose not to do them now).** They remain the largest open risk. Backend: 13 advisories (1 critical `proxy-addr`; high: `axios`, `body-parser`, `engine.io`, `socket.io-parser`, `ws`, `path-to-regexp`, `form-data`, `nodemailer`, `sharp`). Frontend: 3 (critical `next`, high `postcss`, `zod`). Most backend fixes are non-breaking (`npm audit fix`); `next`, `zod`, `nodemailer` and `sharp` need major-version upgrades and testing.
 3. **Admin password.** It is a weak, guessable value stored in plain text in the host environment. Change it to a long random one before launch.
 
@@ -109,7 +115,21 @@ Caveats: the final 2,000-user runs were unreliable because the test laptop was b
 
 ## Deploy steps
 
-1. Review and commit the code changes; redeploy auth-service, chat-service and the frontend.
+1. Push `main` so Render and Vercel redeploy auth-service, chat-service and the frontend.
 2. Confirm `JWT_SECRET`, `APP_URL` and `SUPABASE_SERVICE_ROLE_KEY` are set on both services (neither starts in production without `JWT_SECRET`).
-3. Run `20261124_security_lockdown.sql` in the Supabase SQL editor, then the two check queries at the bottom of the file.
-4. Sign in, send a whisper and a group message, and delete one, to confirm the app still works.
+3. Run the two check queries at the bottom of `20261124_security_lockdown.sql`; both should return no rows.
+4. Sign in with email, GitHub and LinkedIn, send a whisper and a group message, and delete one, to confirm the app still works.
+
+## References
+
+Grassi, P.A. et al. (2017) *Digital identity guidelines: authentication and lifecycle management*. NIST Special Publication 800-63B. Gaithersburg, MD: National Institute of Standards and Technology.
+
+Hardt, D. (ed.) (2012) *The OAuth 2.0 authorization framework*. RFC 6749. Internet Engineering Task Force.
+
+Hodges, J., Jackson, C. and Barth, A. (2012) *HTTP Strict Transport Security (HSTS)*. RFC 6797. Internet Engineering Task Force.
+
+Jones, M., Bradley, J. and Sakimura, N. (2015) *JSON Web Token (JWT)*. RFC 7519. Internet Engineering Task Force.
+
+OWASP Foundation (2021) *OWASP Top 10:2021*. Available at: https://owasp.org/Top10/ (Accessed: 20 November 2026).
+
+Supabase (n.d.) *Row level security*. Available at: https://supabase.com/docs/guides/database/postgres/row-level-security (Accessed: 20 November 2026).
