@@ -22,10 +22,11 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import multer from "multer";
 import sharp from "sharp";
-import { signInWithOAuth, findUsersByEmail, getUserByProviderId, getUserById, getUserByEmailOrUsername, getUserByEmail, insertUserWithPassword, updateUserById as updateUserRow, checkUsernameAvailable, getUsersWithActiveResetToken, getUserByUsername, getUsersByUsernameSearch, supabase } from "./supabase-users";
+import { signInWithOAuth, findUsersByEmail, getUserByProviderId, getUserById, getUserByEmailOrUsername, getUserByEmail, insertUserWithPassword, updateUserById as updateUserRow, checkUsernameAvailable, getUserByActiveResetTokenHash, getUserByUsername, getUsersByUsernameSearch, supabase } from "./supabase-users";
 import { sendPasswordResetEmail } from "./send-reset-email";
 import { addHuddlePushReminder, deleteSubscription, notifyHuddleLive, parseSubscription, saveSubscription, vapidPublicKey } from "./push";
 import { isCompanyEmail, normalizeEmail } from "./company-email";
+import { clientIp, isSafeProfileUrl, rateLimitKey, resetTokenHash, resolveAppOrigin, resolveJwtSecret, securityHeaders } from "./auth-security";
 import { pickVerifiedGitHubEmail, pickVerifiedLinkedInEmail, resolvePasswordSignup, SIGNUP_EMAIL_TAKEN_MESSAGE } from "./account-linking";
 import {
   listInvitesForUser,
@@ -177,7 +178,10 @@ function normalizeRedirectUri(value: string): string {
 }
 
 const REDIRECT_URI = normalizeRedirectUri(process.env.OAUTH_REDIRECT_URI || "http://localhost:3001/auth/callback");
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
+// Fails closed in production: a known fallback secret would let anyone forge a session.
+const JWT_SECRET = resolveJwtSecret();
+/** Compared against when the account does not exist, so a miss costs the same time as a wrong password. */
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync("rendly-timing-equaliser", 10);
 
 /** Idempotency: avoid exchanging the same GitHub code twice (e.g. double useEffect in dev). */
 const githubCodePending = new Map<string, Promise<{ user: object; jwt: string }>>();
@@ -242,9 +246,10 @@ async function getCurrentUserFromRequest(req: express.Request): Promise<CurrentU
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
   if (!token) return null;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { sub?: string; provider?: string };
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as { sub?: string; provider?: string; aud?: unknown };
     const sub = decoded?.sub;
-    if (!sub) return null;
+    // Admin-console tokens carry an audience and are never user sessions.
+    if (!sub || decoded.aud !== undefined) return null;
     const cacheKey = `${decoded?.provider ?? "github"}:${sub}`;
     const hit = userCache.get(cacheKey);
     if (hit && hit.expires >= Date.now()) return hit.value;
@@ -298,24 +303,9 @@ function validateEmailFormat(email: string): boolean {
 }
 
 /** Get client IP for logging/security. Optionally pass body with client_ip from frontend. */
-function getClientIp(req: express.Request, body?: { client_ip?: string | null }): string | null {
-  if (body?.client_ip && typeof body.client_ip === "string" && body.client_ip.trim()) return body.client_ip.trim();
-  const xClientIp = req.headers["x-client-ip"];
-  if (xClientIp && typeof xClientIp === "string" && xClientIp.trim()) return xClientIp.trim();
-  const forwarded = req.headers["x-forwarded-for"];
-  if (forwarded) {
-    const first = typeof forwarded === "string" ? forwarded.split(",")[0] : forwarded[0];
-    if (first && first.trim()) return first.trim();
-  }
-  const xRealIp = req.headers["x-real-ip"];
-  if (xRealIp && typeof xRealIp === "string" && xRealIp.trim()) return xRealIp.trim();
-  const cfConnecting = req.headers["cf-connecting-ip"];
-  if (cfConnecting && typeof cfConnecting === "string" && cfConnecting.trim()) return cfConnecting.trim();
-  if (req.ip && typeof req.ip === "string" && req.ip.trim()) return req.ip.trim();
-  const socket = (req as express.Request & { socket?: { remoteAddress?: string } }).socket;
-  const addr = socket?.remoteAddress;
-  if (addr && typeof addr === "string") return addr.trim();
-  return null;
+function getClientIp(req: express.Request, _body?: unknown): string | null {
+  // Only the proxy-resolved address: body fields and X-* headers are forgeable by the caller.
+  return clientIp(req);
 }
 
 app.set("trust proxy", 1);
@@ -325,6 +315,11 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((o) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
+if (!ALLOWED_ORIGINS.length && process.env.NODE_ENV === "production") {
+  console.warn("[auth-service] ALLOWED_ORIGINS is not set: every website may call this API. Set it to the app's origin.");
+}
+app.disable("x-powered-by");
+app.use(securityHeaders);
 app.use(cors({ origin: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : true, credentials: true }));
 // gzip/deflate JSON responses (lists, feeds, profiles shrink ~70-90%); tiny bodies are skipped.
 app.use(compression({ threshold: 1024 }));
@@ -386,11 +381,17 @@ const tokenLimiter = rateLimit({
  * Requests without a valid token are answered 401 by the route anyway.
  */
 function perUserKey(req: express.Request): string {
-  const auth = req.headers.authorization;
-  if (typeof auth === "string" && auth.length > 0) {
-    return "u:" + crypto.createHash("sha256").update(auth).digest("hex").slice(0, 32);
+  return rateLimitKey(req.headers.authorization, req.ip, verifiedTokenSubject);
+}
+
+/** Subject of a correctly signed user token, else null. Signature check only; no database read. */
+function verifiedTokenSubject(token: string): string | null {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as { sub?: unknown; provider?: unknown };
+    return typeof decoded.sub === "string" && decoded.sub ? `${String(decoded.provider ?? "github")}:${decoded.sub}` : null;
+  } catch {
+    return null;
   }
-  return "ip:" + (req.ip ?? "unknown");
 }
 
 /** A per-user budget of `max` requests a minute. */
@@ -493,7 +494,9 @@ app.post("/api/auth/login", async (req, res) => {
     }
     const user = await getUserByEmailOrUsername(identifier);
     if (!user || !(user as { password_hash?: string | null }).password_hash) {
-      console.warn("[auth-service] Login: no user or no password_hash for identifier:", identifier.replace(/@.*/, "@***"));
+      // Same work as a real check, so response time does not reveal whether the account exists.
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+      console.warn("[auth-service] Login: unknown account or no password set");
       res.status(401).json({ message: "Invalid email/username or password" });
       return;
     }
@@ -604,22 +607,26 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     }
     const user = await getUserByEmail(email.trim());
     if (user && (user as { id?: string }).id) {
-      const token = crypto.randomBytes(32).toString("hex");
-      const tokenHash = await bcrypt.hash(token, 10);
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-      await updateUserById((user as { id: string }).id, {
-        password_reset_token_hash: tokenHash,
-        password_reset_expires_at: expiresAt,
-      });
-      // APP_URL includes any sub-path (https://anoryxtechsolutions.com/rendly.app); the Origin
-      // header never does, so it is only a fallback for local development.
-      const origin = process.env.APP_URL || req.headers.origin || req.headers.referer || "http://localhost:3001";
-      const resetLink = `${origin.replace(/\/$/, "")}/login/reset-password?token=${encodeURIComponent(token)}`;
-      const userEmail = (user as { email?: string | null }).email;
-      if (userEmail && typeof userEmail === "string" && userEmail.trim()) {
-        await sendPasswordResetEmail(userEmail.trim(), resetLink);
+      // APP_URL includes any sub-path (https://anoryxtechsolutions.com/rendly.app). Request
+      // headers are a local-development fallback only: in production they are attacker-controlled.
+      const origin = resolveAppOrigin(process.env, req.headers);
+      if (!origin) {
+        console.error("[auth-service] APP_URL is not set: password reset emails cannot be sent.");
       } else {
-        console.log("[auth-service] Password reset link (no email on account, dev only):", resetLink);
+        const token = crypto.randomBytes(32).toString("hex");
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        // The token has 256 bits of entropy, so a fast hash is safe and allows a direct lookup.
+        await updateUserById((user as { id: string }).id, {
+          password_reset_token_hash: resetTokenHash(token),
+          password_reset_expires_at: expiresAt,
+        });
+        const resetLink = `${origin}/login/reset-password?token=${encodeURIComponent(token)}`;
+        const userEmail = (user as { email?: string | null }).email;
+        if (userEmail && typeof userEmail === "string" && userEmail.trim()) {
+          await sendPasswordResetEmail(userEmail.trim(), resetLink);
+        } else if (process.env.NODE_ENV !== "production") {
+          console.log("[auth-service] Password reset link (no email on account, dev only):", resetLink);
+        }
       }
     }
     res.status(200).json({ message: "If an account exists, we've sent a reset link." });
@@ -637,26 +644,23 @@ app.post("/api/auth/reset-password", async (req, res) => {
       res.status(400).json({ message: "Token and new password are required" });
       return;
     }
-    if (new_password.length < 8) {
-      res.status(400).json({ message: "Password must be at least 8 characters" });
+    if (new_password.length < 8 || new_password.length > 128 || token.length > 256) {
+      res.status(400).json({ message: "Password must be 8 to 128 characters" });
       return;
     }
-    const candidates = await getUsersWithActiveResetToken();
-    for (const row of candidates) {
-      const hash = (row as { password_reset_token_hash?: string | null }).password_reset_token_hash;
-      if (!hash) continue;
-      const match = await bcrypt.compare(token.trim(), hash);
-      if (match && row.id) {
-        const password_hash = await bcrypt.hash(new_password, 10);
-        await updateUserById(row.id, {
-          password_hash,
-          password_reset_token_hash: null,
-          password_reset_expires_at: null,
-        });
-        return res.status(200).json({ message: "Password reset successfully." });
-      }
+    // One indexed lookup by token hash (no per-row bcrypt work an attacker could multiply).
+    const row = await getUserByActiveResetTokenHash(resetTokenHash(token.trim()));
+    if (!row?.id) {
+      res.status(400).json({ message: "Invalid or expired reset link." });
+      return;
     }
-    res.status(400).json({ message: "Invalid or expired reset link." });
+    const password_hash = await bcrypt.hash(new_password, 10);
+    await updateUserById(row.id, {
+      password_hash,
+      password_reset_token_hash: null,
+      password_reset_expires_at: null,
+    });
+    res.status(200).json({ message: "Password reset successfully." });
   } catch (err) {
     console.error("POST /api/auth/reset-password error:", err);
     res.status(500).json({ message: "Reset failed" });
@@ -954,9 +958,9 @@ app.post("/api/auth/continue", async (req, res) => {
       res.status(401).json({ message: "Missing or invalid authorization" });
       return;
     }
-    const decoded = jwt.verify(token, JWT_SECRET) as { sub?: string; provider?: string };
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as { sub?: string; provider?: string; aud?: unknown };
     const sub = decoded?.sub;
-    if (!sub) {
+    if (!sub || decoded.aud !== undefined) {
       res.status(401).json({ message: "Invalid token" });
       return;
     }
@@ -1055,10 +1059,16 @@ app.patch("/api/users/me", async (req, res) => {
       }
       payload.email = e;
     }
-    if (body.avatar_url !== undefined) payload.avatar_url = typeof body.avatar_url === "string" ? body.avatar_url : null;
+    // Links are shown to other users, so only plain https URLs are stored (never javascript: or data:).
+    for (const field of ["avatar_url", "github_url", "linkedin_url"] as const) {
+      const value = body[field];
+      if (value === undefined) continue;
+      if (value !== null && value !== "" && !isSafeProfileUrl(value)) {
+        return res.status(400).json({ message: `${field} must be an https link` });
+      }
+      payload[field] = value ? (value as string) : null;
+    }
     if (body.bio !== undefined) payload.bio = typeof body.bio === "string" ? body.bio.slice(0, 500) : null;
-    if (body.github_url !== undefined) payload.github_url = typeof body.github_url === "string" ? body.github_url : null;
-    if (body.linkedin_url !== undefined) payload.linkedin_url = typeof body.linkedin_url === "string" ? body.linkedin_url : null;
     if (body.profession !== undefined) payload.profession = typeof body.profession === "string" ? body.profession.slice(0, 100) : null;
     if (body.selected_intents !== undefined) {
       const v = validateSelectedIntents(body.selected_intents);

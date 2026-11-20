@@ -329,6 +329,23 @@ export async function getUsersWithActiveResetToken(): Promise<UserRow[]> {
   return (data ?? []) as UserRow[];
 }
 
+/** The user holding this unexpired password-reset token hash, or null. */
+export async function getUserByActiveResetTokenHash(tokenHash: string): Promise<UserRow | null> {
+  if (!supabase || !tokenHash) return null;
+  const { data, error } = await supabase
+    .from("users")
+    .select("id")
+    .eq("password_reset_token_hash", tokenHash)
+    .gt("password_reset_expires_at", new Date().toISOString())
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error("[auth-service] reset token lookup failed:", error.code ?? error.message);
+    return null;
+  }
+  return (data as UserRow | null) ?? null;
+}
+
 /** Check if username is available (not taken by another user). Exclude current userId if provided. */
 export async function checkUsernameAvailable(username: string, excludeUserId?: string | null): Promise<boolean> {
   if (!supabase || !username || !username.trim()) return false;

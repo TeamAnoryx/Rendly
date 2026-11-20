@@ -514,14 +514,18 @@ export async function addViewOnceConsumed(userId: string, messageId: string): Pr
 }
 
 /** Delete for everyone / unsend (1:1): replace messages with tombstones so the other user sees "@username message deleted". */
-export async function markWhisperMessagesAsDeletedForEveryone(userId: string, messageIds: string[]): Promise<void> {
-  if (!supabase || messageIds.length === 0) return;
+export async function markWhisperMessagesAsDeletedForEveryone(userId: string, messageIds: string[]): Promise<string[]> {
+  if (!supabase || messageIds.length === 0) return [];
   const { data: row } = await supabase.from("user_chat_data").select("data").eq("user_id", userId).maybeSingle();
   const data = (row as { data?: { whispers?: { messages?: WhisperMessage[] } } })?.data;
   const messages = data?.whispers?.messages ?? [];
   const idSet = new Set(messageIds);
+  const changed: string[] = [];
   const next = messages.map((m) => {
     if (!idSet.has(m.id)) return m;
+    // Only the sender may remove a message for both sides.
+    if ((m as { sent_by_id?: string }).sent_by_id !== userId) return m;
+    changed.push(m.id);
     const base = m as WhisperMessage & { sent_to_id?: string; created_at?: string; date?: string; time?: string };
     return {
       ...base,
@@ -538,18 +542,112 @@ export async function markWhisperMessagesAsDeletedForEveryone(userId: string, me
     ...data,
     whispers: { ...data?.whispers, messages: next },
   };
-  await supabase.from("user_chat_data").upsert({ user_id: userId, data: nextData, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+  if (changed.length > 0) {
+    await supabase.from("user_chat_data").upsert({ user_id: userId, data: nextData, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+  }
+  // The normalized table is what both sides read: without this the "deleted" text came back on reload.
+  const inTable = await tombstoneTableMessages("whisper_messages", null, messageIds, (senderId) => senderId === userId);
+  return [...new Set([...changed, ...inTable])];
+}
+
+const BLOCK_CACHE_TTL_MS = 30_000;
+const BLOCK_CACHE_MAX = 20_000;
+const blockCache = new Map<string, { blocked: boolean; expires: number }>();
+
+/**
+ * True when either user has blocked the other (cached 30 s, so a new block takes effect within
+ * that window). Both ids must already be UUID-shaped. A failed lookup is logged and answers
+ * false: a database hiccup must not stop every conversation.
+ */
+export async function isBlockedEitherWay(userA: string, userB: string): Promise<boolean> {
+  if (!supabase) return false;
+  const key = userA < userB ? `${userA}:${userB}` : `${userB}:${userA}`;
+  const hit = blockCache.get(key);
+  if (hit && hit.expires > Date.now()) return hit.blocked;
+  const { data, error } = await supabase
+    .from("user_blocks")
+    .select("id")
+    .or(`and(blocker_id.eq.${userA},blocked_id.eq.${userB}),and(blocker_id.eq.${userB},blocked_id.eq.${userA})`)
+    .limit(1);
+  if (error) {
+    console.error("[Chat] block lookup failed:", error.code ?? error.message);
+    return false;
+  }
+  const blocked = (data ?? []).length > 0;
+  if (blockCache.size >= BLOCK_CACHE_MAX) {
+    const oldest = blockCache.keys().next().value;
+    if (oldest !== undefined) blockCache.delete(oldest);
+  }
+  blockCache.set(key, { blocked, expires: Date.now() + BLOCK_CACHE_TTL_MS });
+  return blocked;
+}
+
+/**
+ * Blank the stored copy of messages in a normalized message table. `mayDelete` decides per
+ * sender; returns the message ids that were blanked. Failures are logged and yield [].
+ */
+async function tombstoneTableMessages(
+  table: "whisper_messages" | "group_messages",
+  groupId: string | null,
+  messageIds: string[],
+  mayDelete: (senderId: string) => boolean
+): Promise<string[]> {
+  if (!supabase || messageIds.length === 0) return [];
+  try {
+    let query = supabase.from(table).select("id, message").in("message->>id", messageIds);
+    if (groupId) query = query.eq("group_id", groupId);
+    const { data: rows, error } = await query;
+    if (error) {
+      console.error(`[Chat] ${table} delete lookup failed:`, error.code ?? error.message);
+      return [];
+    }
+    const blanked: string[] = [];
+    for (const row of (rows ?? []) as { id: string; message: Record<string, unknown> }[]) {
+      const message = row.message ?? {};
+      const senderId = String(message.sent_by_id ?? message.sender_id ?? "");
+      if (!mayDelete(senderId)) continue;
+      const tombstone = {
+        ...message,
+        message: "",
+        content_type: "text",
+        bucket_ref: null,
+        deleted_for_everyone: true,
+        reply_to_message_id: null,
+        reply_to_content: null,
+        reply_to_sender_id: null,
+        reply_to_sender_username: null,
+      };
+      const { error: updateError } = await supabase.from(table).update({ message: tombstone }).eq("id", row.id);
+      if (updateError) {
+        console.error(`[Chat] ${table} delete failed:`, updateError.code ?? updateError.message);
+        continue;
+      }
+      blanked.push(String(message.id));
+    }
+    return blanked;
+  } catch (err) {
+    console.error(`[Chat] ${table} delete failed:`, err instanceof Error ? err.message : "unknown");
+    return [];
+  }
 }
 
 /** Delete for everyone / unsend (group): replace messages with tombstones so members see "@username message deleted". */
-export async function markGroupMessagesAsDeleted(groupId: string, messageIds: string[]): Promise<void> {
-  if (!supabase || messageIds.length === 0) return;
+export async function markGroupMessagesAsDeleted(
+  groupId: string,
+  messageIds: string[],
+  mayDelete: (senderId: string) => boolean
+): Promise<string[]> {
+  if (!supabase || messageIds.length === 0) return [];
   const { data: row } = await supabase.from("group_chat_data").select("data").eq("group_id", groupId).maybeSingle();
   const data = (row as { data?: { messages?: (WhisperMessage & { sent_to?: string })[] } })?.data;
   const messages = data?.messages ?? [];
   const idSet = new Set(messageIds);
+  const changed: string[] = [];
   const next = messages.map((m) => {
     if (!idSet.has(m.id)) return m;
+    const senderId = (m as { sent_by_id?: string }).sent_by_id ?? (m as { sender_id?: string }).sender_id ?? "";
+    if (!mayDelete(senderId)) return m;
+    changed.push(m.id);
     const base = m as WhisperMessage & { sent_to?: string; created_at?: string; date?: string; time?: string };
     return {
       id: base.id,
@@ -565,10 +663,14 @@ export async function markGroupMessagesAsDeleted(groupId: string, messageIds: st
       deleted_for_everyone: true,
     };
   });
-  await supabase
-    .from("group_chat_data")
-    .update({ data: { ...data, messages: next }, updated_at: new Date().toISOString() })
-    .eq("group_id", groupId);
+  if (changed.length > 0) {
+    await supabase
+      .from("group_chat_data")
+      .update({ data: { ...data, messages: next }, updated_at: new Date().toISOString() })
+      .eq("group_id", groupId);
+  }
+  const inTable = await tombstoneTableMessages("group_messages", groupId, messageIds, mayDelete);
+  return [...new Set([...changed, ...inTable])];
 }
 
 /** Remove call log ids from user's call_logs array. */
@@ -598,6 +700,9 @@ export function parseConversationId(conversationId: string, currentUserId: strin
     // A whisper id names its two parties; anyone else gets null.
     if (parts[1] !== currentUserId && parts[2] !== currentUserId) return null;
     const other = parts[1] === currentUserId ? parts[2] : parts[1];
+    const uuidShape = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    // The other party must have a user-id shape: ids reach database filters and room names.
+    if (!uuidShape.test(other)) return null;
     return { type: "whisper", otherUserId: other };
   }
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

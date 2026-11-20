@@ -5,6 +5,7 @@ import { getResolvedApiUrl } from '@/lib/resolvedApiUrl';
 import { LINKEDIN_PKCE_STORAGE_KEY } from '@/lib/pkce';
 import { GITHUB_STORAGE_KEY, LINK_TO_GITHUB_ID_KEY, getStoredAuthToken } from '@/lib/auth-storage';
 import { withBasePath } from '@/lib/basePath';
+import { createOAuthState } from '@/lib/oauthState';
 
 function normalizeRedirectUri(value: string): string {
   if (!value) return value;
@@ -31,8 +32,9 @@ export function useOAuth() {
     }
     const redirectUri = getRedirectUri();
     const scope = encodeURIComponent('read:user user:email');
-    const state = flow === 'login' ? 'github_login' : 'github';
-    const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${state}`;
+    // Random per-attempt state: the callback rejects any state this tab did not create.
+    const state = createOAuthState(flow === 'login' ? 'github_login' : 'github');
+    const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${encodeURIComponent(state)}`;
     window.location.href = url;
   }, []);
 
@@ -57,7 +59,7 @@ export function useOAuth() {
     } catch {
       // ignore
     }
-    const state = flow === 'login' ? 'linkedin_login' : 'linkedin';
+    const state = createOAuthState(flow === 'login' ? 'linkedin_login' : 'linkedin');
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: clientId,

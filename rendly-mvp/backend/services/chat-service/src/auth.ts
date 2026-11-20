@@ -3,11 +3,13 @@ import dotenv from "dotenv";
 import express from "express";
 import jwt from "jsonwebtoken";
 import { getUserById, getUserByProviderId } from "./supabase-users";
+import { resolveJwtSecret } from "./security";
 
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
+// Fails closed in production: a known fallback secret would let anyone forge a token.
+const JWT_SECRET = resolveJwtSecret();
 
 export type CurrentUser = { userId: string; username: string | null };
 
@@ -70,7 +72,7 @@ export async function getCurrentUserFromRequest(req: express.Request): Promise<C
   const known = cachedToken(token);
   if (known) return known;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { sub?: string; provider?: string; exp?: number };
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as { sub?: string; provider?: string; exp?: number };
     const sub = decoded?.sub;
     if (!sub) return null;
     const cacheKey = `${decoded?.provider ?? "github"}:${sub}`;

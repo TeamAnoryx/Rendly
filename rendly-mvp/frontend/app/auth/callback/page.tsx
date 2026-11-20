@@ -8,6 +8,7 @@ import { LINK_TO_GITHUB_ID_KEY, RENDLY_SESSION_TOKEN } from '@/lib/auth-storage'
 import AuthShell, { Enter, FormError } from '@/components/auth/AuthShell';
 import { startRouteTransition } from '@/components/common/RouteTransition';
 import { withBasePath } from '@/lib/basePath';
+import { verifyOAuthState } from '@/lib/oauthState';
 
 const GITHUB_STORAGE_KEY = 'rendly_oauth_github';
 const LINKEDIN_STORAGE_KEY = 'rendly_oauth_linkedin';
@@ -29,13 +30,14 @@ export default function CallbackPage() {
       return;
     }
 
-    const isLoginFlow = state === 'github_login' || state === 'linkedin_login';
-    const provider = state === 'github' || state === 'github_login' ? 'github' : state === 'linkedin' || state === 'linkedin_login' ? 'linkedin' : null;
-    if (!provider) {
-      setError('Invalid authorization state.');
+    // The state must carry the nonce this tab stored when sign-in started (blocks login CSRF).
+    const verified = verifyOAuthState(state);
+    if (!verified) {
+      setError('This sign-in link is not valid here. Start sign-in again from the login page.');
       setStatus('error');
       return;
     }
+    const { provider, isLoginFlow } = verified;
 
     let cancelled = false;
     let exchangeOptions: { codeVerifier?: string; linkToGithubId?: string } | undefined;

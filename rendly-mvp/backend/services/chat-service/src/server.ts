@@ -11,6 +11,15 @@ import { getUserById, getUserByIdCached, getUsersByIds, supabase } from "./supab
 import { markMessageNotificationsRead, notifyMessage, notifyUsers } from "./notify";
 import { isUuid, verifyTransferForMessage } from "./tokens";
 import { canPostInGroup } from "./group-rules";
+import {
+  MAX_MESSAGE_CHARS,
+  canDeleteGroupMessage,
+  canRemoveMember,
+  canSetMemberRole,
+  sanitizeMessageIds,
+  securityHeaders,
+  userRateLimit,
+} from "./security";
 import { isRendlyTeam, recordTeamQuery, RENDLY_TEAM_NAME, withTeamFirst } from "./team";
 import {
   whisperConversationId,
@@ -39,6 +48,7 @@ import {
   removeGroupMember,
   setGroupMemberRole,
   isGroupMember,
+  isBlockedEitherWay,
   getConversationMeta,
   getConversationMetaBatch,
   setConversationFavorite,
@@ -87,7 +97,18 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((o) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
+if (!ALLOWED_ORIGINS.length && process.env.NODE_ENV === "production") {
+  console.warn("[Chat] ALLOWED_ORIGINS is not set: every website may call this API. Set it to the app's origin.");
+}
+app.disable("x-powered-by");
+// One proxy (Render) sits in front; req.ip is then the real client address.
+app.set("trust proxy", 1);
+app.use(securityHeaders);
 app.use(cors({ origin: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : "*" }));
+
+/** Per-user budgets. Sending is the costly path; the general budget stops scripted floods. */
+const sendLimit = userRateLimit(Number(process.env.CHAT_SEND_RATE_MAX) || 120, 60_000);
+const writeLimit = userRateLimit(Number(process.env.CHAT_WRITE_RATE_MAX) || 60, 60_000);
 app.use(express.json({ limit: '15mb' }));
 
 app.get("/health", (_req, res) => {
@@ -249,6 +270,11 @@ app.get("/api/conversations/:id/messages", requireAuth, async (req: express.Requ
         view_once_consumed: view_once_consumed ?? [],
       });
     } else {
+      // Group history is for members only; a group id alone must not open it.
+      if (!(await isGroupMember(parsed.groupId, user.userId))) {
+        res.status(403).json({ message: "Not a group member" });
+        return;
+      }
       const { messages, deleted_ids, view_once_consumed } = await getGroupMessagesViaRpc(parsed.groupId, user.userId);
       const out = messages.map(toFrontendMessage) as { id: string; sender_id: string; content: string; content_type: string; created_at: string; sender_username?: string }[];
       const senderIds = [...new Set(out.map((m) => m.sender_id).filter(Boolean))];
@@ -279,14 +305,22 @@ app.get("/api/conversations/:id/messages", requireAuth, async (req: express.Requ
   }
 });
 
-app.post("/api/conversations/:id/messages", requireAuth, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
+app.post("/api/conversations/:id/messages", requireAuth, sendLimit, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
   const user = req.currentUser!;
   const convId = req.params.id;
   if (convId === "__self__") {
     res.status(400).json({ message: "Cannot send messages to yourself" });
     return;
   }
+  if (req.body?.content !== undefined && typeof req.body.content !== "string") {
+    res.status(400).json({ message: "content must be text" });
+    return;
+  }
   let content = (req.body?.content as string) ?? "";
+  if (content.length > MAX_MESSAGE_CHARS) {
+    res.status(413).json({ message: `Messages can be at most ${MAX_MESSAGE_CHARS} characters` });
+    return;
+  }
   const rawContentType = req.body?.content_type ?? "text";
   if (!isMessageContentType(rawContentType)) {
     res.status(400).json({ message: "Invalid content_type" });
@@ -306,6 +340,12 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req: express.Req
   const parsed = parseConversationId(convId, user.userId);
   if (!parsed) {
     res.status(400).json({ message: "Invalid conversation id" });
+    return;
+  }
+
+  // A block in either direction stops whispers (the Rendly Team inbox always stays open).
+  if (parsed.type === "whisper" && !isRendlyTeam(parsed.otherUserId) && (await isBlockedEitherWay(user.userId, parsed.otherUserId))) {
+    res.status(403).json({ message: "You cannot message this person" });
     return;
   }
 
@@ -518,7 +558,7 @@ app.post("/api/conversations/:id/messages", requireAuth, async (req: express.Req
 
 app.post("/api/conversations/:id/messages/delete-for-me", requireAuth, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
   const user = req.currentUser!;
-  const messageIds = Array.isArray(req.body?.message_ids) ? (req.body.message_ids as string[]) : [];
+  const messageIds = sanitizeMessageIds(req.body?.message_ids);
   if (!messageIds.length) {
     res.status(400).json({ message: "message_ids required" });
     return;
@@ -528,50 +568,56 @@ app.post("/api/conversations/:id/messages/delete-for-me", requireAuth, async (re
   res.json({ ok: true });
 });
 
-app.post("/api/conversations/:id/messages/delete-for-everyone", requireAuth, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
-  const user = req.currentUser!;
-  const convId = req.params.id;
-  const messageIds = Array.isArray(req.body?.message_ids) ? (req.body.message_ids as string[]) : [];
-  if (!messageIds.length) {
-    res.status(400).json({ message: "message_ids required" });
-    return;
-  }
+type DeleteOutcome = { status: 200; deleted: string[] } | { status: 400 | 403 | 500; message: string };
+
+/**
+ * Remove messages for everyone in a conversation. Whispers: only the caller's own messages.
+ * Groups: the caller must be a member, and may remove their own messages (admins: anyone's).
+ * Only the ids actually removed are returned and broadcast.
+ */
+async function deleteMessagesForEveryone(user: CurrentUser, convId: string, rawIds: unknown): Promise<DeleteOutcome> {
+  const messageIds = sanitizeMessageIds(rawIds);
+  if (!messageIds.length) return { status: 400, message: "message_ids required" };
   const parsed = parseConversationId(convId, user.userId);
-  if (!parsed) {
-    res.status(400).json({ message: "Invalid conversation" });
+  if (!parsed) return { status: 400, message: "Invalid conversation" };
+  try {
+    if (parsed.type === "whisper") {
+      const deleted = await markWhisperMessagesAsDeletedForEveryone(user.userId, messageIds);
+      if (deleted.length) broadcastMessageDeleted(convId, deleted);
+      return { status: 200, deleted };
+    }
+    const members = await getGroupMembersWithUsers(parsed.groupId);
+    const actorRole = members.find((m) => m.user_id === user.userId)?.role;
+    if (!actorRole) return { status: 403, message: "Not a group member" };
+    const deleted = await markGroupMessagesAsDeleted(parsed.groupId, messageIds, (senderId) =>
+      canDeleteGroupMessage({ actorId: user.userId, actorRole, senderId })
+    );
+    if (deleted.length) broadcastMessageDeleted(convId, deleted);
+    return { status: 200, deleted };
+  } catch (err) {
+    console.error("[Chat] delete for everyone failed:", err instanceof Error ? err.message : "unknown");
+    return { status: 500, message: "Could not delete the messages" };
+  }
+}
+
+app.post("/api/conversations/:id/messages/delete-for-everyone", requireAuth, writeLimit, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
+  const outcome = await deleteMessagesForEveryone(req.currentUser!, req.params.id, req.body?.message_ids);
+  if (outcome.status !== 200) {
+    res.status(outcome.status).json({ message: outcome.message });
     return;
   }
-  if (parsed.type === "whisper") {
-    await markWhisperMessagesAsDeletedForEveryone(user.userId, messageIds);
-  } else {
-    await markGroupMessagesAsDeleted(parsed.groupId, messageIds);
-  }
-  broadcastMessageDeleted(convId, messageIds);
-  chatLog(parsed.type === "whisper" ? "Whispers" : "Group", "Deleted for everyone", `conv=${convId} ids=${messageIds.join(",")}`);
-  res.json({ deleted: messageIds });
+  chatLog("Whispers", "Deleted for everyone", `conv=${req.params.id} count=${outcome.deleted.length}`);
+  res.json({ deleted: outcome.deleted });
 });
 
-app.post("/api/conversations/:id/messages/unsend", requireAuth, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
-  const user = req.currentUser!;
-  const convId = req.params.id;
-  const messageIds = Array.isArray(req.body?.message_ids) ? (req.body.message_ids as string[]) : [];
-  if (!messageIds.length) {
-    res.status(400).json({ message: "message_ids required" });
+app.post("/api/conversations/:id/messages/unsend", requireAuth, writeLimit, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
+  const outcome = await deleteMessagesForEveryone(req.currentUser!, req.params.id, req.body?.message_ids);
+  if (outcome.status !== 200) {
+    res.status(outcome.status).json({ message: outcome.message });
     return;
   }
-  const parsed = parseConversationId(convId, user.userId);
-  if (!parsed) {
-    res.status(400).json({ message: "Invalid conversation" });
-    return;
-  }
-  if (parsed.type === "whisper") {
-    await markWhisperMessagesAsDeletedForEveryone(user.userId, messageIds);
-  } else {
-    await markGroupMessagesAsDeleted(parsed.groupId, messageIds);
-  }
-  broadcastMessageDeleted(convId, messageIds);
-  chatLog(parsed.type === "whisper" ? "Whispers" : "Group", "Unsent", `conv=${convId} ids=${messageIds.join(",")}`);
-  res.json({ unsent: messageIds });
+  chatLog("Whispers", "Unsent", `conv=${req.params.id} count=${outcome.deleted.length}`);
+  res.json({ unsent: outcome.deleted });
 });
 
 // ---------- Groups ----------
@@ -797,28 +843,70 @@ app.delete("/api/groups/:id", requireAuth, async (req: express.Request & { curre
   res.json({ ok: true });
 });
 
-app.post("/api/groups/:id/members/remove", requireAuth, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
+app.post("/api/groups/:id/members/remove", requireAuth, writeLimit, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
   const user = req.currentUser!;
   const groupId = req.params.id;
-  const targetUserId = (req.body?.user_id as string)?.trim();
-  if (!targetUserId) {
-    res.status(400).json({ message: "user_id required" });
+  const targetUserId = req.body?.user_id;
+  if (!isUuid(groupId) || !isUuid(targetUserId)) {
+    res.status(400).json({ message: "A valid group and user_id are required" });
     return;
   }
-  await removeGroupMember(groupId, targetUserId);
-  res.json({ ok: true });
+  try {
+    // Members leave by themselves; only the creator or an admin removes someone else.
+    const members = await getGroupMembersWithUsers(groupId);
+    const allowed = canRemoveMember({
+      actorId: user.userId,
+      actorRole: members.find((m) => m.user_id === user.userId)?.role,
+      targetId: targetUserId,
+      targetRole: members.find((m) => m.user_id === targetUserId)?.role,
+    });
+    if (!allowed) {
+      res.status(403).json({ message: "You cannot remove this member" });
+      return;
+    }
+    if (!(await removeGroupMember(groupId, targetUserId))) {
+      res.status(500).json({ message: "Could not remove the member" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[groups] remove member failed:", err instanceof Error ? err.message : "unknown");
+    if (!res.headersSent) res.status(500).json({ message: "Could not remove the member" });
+  }
 });
 
-app.patch("/api/groups/:id/members/role", requireAuth, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
+app.patch("/api/groups/:id/members/role", requireAuth, writeLimit, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
+  const user = req.currentUser!;
   const groupId = req.params.id;
-  const targetUserId = (req.body?.user_id as string)?.trim();
-  const role = req.body?.role as "admin" | "member";
-  if (!targetUserId || !role) {
-    res.status(400).json({ message: "user_id and role required" });
+  const targetUserId = req.body?.user_id;
+  const role: unknown = req.body?.role;
+  if (!isUuid(groupId) || !isUuid(targetUserId) || (role !== "admin" && role !== "member")) {
+    res.status(400).json({ message: "A valid group, user_id and role (admin or member) are required" });
     return;
   }
-  await setGroupMemberRole(groupId, targetUserId, role);
-  res.json({ ok: true });
+  try {
+    // Only the group's creator promotes or demotes, and never themselves.
+    const members = await getGroupMembersWithUsers(groupId);
+    const allowed = canSetMemberRole({
+      actorId: user.userId,
+      actorRole: members.find((m) => m.user_id === user.userId)?.role,
+      targetId: targetUserId,
+      targetRole: members.find((m) => m.user_id === targetUserId)?.role,
+      nextRole: role,
+    });
+    if (!allowed) {
+      res.status(403).json({ message: "Only the group creator can change roles" });
+      return;
+    }
+    if (!(await setGroupMemberRole(groupId, targetUserId, role))) {
+      res.status(500).json({ message: "Could not change the role" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[groups] set role failed:", err instanceof Error ? err.message : "unknown");
+    if (!res.headersSent) res.status(500).json({ message: "Could not change the role" });
+  }
 });
 
 // ---------- Connections (for group "Add members" - list people current user is connected to) ----------
@@ -901,7 +989,7 @@ app.post("/api/groups/:id/invites", requireAuth, async (req: express.Request & {
 });
 
 // ---------- Calls ----------
-app.post("/api/calls/start", requireAuth, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
+app.post("/api/calls/start", requireAuth, writeLimit, async (req: express.Request & { currentUser?: CurrentUser }, res) => {
   const user = req.currentUser!;
   const conversationId = (req.body?.conversation_id as string)?.trim();
   const callType = ((req.body?.call_type as string) || "audio") as "audio" | "video";
@@ -912,6 +1000,10 @@ app.post("/api/calls/start", requireAuth, async (req: express.Request & { curren
   const parsed = parseConversationId(conversationId, user.userId);
   if (!parsed || parsed.type !== "whisper") {
     res.status(400).json({ message: "Only 1:1 calls supported" });
+    return;
+  }
+  if (await isBlockedEitherWay(user.userId, parsed.otherUserId)) {
+    res.status(403).json({ message: "You cannot call this person" });
     return;
   }
   const otherUser = await getUserById(parsed.otherUserId);
